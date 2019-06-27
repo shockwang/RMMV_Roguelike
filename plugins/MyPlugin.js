@@ -141,7 +141,7 @@
     }
     
     function refineMapTile(east, west, south, north, centerTile) {
-        var result = ceilingCenter;
+        var result = centerTile;
         if (east) {
             if (west) {
                 if (north) {
@@ -247,69 +247,7 @@
                     }
                     
                     // now decide tile type
-                    var result = ceilingCenter;
-                    if (east) {
-                        if (west) {
-                            if (north) {
-                                if (south) {
-                                    result += 46;
-                                } else {
-                                    result += 42;
-                                }
-                            } else {
-                                if (south) {
-                                    result += 44;
-                                } else {
-                                    result += 32;
-                                }
-                            }
-                        } else {
-                            if (north) {
-                                if (south) {
-                                    result += 45;
-                                } else {
-                                    result += 36;
-                                }
-                            } else {
-                                if (south) {
-                                    result += 38;
-                                } else {
-                                    result += 24;
-                                }
-                            }
-                        }
-                    } else {
-                        if (west) {
-                            if (north) {
-                                if (south) {
-                                    result += 43;
-                                } else {
-                                    result += 34;
-                                }
-                            } else {
-                                if (south) {
-                                    result += 40;
-                                } else {
-                                    result += 16;
-                                }
-                            }
-                        } else {
-                            if (north) {
-                                if (south) {
-                                    result += 33;
-                                } else {
-                                    result += 20;
-                                }
-                            } else {
-                                if (south) {
-                                    result += 28;
-                                } else {
-                                    result += 0;
-                                }
-                            }
-                        }
-                    }
-                    mapData[i][j].base = result;
+                    mapData[i][j].base = refineMapTile(east, west, south, north, ceilingCenter);
                 } else if (rawData[i][j] == WALL) {
                     // deal with wall
                     east = false, west = false;
@@ -359,6 +297,7 @@
         
         var index = 0;
         var shadowOffset = mapData.length * mapData[0].length * 4;
+        var warFogOffset = mapData.length * mapData[0].length;
         for (var j = 0; j < mapData[0].length; j++) {
             for (var i = 0; i < mapData.length; i++) {
                 // second time update visibility
@@ -368,7 +307,21 @@
                     mapArray[shadowOffset + index] = mapData[i][j].shadow;
                     mapData[i][j].isExplored = true;
                 }
+                if (!mapData[i][j].isVisible && mapData[i][j].isExplored) {
+                    mapArray[warFogOffset + index] = warFogCenter;
+                }
                 index++;
+            }
+        }
+    }
+    
+    MapUtils.drawEvents = function(mapData) {
+        for (var i = 0; i < $gameMap.events().length; i++) {
+            var event = $gameMap.events()[i];
+            if (mapData[event._x][event._y].isVisible) {
+                event.setOpacity(500);
+            } else {
+                event.setOpacity(0);
             }
         }
     }
@@ -556,12 +509,14 @@
                 $dataMap.height = rawMap[0].length;
                 $dataMap.data = new Array(newMapData.length * newMapData[0].length * 6);
                 MapUtils.drawMap(newMapData, $dataMap.data);
+                MapUtils.drawEvents(newMapData);
                 $gameVariables[$gameMap.mapId()] = new MapVariable(newMapData, $dataMap);
             } else if ($dataMap && $gameVariables[$gameMap.mapId()]) {
                 // assign map data here
                 console.log("assign map data.");
                 $dataMap = $gameVariables[$gameMap.mapId()].rmDataMap;
                 MapUtils.drawMap($gameVariables[$gameMap.mapId()].mapData, $dataMap.data);
+                MapUtils.drawEvents($gameVariables[$gameMap.mapId()].mapData);
             }
         }
         this.checkError();
@@ -578,8 +533,9 @@
         Game_Character.prototype.moveStraight.call(this, d);
         if (moved) {
             MapUtils.drawMap($gameVariables[$gameMap.mapId()].mapData, $dataMap.data);
+            MapUtils.drawEvents($gameVariables[$gameMap.mapId()].mapData);
             // add for steam RMMV project
-            setTimeout('SceneManager.goto(Scene_Map)', 250);
+            //setTimeout('SceneManager.goto(Scene_Map)', 250);
         }
     };
 
