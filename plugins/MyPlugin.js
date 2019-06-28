@@ -44,7 +44,11 @@
     var warFogCenter = 3536;
     
     // view parameters
-    var viewDistance = 5;
+    var viewDistance = 8;
+    
+    // room parameters
+    var roomNum = 5, minRoomSize = 4, maxRoomSize = 16;
+    var maxRoomExit = 3;
     
     MapUtils = function() {
         throw new Error('This is a static class');
@@ -53,6 +57,13 @@
     function getRandomInt(max) {
         return Math.floor(Math.random() * Math.floor(max));
     };
+    
+    function getRandomIntRange(min, max) {
+        if (min == max) {
+            return min;
+        }
+        return Math.floor(Math.random() * Math.floor(max - min)) + min;
+    }
     
     // this function should be called twice
     function updateVisible(x, y, mapData) {
@@ -373,6 +384,10 @@
             for (var j = 0; j < genMap[i].length; j++) {
                 map[i * 2 + index][j * 2 + index] = FLOOR;
                 map[i * 2 + 1 + index][j * 2 + 1 + index] = CEILING;
+                // check if inside of room
+                if (genMap[i][j].isRoom && !genMap[i][j].northWall && !genMap[i][j].eastWall) {
+                    map[i * 2 + 1 + index][j * 2 + 1 + index] = FLOOR;
+                }
                 
                 var north;
                 if (genMap[i][j].northWall) {
@@ -419,28 +434,27 @@
         return map2;
     }
 
-    // cell definition
+    // map data structure definition
     function Cell(x, y) {
         this.x = x;
         this.y = y;
         this.northWall = true;
         this.eastWall = true;
         this.done = false;
+        // room indicator
+        this.isRoom = false;
     }
-
-    function genMap(width, height) {
-        // initialize
-        var map = new Array(width);
-        for (var i = 0; i < width; i++) {
-            map[i] = new Array(height);
-            for (var j = 0; j < height; j++) {
-                map[i][j] = new Cell(i, j);
-            }
-        }
-        
+    
+    function BaseRoom(startX, startY, width, height) {
+        this.start = new Coordinate(startX, startY);
+        this.width = width;
+        this.height = height;
+    }
+    
+    function fillMaze(map, startX, startY) {
         // generate map
         var queue = [];
-        var x = 0, y = 0;
+        var x = startX, y = startY;
         var xNext, yNext;
         queue.push(map[x][y]);
         while (queue.length > 0) {
@@ -451,13 +465,13 @@
             for (var i = 0; i < direction.length; i++) {
                 switch (direction[i]) {
                     case 0: // east
-                        if (x+1 < width && !map[x+1][y].done) {
+                        if (x+1 < map.length && !map[x+1][y].done) {
                             map[x][y].eastWall = false;
                             xNext++;
                         }
                         break;
                     case 1: // north
-                        if (y+1 < height && !map[x][y+1].done) {
+                        if (y+1 < map[0].length && !map[x][y+1].done) {
                             map[x][y].northWall = false;
                             yNext++;
                         }
@@ -488,11 +502,209 @@
                 x = nextCell.x, y = nextCell.y;
             }
         }
+    }
+    
+    function initMaze(width, height) {
+        // initialize
+        var map = new Array(width);
+        for (var i = 0; i < width; i++) {
+            map[i] = new Array(height);
+            for (var j = 0; j < height; j++) {
+                map[i][j] = new Cell(i, j);
+            }
+        }
+        return map;
+    }
+
+    function genMapFullMaze(width, height) {
+        var map = initMaze(width, height);
+        fillMaze(map, 0, 0);
         return map;
     }
     
-    MapUtils.generateMapData = function(width, height) {
-        var mapRaw = genMap(width, height);
+    function fillRoomSetup(map, newRoom) {
+        for (var j = newRoom.start.y; j < newRoom.start.y + newRoom.height; j++) {
+            for (var i = newRoom.start.x; i < newRoom.start.x + newRoom.width; i++) {
+                if (j+1 < newRoom.start.y + newRoom.height) {
+                    // not y-axis border
+                    map[i][j].northWall = false;
+                }
+                if (i+1 < newRoom.start.x + newRoom.width) {
+                    // not x-axis border
+                    map[i][j].eastWall = false;
+                }
+                map[i][j].isRoom = true;
+                map[i][j].done = true;
+            }
+        }
+    }
+    
+    genMapRoomsFullMaze = function(width, height) {
+        var map = initMaze(width, height);
+        
+        // generate rooms (randomly)
+        var rooms = [];
+        var retryCount = 0;
+        while (rooms.length < roomNum && retryCount < 10) {
+            var roomWidth = getRandomIntRange(2, Math.round(width / 3));
+            var minRoomHeight = Math.round(minRoomSize / roomWidth);
+            var maxRoomHeight = Math.round(maxRoomSize / roomWidth);
+            if (minRoomHeight < height && maxRoomHeight < height && maxRoomHeight >= minRoomHeight && maxRoomHeight >= 2) {
+                if (minRoomHeight == 1) {
+                    minRoomHeight++;
+                }
+                var roomHeight = getRandomIntRange(minRoomHeight, maxRoomHeight);
+                
+                // decide starting point
+                var startX, startY;
+                var findPlaceRetryCount = 0, newRoom = null;
+                while (!newRoom && findPlaceRetryCount < 10) {
+                    startX = getRandomInt(width - roomWidth);
+                    startY = getRandomInt(height - roomHeight);
+                    // check if room location conflicts
+                    var conflict = false;
+                    for (var i = 0; i < rooms.length; i++) {
+                        if (!(rooms[i].start.x > startX + roomWidth || rooms[i].start.x + rooms[i].width < startX) &&
+                            !(rooms[i].start.y > startY + roomHeight || rooms[i].start.Y + rooms[i].height < startY)) {
+                                conflict = true;
+                                break;
+                        }
+                    }
+                    if (conflict) {
+                        findPlaceRetryCount++;
+                    } else {
+                        newRoom = new BaseRoom(startX, startY, roomWidth, roomHeight);
+                        findPlaceRetryCount = 0;
+                    }
+                }
+                if (newRoom) {
+                    rooms.push(newRoom);
+                    retryCount = 0;
+                } else {
+                    retryCount++;
+                }
+            }
+        }
+        
+        // fill room setup
+        for (var i = 0; i < rooms.length; i++) {
+            fillRoomSetup(map, rooms[i]);
+        }
+        
+        // generate rooms (from empty space lefts)
+        while (rooms.length < roomNum) {
+            // find largest empty space
+            // initialize an 0 room size
+            var candidateArea = null;
+            for (var j = 0; j < map[0].length; j++) {
+                for (var i = 0; i < map.length; i++) {
+                    if (map[i][j].done) {
+                        continue;
+                    }
+                    var startX = i, startY = j;
+                    var toX = i, toY = j;
+                    // check x-axis available range
+                    for (var k = startX; k < map.length; k++) {
+                        if (map[k][startY].done) {
+                            break;
+                        }
+                        toX++;
+                    }
+                    // check y-axis available range
+                    toY = map[0].length;
+                    for (var l = startY; l < map[0].length; l++) {
+                        for (var k = startX; k < toX; k++) {
+                            if (map[k][l].done) {
+                                toY = (toY > l) ? l : toY;
+                                break;
+                            }
+                        }
+                    }
+                    // room edge length must > 1
+                    if (toX - startX > 1 && toY - startY > 1) {
+                        // check area size
+                        var size = (toX - startX) * (toY - startY);
+                        if (size >= minRoomSize) {
+                            if (!candidateArea || size > candidateArea.width * candidateArea.height) {
+                                candidateArea = new BaseRoom(startX, startY, toX - startX, toY - startY);
+                            }
+                        }
+                    }
+                }
+            }
+            if (!candidateArea) {
+                // unable to find more empty space meet the requirement
+                break;
+            }
+            
+            // generate a suitable room from candidateArea
+            var newRoom = null;
+            while (!newRoom) {
+                var roomWidth = getRandomIntRange(2, candidateArea.width);
+                var roomHeight = getRandomIntRange(2, candidateArea.height);
+                if (roomWidth * roomHeight >= minRoomSize && roomWidth * roomHeight <= maxRoomSize) {
+                    newRoom = new BaseRoom(candidateArea.start.x, candidateArea.start.y, roomWidth, roomHeight);
+                }
+            }
+            rooms.push(newRoom);
+            fillRoomSetup(map, newRoom);
+        }
+        
+        // fill the rest with maze
+        for (var j = 0; j < map[0].length; j++) {
+            for (var i = 0; i < map.length; i++) {
+                if (!map[i][j].done) {
+                    fillMaze(map, i, j);
+                }
+            }
+        }
+        
+        // add exits to each room
+        for (var i = 0; i < rooms.length; i++) {
+            var room = rooms[i];
+            var exitNum = getRandomIntRange(1, maxRoomExit);
+            while (exitNum > 0) {
+                switch (getRandomInt(4)) {
+                    case 0: // east
+                        var x = room.start.x + room.width;
+                        var y = getRandomIntRange(room.start.y, room.start.y + room.height);
+                        map[x][y].eastWall = false;
+                        map[x][y].isRoom = false;
+                        exitNum--;
+                        break;
+                    case 1: // west
+                        if (x - 1 <= 0) {
+                            continue;
+                        }
+                        x = room.start.x;
+                        y = getRandomIntRange(room.start.y, room.start.y + room.height);
+                        map[x-1][y].eastWall = false;
+                        exitNum--;
+                        break;
+                    case 2: // south
+                        if (y - 1 <= 0) {
+                            continue;
+                        }
+                        x = getRandomIntRange(room.start.x, room.start.x + room.width);
+                        y = room.start.y;
+                        map[x][y-1].northWall = false;
+                        exitNum--;
+                        break;
+                    case 3: // north
+                        x = getRandomIntRange(room.start.x, room.start.x + room.width);
+                        y = room.start.y + room.height;
+                        map[x][y].northWall = false;
+                        map[x][y].isRoom = false;
+                        exitNum--;
+                        break;
+                }
+            }
+        }
+        return map;
+    }
+    
+    MapUtils.generateMapData = function(genMapFunction, width, height) {
+        var mapRaw = genMapFunction(width, height);
         var mapPixel = genMapToMap(mapRaw);
         return addWall(mapPixel);
     }
@@ -503,7 +715,7 @@
             if ($dataMap && !$gameVariables[$gameMap.mapId()]) {
                 // first load map
                 console.log("first load map: " + $gameMap.mapId());
-                var rawMap = MapUtils.generateMapData(30, 20)
+                var rawMap = MapUtils.generateMapData(genMapRoomsFullMaze, 15, 10)
                 var newMapData = MapUtils.translateMap(rawMap);
                 $dataMap.width = rawMap.length;
                 $dataMap.height = rawMap[0].length;
@@ -535,7 +747,7 @@
             MapUtils.drawMap($gameVariables[$gameMap.mapId()].mapData, $dataMap.data);
             MapUtils.drawEvents($gameVariables[$gameMap.mapId()].mapData);
             // add for steam RMMV project
-            //setTimeout('SceneManager.goto(Scene_Map)', 250);
+            setTimeout('SceneManager.goto(Scene_Map)', 250);
         }
     };
 
