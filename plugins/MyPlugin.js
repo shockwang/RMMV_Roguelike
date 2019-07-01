@@ -38,6 +38,7 @@
     var CEILING = '■';
     var WALL = 'Ⅲ';
     
+    // ----------map constants----------
     var ceilingCenter = 5888;
     var wallCenter = 6282;
     var floorCenter = 2816;
@@ -48,6 +49,8 @@
     
     // room parameters
     var roomNum = 10, minRoomSize = 4, maxRoomSize = 16;
+    
+    // ----------end of map constants----------
     
     MapUtils = function() {
         throw new Error('This is a static class');
@@ -523,7 +526,7 @@
         return map;
     }
 
-    function genMapFullMaze(width, height) {
+    genMapFullMaze = function(width, height) {
         var map = initMaze(width, height);
         fillMaze(map, 0, 0, 0);
         return map;
@@ -546,9 +549,10 @@
         }
     }
     
-    genMapRoomsFullMaze = function(width, height) {
-        var map = initMaze(width, height);
-        
+    function createRooms(map) {
+        var width = map.length;
+        var height = map[0].length;
+    
         // generate rooms (randomly)
         var rooms = [];
         var retryCount = 0;
@@ -656,6 +660,12 @@
             rooms.push(newRoom);
             fillRoomSetup(map, newRoom);
         }
+        return rooms;
+    }
+    
+    genMapRoomsFullMaze = function(width, height) {
+        var map = initMaze(width, height);
+        var rooms = createRooms(map);
         
         // fill the rest with maze
         var regionId = 0;
