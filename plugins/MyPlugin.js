@@ -442,6 +442,7 @@
         this.done = false;
         // room indicator
         this.isRoom = false;
+        // region indicator
         this.regionId = 0;
     }
     
