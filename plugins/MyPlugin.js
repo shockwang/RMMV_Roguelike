@@ -47,8 +47,7 @@
     var viewDistance = 8;
     
     // room parameters
-    var roomNum = 5, minRoomSize = 4, maxRoomSize = 16;
-    var maxRoomExit = 3;
+    var roomNum = 10, minRoomSize = 4, maxRoomSize = 16;
     
     MapUtils = function() {
         throw new Error('This is a static class');
@@ -443,6 +442,7 @@
         this.done = false;
         // room indicator
         this.isRoom = false;
+        this.regionId = 0;
     }
     
     function BaseRoom(startX, startY, width, height) {
@@ -451,7 +451,12 @@
         this.height = height;
     }
     
-    function fillMaze(map, startX, startY) {
+    function ExitCandidate(cell, direction) {
+        this.cell = cell;
+        this.direction = direction;
+    }
+    
+    function fillMaze(map, startX, startY, regionId) {
         // generate map
         var queue = [];
         var x = startX, y = startY;
@@ -459,6 +464,7 @@
         queue.push(map[x][y]);
         while (queue.length > 0) {
             map[x][y].done = true;
+            map[x][y].regionId = regionId;
             xNext = x, yNext = y;
             var direction = RNG[getRandomInt(24)];
             var moved = false;
@@ -518,7 +524,7 @@
 
     function genMapFullMaze(width, height) {
         var map = initMaze(width, height);
-        fillMaze(map, 0, 0);
+        fillMaze(map, 0, 0, 0);
         return map;
     }
     
@@ -651,52 +657,117 @@
         }
         
         // fill the rest with maze
+        var regionId = 0;
         for (var j = 0; j < map[0].length; j++) {
             for (var i = 0; i < map.length; i++) {
                 if (!map[i][j].done) {
-                    fillMaze(map, i, j);
+                    fillMaze(map, i, j, regionId);
+                    regionId++;
                 }
             }
         }
         
-        // add exits to each room
+        // add exists to each room, connect all isolated regions
+        var maxRegions = 20;
         for (var i = 0; i < rooms.length; i++) {
+            var regions = new Array(maxRegions);
+            for (var j = 0; j < regions.length; j++) {
+                regions[j] = [];
+            }
+            // search edge of the room, divided by regionId
             var room = rooms[i];
-            var exitNum = getRandomIntRange(1, maxRoomExit);
-            while (exitNum > 0) {
-                switch (getRandomInt(4)) {
-                    case 0: // east
-                        var x = room.start.x + room.width;
-                        var y = getRandomIntRange(room.start.y, room.start.y + room.height);
-                        map[x][y].eastWall = false;
-                        map[x][y].isRoom = false;
-                        exitNum--;
+            // handle with x-axis direction
+            for (var j = room.start.x; j < room.start.x + room.width; j++) {
+                if (room.start.y - 1 >= 0 && !map[j][room.start.y-1].isRoom) {
+                    regions[map[j][room.start.y-1].regionId].push(new ExitCandidate(map[j][room.start.y], "SOUTH"));
+                }
+                if (room.start.y + room.height < map[0].length && !map[j][room.start.y+room.height].isRoom) {
+                    regions[map[j][room.start.y+room.height].regionId].push(new ExitCandidate(map[j][room.start.y+room.height-1], "NORTH"));
+                }
+            }
+            // handle with y-axis direction
+            for (var j = room.start.y; j < room.start.y + room.height; j++) {
+                if (room.start.x - 1 >= 0 && !map[room.start.x-1][j].isRoom) {
+                    regions[map[room.start.x-1][j].regionId].push(new ExitCandidate(map[room.start.x][j], "WEST"));
+                }
+                if (room.start.x + room.width < map.length && !map[room.start.x+room.width][j].isRoom) {
+                    regions[map[room.start.x+room.width][j].regionId].push(new ExitCandidate(map[room.start.x+room.width-1][j], "EAST"));
+                }
+            }
+            
+            // now generate exits for each region
+            var totalExits = 0;
+            for (var j = 0; j < regions.length; j++) {
+                if (regions[j].length == 0) {
+                    continue;
+                }
+                var thisRegion = regions[j];
+                var exit = thisRegion[getRandomInt(thisRegion.length)];
+                // create exit
+                switch (exit.direction) {
+                    case "SOUTH":
+                        map[exit.cell.x][exit.cell.y-1].northWall = false;
                         break;
-                    case 1: // west
-                        if (x - 1 <= 0) {
-                            continue;
-                        }
-                        x = room.start.x;
-                        y = getRandomIntRange(room.start.y, room.start.y + room.height);
-                        map[x-1][y].eastWall = false;
-                        exitNum--;
+                    case "NORTH":
+                        exit.cell.northWall = false;
+                        exit.cell.isRoom = false;
                         break;
-                    case 2: // south
-                        if (y - 1 <= 0) {
-                            continue;
-                        }
-                        x = getRandomIntRange(room.start.x, room.start.x + room.width);
-                        y = room.start.y;
-                        map[x][y-1].northWall = false;
-                        exitNum--;
+                    case "WEST":
+                        map[exit.cell.x-1][exit.cell.y].eastWall = false;
                         break;
-                    case 3: // north
-                        x = getRandomIntRange(room.start.x, room.start.x + room.width);
-                        y = room.start.y + room.height;
-                        map[x][y].northWall = false;
-                        map[x][y].isRoom = false;
-                        exitNum--;
+                    case "EAST":
+                        exit.cell.eastWall = false;
+                        exit.cell.isRoom = false;
                         break;
+                }
+                totalExits++;
+            }
+            if (totalExits == 0) {
+                // surrounded by rooms, create 1 exit
+                var done = false;
+                while (!done) {
+                    switch (getRandomInt(4)) {
+                        case 0: // north
+                            if (room.start.y + room.height == map[0].length) {
+                                continue;
+                            }
+                            var x = getRandomIntRange(room.start.x, room.start.x + room.width);
+                            var y = room.start.y + room.height - 1;
+                            map[x][y].northWall = false;
+                            map[x][y].isRoom = false;
+                            done = true;
+                            break;
+                        case 1: // south
+                            if (room.start.y == 0) {
+                                continue;
+                            }
+                            var x = getRandomIntRange(room.start.x, room.start.x + room.width);
+                            var y = room.start.y - 1;
+                            map[x][y].northWall = false;
+                            map[x][y].isRoom = false;
+                            done = true;
+                            break;
+                        case 2: // east
+                            if (room.start.x + room.width == map.length) {
+                                continue;
+                            }
+                            var x = room.start.x + room.width - 1;
+                            var y = getRandomIntRange(room.start.y, room.start.y + room.height);
+                            map[x][y].eastWall = false;
+                            map[x][y].isRoom = false;
+                            done = true;
+                            break;
+                        case 3: // west
+                            if (room.start.x == 0) {
+                                continue;
+                            }
+                            var x = room.start.x - 1;
+                            var y = getRandomIntRange(room.start.y, room.start.y + room.height);
+                            map[x][y].eastWall = false;
+                            map[x][y].isRoom = false;
+                            done = true;
+                            break;
+                    }
                 }
             }
         }
