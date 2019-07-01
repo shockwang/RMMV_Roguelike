@@ -48,7 +48,7 @@
     var viewDistance = 8;
     
     // room parameters
-    var roomNum = 10, minRoomSize = 4, maxRoomSize = 16;
+    var roomNum = 5, minRoomSize = 4, maxRoomSize = 9;
     
     // ----------end of map constants----------
     
@@ -453,6 +453,8 @@
         this.start = new Coordinate(startX, startY);
         this.width = width;
         this.height = height;
+        // center coordinate for distance calculation
+        this.center = new Coordinate(Math.round((2*startX+width)/2), Math.round((2*startY+height)/2));
     }
     
     function ExitCandidate(cell, direction) {
@@ -654,7 +656,10 @@
                 var roomWidth = getRandomIntRange(2, candidateArea.width);
                 var roomHeight = getRandomIntRange(2, candidateArea.height);
                 if (roomWidth * roomHeight >= minRoomSize && roomWidth * roomHeight <= maxRoomSize) {
-                    newRoom = new BaseRoom(candidateArea.start.x, candidateArea.start.y, roomWidth, roomHeight);
+                    // randomize start position
+                    var xOffset = getRandomInt(candidateArea.width - candidateArea.start.x);
+                    var yOffset = getRandomInt(candidateArea.height - candidateArea.start.y);
+                    newRoom = new BaseRoom(candidateArea.start.x + xOffset, candidateArea.start.y + yOffset, roomWidth, roomHeight);
                 }
             }
             rooms.push(newRoom);
@@ -785,10 +790,65 @@
         return map;
     }
     
+    function findShortestPossiblePath(map, path, targetRoom) {
+        var found = false;
+        var nowX = path[path.length - 1].x;
+        var nowY = path[path.length - 1].y;
+        while (!found) {
+            
+        }
+        return found;
+    }
+    
+    function findPathBetweenRooms(map, room1, room2) {
+        var pathFound = false;
+        var path = [];
+        while (!pathFound) {
+            var steps = RNG[getRandomInt(24)];
+            for (var i = 0; i < steps.length; i++) {
+                var x, y;
+                switch (steps[i]) {
+                    case 0: // east
+                        x = room1.start.x + room1.width - 1;
+                        y = getRandomIntRange(room1.start.y, room1.start.y + room1.height);
+                        path.push(map[x][y]);
+                        path.push(map[x+1][y]);
+                }
+            }
+        }
+    }
+    
+    genMapRoomsRoguelike = function(width, height) {
+        var map = initMaze(width, height);
+        var rooms = createRooms(map);
+        
+        var connectedRooms = [];
+        // start to connect all rooms
+        while (rooms.length > 0) {
+            var roomNow = rooms[getRandomInt(rooms.length)];
+            var candidate = null;
+            var shortest = 1000;
+            for (var i = 0; i < rooms.length; i++) {
+                if (rooms[i] == roomNow) {
+                    continue;
+                }
+                // calculate the distance between each rooms, choose the shortest one
+                var distance = Math.sqrt(Math.pow(roomNow.center.x - rooms[i].center.x, 2) + Math.pow(roomNow.center.y - rooms[i].center.y, 2));
+                if (distance < shortest) {
+                    distance = shortest;
+                    candidate = rooms[i];
+                }
+            }
+            
+        }
+        return map;
+    }
+    
     MapUtils.generateMapData = function(genMapFunction, width, height) {
         var mapRaw = genMapFunction(width, height);
         var mapPixel = genMapToMap(mapRaw);
-        return addWall(mapPixel);
+        return mapPixel;
+        //return addWall(mapPixel);
     }
     
     // override map loading mechanism
@@ -829,7 +889,7 @@
             MapUtils.drawMap($gameVariables[$gameMap.mapId()].mapData, $dataMap.data);
             MapUtils.drawEvents($gameVariables[$gameMap.mapId()].mapData);
             // add for steam RMMV project
-            setTimeout('SceneManager.goto(Scene_Map)', 250);
+            //setTimeout('SceneManager.goto(Scene_Map)', 250);
         }
     };
 
