@@ -906,31 +906,61 @@
     //
     // The game object class for a mob (aggressive/passive), define mob status in
     // it. (HP/MP/attribute, etc)
+    
+    function cloneObject(obj) {
+        return JSON.parse(JSON.stringify(obj));
+    }
+    
+    newDataMapEvent = function(fromObj, id, x, y) {
+        var newObj = cloneObject(fromObj);
+        newObj.id = id;
+        newObj.x = x;
+        newObj.y = y;
+        return newObj;
+    }
 
     Game_Mob = function() {
         this.initialize.apply(this, arguments);
+        this.hp = 10;
     }
 
     Game_Mob.prototype = Object.create(Game_Event.prototype);
     Game_Mob.prototype.constructor = Game_Mob;
 
-    Game_Mob.prototype.initialize = function() {
+    Game_Mob.prototype.initialize = function(x, y) {
         // find empty space for new event
         var emptyFound = false;
         var eventId;
-        for (var i = 0; i < $dataMap.events.length; i++) {
+        for (var i = 1; i < $dataMap.events.length; i++) {
             if (!$dataMap.events[i]) {
                 // found empty space to place new event
                 emptyFound = true;
-                // place new event here
                 eventId = i;
+                $dataMap.events[i] = newDataMapEvent($dataMap.events[1], eventId, x, y);
                 break;
             }
         }
         if (!emptyFound) {
             // add new event at the bottom of list
-            
+            eventId = $dataMap.events.length;
+            $dataMap.events.push(newDataMapEvent($dataMap.events[1], eventId, x, y));
         }
-        Game_Event.prototype.initialize.call(this, mapId, eventId);
+        // store new events back to map variable
+        $gameVariables[$gameMap.mapId()].rmDataMap = $dataMap;
+        Game_Event.prototype.initialize.call(this, $gameMap.mapId(), eventId);
+        $gameMap._events[eventId] = this;
     };
+    
+    Game_Mob.prototype.takeDamage = function(value) {
+        $gameSystem.createPopup(0, "", "\\c[02]  -" + value, this);
+        this.hp -= value;
+        // hit animation
+        this.requestAnimation(16);
+        if (this.hp <= 0) {
+            // remove this event. 
+            // NOTE: Do not remove it from $gameMap._events! will cause crash
+            $gameMap.eraseEvent(this._eventId);
+            $dataMap.events[this._eventId] = null;
+        }
+    }
 })();
