@@ -847,8 +847,8 @@
     MapUtils.generateMapData = function(genMapFunction, width, height) {
         var mapRaw = genMapFunction(width, height);
         var mapPixel = genMapToMap(mapRaw);
-        return mapPixel;
-        //return addWall(mapPixel);
+        //return mapPixel;
+        return addWall(mapPixel);
     }
     
     // override map loading mechanism
@@ -889,7 +889,7 @@
             MapUtils.drawMap($gameVariables[$gameMap.mapId()].mapData, $dataMap.data);
             MapUtils.drawEvents($gameVariables[$gameMap.mapId()].mapData);
             // add for steam RMMV project
-            //setTimeout('SceneManager.goto(Scene_Map)', 250);
+            setTimeout('SceneManager.goto(Scene_Map)', 250);
         }
     };
 
@@ -899,5 +899,38 @@
             // put operations here
         }
         Game_Character.prototype.moveDiagonally.call(this, horz, vert);
+    };
+    
+    //-----------------------------------------------------------------------------
+    // Game_Mob
+    //
+    // The game object class for a mob (aggressive/passive), define mob status in
+    // it. (HP/MP/attribute, etc)
+
+    Game_Mob = function() {
+        this.initialize.apply(this, arguments);
+    }
+
+    Game_Mob.prototype = Object.create(Game_Event.prototype);
+    Game_Mob.prototype.constructor = Game_Mob;
+
+    Game_Mob.prototype.initialize = function() {
+        // find empty space for new event
+        var emptyFound = false;
+        var eventId;
+        for (var i = 0; i < $dataMap.events.length; i++) {
+            if (!$dataMap.events[i]) {
+                // found empty space to place new event
+                emptyFound = true;
+                // place new event here
+                eventId = i;
+                break;
+            }
+        }
+        if (!emptyFound) {
+            // add new event at the bottom of list
+            
+        }
+        Game_Event.prototype.initialize.call(this, mapId, eventId);
     };
 })();

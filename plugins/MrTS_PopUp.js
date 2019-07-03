@@ -3,7 +3,7 @@
 //=============================================================================
 /*:
  * @plugindesc Creates pop ups on item pick ups or custom ones as needed.
- * @author Mr. Trivel
+ * @author Mr. Trivel, modified by shockwang
  *
  * @param Pop Speed
  * @desc How fast popup goes upwards.
@@ -102,7 +102,7 @@
                 text += args[i] + " ";
             }
 
-            $gameSystem.createPopup(iconIndex, iconAllign, text);
+            $gameSystem.createPopup(iconIndex, iconAllign, text, $gamePlayer);
         } else if (command.toLowerCase() === "stoppopups") {
             $gameSystem.stopPopups();
         } else if (command.toLowerCase() === "startpopups") {
@@ -126,10 +126,10 @@
         return this._popupsAlive;
     };
 
-    Game_System.prototype.createPopup = function(iconIndex, iconAllign, text) {
+    Game_System.prototype.createPopup = function(iconIndex, iconAllign, text, targetEvent) {
         if (SceneManager._scene.constructor !== Scene_Map) return;
         if (!this.arePopupsAlive()) return;
-        SceneManager._scene.queuePopup(iconIndex, iconAllign, text);
+        SceneManager._scene.queuePopup(iconIndex, iconAllign, text, targetEvent);
     };
 
     //--------------------------------------------------------------------------
@@ -140,14 +140,14 @@
         _GameParty_gainItem.call(this, item, amount, includeEquip);
         if (amount != 0 && item) {
             var text = item.name + (amount != 0 ? " " + paramQuantitySign + "" + amount : "");
-            $gameSystem.createPopup(item.iconIndex, "left", text);
+            $gameSystem.createPopup(item.iconIndex, "left", text, $gamePlayer);
         }
     };
 
     var _GameParty_gainGold = Game_Party.prototype.gainGold;
     Game_Party.prototype.gainGold = function(amount) {
         _GameParty_gainGold.call(this, amount);
-        if (amount != 0) $gameSystem.createPopup(paramGoldIcon, "left", String(amount));
+        if (amount != 0) $gameSystem.createPopup(paramGoldIcon, "left", String(amount), $gamePlayer);
     };
 
     //--------------------------------------------------------------------------
@@ -161,11 +161,12 @@
         this._popDelay = 0;
     };
 
-    Scene_Map.prototype.queuePopup = function(iconIndex, iconAllign, text) {
+    Scene_Map.prototype.queuePopup = function(iconIndex, iconAllign, text, targetEvent) {
         var popup = this.createBlankPopup();
         popup.iconIndex = iconIndex;
         popup.iconAllign = iconAllign;
         popup.text = text;
+        popup.targetEvent = targetEvent;
         this._popupQueue.push(popup);
     };
 
@@ -174,6 +175,7 @@
         blank.iconIndex = 0;
         blank.iconAllign = "left";
         blank.text = "";
+        blank.targetEvent = $gamePlayer;
         return blank;
     };
 
@@ -182,7 +184,7 @@
         _SceneMap_update.call(this);
         if (this._popDelay > 0) this._popDelay--;
         if (this._popupQueue.length > 0 && this._popDelay <= 0) {
-            var popup = new Window_PopUp(this._popupQueue[0], $gamePlayer.screenX(), $gamePlayer.screenY());
+            var popup = new Window_PopUp(this._popupQueue[0], this._popupQueue[0].targetEvent.screenX(), this._popupQueue[0].targetEvent.screenY());
             this._popupQueue.shift();
             this._popups.push(popup);
             this.addChild(popup);
