@@ -886,10 +886,7 @@
         }
         Game_Character.prototype.moveStraight.call(this, d);
         if (moved) {
-            MapUtils.drawMap($gameVariables[$gameMap.mapId()].mapData, $dataMap.data);
-            MapUtils.drawEvents($gameVariables[$gameMap.mapId()].mapData);
-            // add for steam RMMV project
-            setTimeout('SceneManager.goto(Scene_Map)', 250);
+            TimeUtils.afterPlayerMoved();
         }
     };
 
@@ -901,7 +898,33 @@
         Game_Character.prototype.moveDiagonally.call(this, horz, vert);
     };
     
-    //-----------------------------------------------------------------------------
+    //-----------------------------------------------------------------------------------
+    // Game_Map
+    // 
+    // Modify isPassable() to fit map design
+    Game_Map.prototype.isPassable = function(x, y, d) {
+        // check original map tile if can pass
+        switch (d) {
+            case 2: // down
+                y++;
+                break;
+            case 4: // left
+                x--;
+                break;
+            case 6: // right
+                x++;
+                break;
+            case 8: // up
+                y--;
+                break;
+        }
+        if ($gameVariables[$gameMap.mapId()].mapData[x][y].originalTile != FLOOR) {
+            return false;
+        }
+        return true;
+    }
+    
+    //-----------------------------------------------------------------------------------
     // Game_Mob
     //
     // The game object class for a mob (aggressive/passive), define mob status in
@@ -921,7 +944,8 @@
 
     Game_Mob = function() {
         this.initialize.apply(this, arguments);
-        this.hp = 10;
+        // NOTE: attribute must be the same name as Game_Actor
+        this._hp = 100;
     }
 
     Game_Mob.prototype = Object.create(Game_Event.prototype);
@@ -951,16 +975,89 @@
         $gameMap._events[eventId] = this;
     };
     
-    Game_Mob.prototype.takeDamage = function(value) {
-        $gameSystem.createPopup(0, "", "\\c[02]  -" + value, this);
-        this.hp -= value;
+    Game_Mob.prototype.action = function() {
+        // check if player is nearby
+        if (Math.abs(this._x - $gamePlayer._x) + Math.abs(this._y - $gamePlayer._y) == 1) {
+            this.turnTowardCharacter($gamePlayer);
+            BattleUtils.meleeAttack(this, $gamePlayer);
+        } else {
+            this.moveRandom();
+        }
+    }
+    
+    //-----------------------------------------------------------------------------------
+    // Input
+    //
+    // try to add key defined by Input class
+    // NOTE: find keyCode using Input._onKeyDown() in rpg_core.js
+    Input.keyMapper[190] = '.'; // keyCode for '.'
+    
+    InputUtils = function() {
+        throw new Error('This is a static class');
+    }
+    
+    InputUtils.checkKeyPressed = function() {
+        if (Input.isTriggered('.')) {
+            // player waits for 1 turn
+            TimeUtils.afterPlayerMoved();
+        }
+    }
+    
+    //-----------------------------------------------------------------------------------
+    // TimeUtils
+    //
+    // time system to update the whole world
+    TimeUtils = function() {
+        throw new Error('This is a static class');
+    }
+    
+    TimeUtils.afterPlayerMoved = function() {
+        console.log("1 turn passed.");
+        // update all mobs & items
+        for (var i = 0; i < $gameMap._events.length; i++) {
+            var event = $gameMap._events[i];
+            if (!event || event._erased) {
+                continue;
+            }
+            if (event instanceof Game_Mob) {
+                event.action();
+            }
+        }
+        MapUtils.drawMap($gameVariables[$gameMap.mapId()].mapData, $dataMap.data);
+        MapUtils.drawEvents($gameVariables[$gameMap.mapId()].mapData);
+        setTimeout('SceneManager.goto(Scene_Map)', 250);
+    }
+    
+    //-----------------------------------------------------------------------------------
+    // BattleUtils
+    //
+    // handles battle on map
+    BattleUtils = function() {
+        throw new Error('This is a static class');
+    }
+    
+    BattleUtils.meleeAttack = function(src, target) {
+        // TODO: need to implement attack damage formula
+        var value = 10;
+        var realTarget = (target == $gamePlayer) ? $gameActors._data[1] : target;
+        $gameSystem.createPopup(0, "", "\\c[02]  -" + value, target);
+        realTarget._hp -= value;
         // hit animation
-        this.requestAnimation(16);
-        if (this.hp <= 0) {
-            // remove this event. 
-            // NOTE: Do not remove it from $gameMap._events! will cause crash
-            $gameMap.eraseEvent(this._eventId);
-            $dataMap.events[this._eventId] = null;
+        target.requestAnimation(16);
+        if (realTarget._hp <= 0) {
+            if (target == $gamePlayer) {
+                // TODO: implement player dead mechanism
+            } else {
+                // remove target event from $dataMap.events
+                // NOTE: Do not remove it from $gameMap._events! will cause crash
+                $gameMap.eraseEvent(target._eventId);
+                target._x = 0;
+                target._y = 0;
+                $dataMap.events[target._eventId] = null;
+            }
+        }
+        if (src == $gamePlayer) {
+            TimeUtils.afterPlayerMoved();
         }
     }
 })();
