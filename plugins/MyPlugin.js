@@ -992,6 +992,31 @@
     // NOTE: find keyCode using Input._onKeyDown() in rpg_core.js
     Input.keyMapper[190] = '.'; // keyCode for '.'
     
+    // modify _signX & signY, so arrow key triggered only once after pressed.
+    Input._signX = function() {
+        var x = 0;
+
+        if (this.isTriggered('left')) {
+            x--;
+        }
+        if (this.isTriggered('right')) {
+            x++;
+        }
+        return x;
+    };
+
+    Input._signY = function() {
+        var y = 0;
+
+        if (this.isTriggered('up')) {
+            y--;
+        }
+        if (this.isTriggered('down')) {
+            y++;
+        }
+        return y;
+    };
+    
     InputUtils = function() {
         throw new Error('This is a static class');
     }
@@ -1025,7 +1050,7 @@
         }
         MapUtils.drawMap($gameVariables[$gameMap.mapId()].mapData, $dataMap.data);
         MapUtils.drawEvents($gameVariables[$gameMap.mapId()].mapData);
-        setTimeout('SceneManager.goto(Scene_Map)', 250);
+        SceneManager.goto(Scene_Map);
     }
     
     //-----------------------------------------------------------------------------------
