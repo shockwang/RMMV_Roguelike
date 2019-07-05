@@ -1,5 +1,5 @@
 [
 null,
-{"id":1,"expanded":false,"name":"MAP001","order":1,"parentId":0,"scrollX":665.3333333333334,"scrollY":578},
-{"id":2,"expanded":false,"name":"地下城測試","order":2,"parentId":0,"scrollX":665.3333333333334,"scrollY":578}
+{"id":1,"expanded":false,"name":"MAP001","order":1,"parentId":0,"scrollX":459,"scrollY":312.5},
+{"id":2,"expanded":false,"name":"地下城測試","order":2,"parentId":0,"scrollX":451,"scrollY":304.5}
 ]

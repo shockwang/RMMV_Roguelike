@@ -851,13 +851,16 @@
         return addWall(mapPixel);
     }
     
+    //-----------------------------------------------------------------------------------
+    // DataManager
+    //
     // override map loading mechanism
     DataManager.isMapLoaded = function() {
         if ($gameMap && $gameMap.mapId() > 0) {
             if ($dataMap && !$gameVariables[$gameMap.mapId()]) {
                 // first load map
                 console.log("first load map: " + $gameMap.mapId());
-                var rawMap = MapUtils.generateMapData(genMapRoomsFullMaze, 15, 10)
+                var rawMap = MapUtils.generateMapData(genMapRoomsFullMaze, 15, 10);
                 var newMapData = MapUtils.translateMap(rawMap);
                 $dataMap.width = rawMap.length;
                 $dataMap.height = rawMap[0].length;
@@ -877,6 +880,9 @@
         return !!$dataMap;
     };
     
+    //-----------------------------------------------------------------------------------
+    // Game_Player
+    //
     // handle map change when player moved
     Game_Player.prototype.moveStraight = function(d) {
         var moved = false;
@@ -891,11 +897,49 @@
     };
 
     Game_Player.prototype.moveDiagonally = function(horz, vert) {
+        var moved = false;
         if (this.canPassDiagonally(this.x, this.y, horz, vert)) {
             this._followers.updateMove();
-            // put operations here
+            moved = true;
         }
         Game_Character.prototype.moveDiagonally.call(this, horz, vert);
+        if (moved) {
+            TimeUtils.afterPlayerMoved();
+        }
+    };
+    
+    //-----------------------------------------------------------------------------------
+    // Game_CharacterBase
+    // 
+    // Modify moveDiagonally(), so it can trigger diagonal events
+    Game_CharacterBase.prototype.moveDiagonally = function(horz, vert) {
+        this.setMovementSuccess(this.canPassDiagonally(this._x, this._y, horz, vert));
+        var moved = false;
+        if (this.isMovementSucceeded()) {
+            this._x = $gameMap.roundXWithDirection(this._x, horz);
+            this._y = $gameMap.roundYWithDirection(this._y, vert);
+            this._realX = $gameMap.xWithDirection(this._x, this.reverseDir(horz));
+            this._realY = $gameMap.yWithDirection(this._y, this.reverseDir(vert));
+            this.increaseSteps();
+            moved = true;
+        }
+        if (this._direction === this.reverseDir(horz)) {
+            this.setDirection(horz);
+        }
+        if (this._direction === this.reverseDir(vert)) {
+            this.setDirection(vert);
+        }
+        // check diagonal event
+        if (!moved) {
+            this.checkEventTriggerTouchDiagonal(horz, vert);
+        }
+    };
+    
+    // add check function for diagonal events
+    Game_CharacterBase.prototype.checkEventTriggerTouchDiagonal = function(horz, vert) {
+        var x2 = $gameMap.roundXWithDirection(this._x, horz);
+        var y2 = $gameMap.roundYWithDirection(this._y, vert);
+        this.checkEventTriggerTouch(x2, y2);
     };
     
     //-----------------------------------------------------------------------------------
@@ -944,7 +988,7 @@
 
     Game_Mob = function() {
         this.initialize.apply(this, arguments);
-        // NOTE: attribute must be the same name as Game_Actor
+        // NOTE: attribute name must be the same as Game_Actor
         this._hp = 100;
     }
 
@@ -977,11 +1021,25 @@
     
     Game_Mob.prototype.action = function() {
         // check if player is nearby
-        if (Math.abs(this._x - $gamePlayer._x) + Math.abs(this._y - $gamePlayer._y) == 1) {
+        if (Math.abs(this._x - $gamePlayer._x) < 2 && Math.abs(this._y - $gamePlayer._y) < 2) {
             this.turnTowardCharacter($gamePlayer);
             BattleUtils.meleeAttack(this, $gamePlayer);
         } else {
             this.moveRandom();
+        }
+    }
+    
+    // Override moveRandom() function so mobs can move diagonally
+    Game_Mob.prototype.moveRandom = function() {
+        var moveType = Math.randomInt(2);
+        if (moveType == 0) { // straight
+            Game_Event.prototype.moveRandom.call(this);
+        } else { // diagonal
+            var horz = 4 + Math.randomInt(2) * 2;
+            var vert = 2 + Math.randomInt(2) * 6;
+            if (this.canPassDiagonally(this.x, this.y, horz, vert)) {
+                this.moveDiagonally(horz, vert);
+            }
         }
     }
     
@@ -991,8 +1049,13 @@
     // try to add key defined by Input class
     // NOTE: find keyCode using Input._onKeyDown() in rpg_core.js
     Input.keyMapper[190] = '.'; // keyCode for '.'
+    Input.keyMapper[12] = 'Numpad5'; // same function as '.'
+    Input.keyMapper[36] = 'Numpad7'; // player move left-up
+    Input.keyMapper[33] = 'Numpad9'; // player move right-up
+    Input.keyMapper[35] = 'Numpad1'; // player move left-down
+    Input.keyMapper[34] = 'Numpad3'; // player move right-down
     
-    // modify _signX & signY, so arrow key triggered only once after pressed.
+    // modify _signX & signY, so arrow key triggered only once when pressed.
     Input._signX = function() {
         var x = 0;
 
@@ -1022,9 +1085,17 @@
     }
     
     InputUtils.checkKeyPressed = function() {
-        if (Input.isTriggered('.')) {
+        if (Input.isTriggered('.') || Input.isTriggered('Numpad5')) {
             // player waits for 1 turn
             TimeUtils.afterPlayerMoved();
+        } else if (Input.isTriggered('Numpad7')) {
+            $gamePlayer.moveDiagonally(4, 8);
+        } else if (Input.isTriggered('Numpad9')) {
+            $gamePlayer.moveDiagonally(6, 8);
+        } else if (Input.isTriggered('Numpad1')) {
+            $gamePlayer.moveDiagonally(4, 2);
+        } else if (Input.isTriggered('Numpad3')) {
+            $gamePlayer.moveDiagonally(6, 2);
         }
     }
     
@@ -1050,7 +1121,15 @@
         }
         MapUtils.drawMap($gameVariables[$gameMap.mapId()].mapData, $dataMap.data);
         MapUtils.drawEvents($gameVariables[$gameMap.mapId()].mapData);
-        SceneManager.goto(Scene_Map);
+        //setTimeout('SceneManager.goto(Scene_Map)', 250);
+        // try to use the following code, which make screen update not lag so much
+        var scene = SceneManager._scene;
+        scene.removeChild(scene._fadeSprite);
+        scene.removeChild(scene._mapNameWindow);
+        scene.removeChild(scene._windowLayer);
+        scene.removeChild(scene._spriteset);
+        scene.createDisplayObjects();
+        scene.setupStatus();
     }
     
     //-----------------------------------------------------------------------------------
@@ -1076,8 +1155,8 @@
                 // remove target event from $dataMap.events
                 // NOTE: Do not remove it from $gameMap._events! will cause crash
                 $gameMap.eraseEvent(target._eventId);
-                target._x = 0;
-                target._y = 0;
+                //target._x = 0;
+                //target._y = 0;
                 $dataMap.events[target._eventId] = null;
             }
         }

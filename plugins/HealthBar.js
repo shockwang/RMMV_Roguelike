@@ -16,6 +16,11 @@
         this._myWindow = new My_Window(100,100);
         this.addWindow(this._myWindow);
     };
+    
+    // add for update player status after each step
+    Scene_Map.prototype.setupStatus = function() {
+        this.addWindow(this._myWindow);
+    }
 
     var _Scene_Map_update = Scene_Map.prototype.update;
 

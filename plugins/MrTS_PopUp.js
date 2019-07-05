@@ -156,9 +156,9 @@
     var _SceneMap_createDisplayObjects = Scene_Map.prototype.createDisplayObjects;
     Scene_Map.prototype.createDisplayObjects = function() {
         _SceneMap_createDisplayObjects.call(this);
-        this._popupQueue = [];
-        this._popups = [];
-        this._popDelay = 0;
+        this._popupQueue = this._popupQueue || [];
+        this._popups = this._popups || [];
+        this._popDelay = this._popDelay || 0;
     };
 
     Scene_Map.prototype.queuePopup = function(iconIndex, iconAllign, text, targetEvent) {
