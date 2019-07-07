@@ -1,7 +1,7 @@
 // my plugin
 
 (function() {
-    MapData = function(floorId, original) {
+    MapData = function(floorId, original, x, y) {
         this.base = floorId;
         this.bush = 0;
         this.decorate1 = 0;
@@ -15,6 +15,10 @@
         
         // original tile
         this.originalTile = original;
+        
+        // add for path finding
+        this.x = x;
+        this.y = y;
     }
     
     MapVariable = function(mapData, rmDataMap) {
@@ -67,36 +71,36 @@
         return Math.floor(Math.random() * Math.floor(max - min)) + min;
     }
     
-    // this function should be called twice
-    function updateVisible(x, y, mapData) {
+    // this function should be called twice (src must be a Game_Event)
+    function updateVisible(src, distance, x, y, mapData) {
         var visible = false;
-        if (Math.abs($gamePlayer._x - x) <= viewDistance && Math.abs($gamePlayer._y - y) <= viewDistance) {
+        if (Math.abs(src._x - x) <= distance && Math.abs(src._y - y) <= distance) {
             // around player, check visibility
             visible = true;
-            if ($gamePlayer._x != x) {
+            if (src._x != x) {
                 var path = [];
-                var m = ($gamePlayer._y - y) / ($gamePlayer._x - x);
+                var m = (src._y - y) / (src._x - x);
                 var startX, endX, lastY;
-                if ($gamePlayer._x - x > 0) {
+                if (src._x - x > 0) {
                     startX = x;
-                    endX = $gamePlayer._x;
+                    endX = src._x;
                     lastY = y;
                 } else {
-                    startX = $gamePlayer._x;
+                    startX = src._x;
                     endX = x;
-                    lastY = $gamePlayer._y;
+                    lastY = src._y;
                 }
 
                 // start to check if vision blocked
                 for (var i = startX+1; i <= endX; i++) {
-                    var estimatedY = Math.round(m * (i - $gamePlayer._x) + $gamePlayer._y);
+                    var estimatedY = Math.round(m * (i - src._x) + src._y);
                     
                     // fill y-axis coordinates
                     if (Math.abs(lastY - estimatedY) > 1) {
                         var startY = (lastY - estimatedY > 0) ? estimatedY : lastY;
                         var endY = (lastY - estimatedY > 0) ? lastY : estimatedY;
                         for (var j = startY+1; j < endY; j++) {
-                            var estimatedX = Math.round((j - $gamePlayer._y) / m + $gamePlayer._x);
+                            var estimatedX = Math.round((j - src._y) / m + src._x);
                             path.push(new Coordinate(estimatedX, j));
                         }
                     }
@@ -112,8 +116,8 @@
                     }
                 }
             } else {
-                var start = ($gamePlayer._y - y > 0) ? y : $gamePlayer._y;
-                var end = ($gamePlayer._y - y > 0) ? $gamePlayer._y : y;
+                var start = (src._y - y > 0) ? y : src._y;
+                var end = (src._y - y > 0) ? src._y : y;
                 
                 // start to check if vision blocked
                 for (var i = start+1; i < end; i++) {
@@ -224,7 +228,7 @@
         for (var i = 0; i < mapData.length; i++) {
             mapData[i] = new Array(rawData[0].length);
             for (var j = 0; j < rawData[0].length; j++) {
-                mapData[i][j] = new MapData(floorCenter, rawData[i][j]);
+                mapData[i][j] = new MapData(floorCenter, rawData[i][j], i, j);
             }
         }
         
@@ -304,7 +308,7 @@
         // first time update visibility
         for (var j = 0; j < mapData[0].length; j++) {
             for (var i = 0; i < mapData.length; i++) {
-                updateVisible(i, j, mapData);
+                updateVisible($gamePlayer, viewDistance, i, j, mapData);
             }
         }
         
@@ -314,7 +318,7 @@
         for (var j = 0; j < mapData[0].length; j++) {
             for (var i = 0; i < mapData.length; i++) {
                 // second time update visibility
-                updateVisible(i, j, mapData);
+                updateVisible($gamePlayer, viewDistance, i, j, mapData);
                 if (mapData[i][j].isVisible || mapData[i][j].isExplored) {
                     mapArray[index] = mapData[i][j].base;
                     mapArray[shadowOffset + index] = mapData[i][j].shadow;
@@ -818,6 +822,10 @@
         }
     }
     
+    MapUtils.getDistance = function(x1, y1, x2, y2) {
+        return Math.sqrt(Math.pow(x1 - x2, 2) + Math.pow(y1 - y2, 2));
+    }
+    
     genMapRoomsRoguelike = function(width, height) {
         var map = initMaze(width, height);
         var rooms = createRooms(map);
@@ -849,6 +857,120 @@
         var mapPixel = genMapToMap(mapRaw);
         //return mapPixel;
         return addWall(mapPixel);
+    }
+    
+    MapUtils.getNearbyCoordinate = function(x, y, index) {
+        var result = new Coordinate(x, y);
+        switch (index) { // check path clock-wise
+            case 0: // east
+                result.x++;
+                break;
+            case 1: // east-south
+                result.x++;
+                result.y--;
+                break;
+            case 2: // south
+                result.y--;
+                break;
+            case 3: // west-south
+                result.x--;
+                result.y--;
+                break;
+            case 4: // west
+                result.x--;
+                break;
+            case 5: // west-north
+                result.x--;
+                result.y++;
+                break;
+            case 6: // north
+                result.y++;
+                break;
+            case 7: // east-north
+                result.x++;
+                result.y++;
+                break;
+        }
+        return result;
+    }
+    
+    // find route between two events (not very useful...put away by now)
+    MapUtils.findShortestRoute = function(x1, y1, x2, y2) {
+        var mapData = $gameVariables[$gameMap.mapId()].mapData;
+        var path = [], explored = [];
+        if (mapData[x1][y1].originalTile != FLOOR || mapData[x2][y2].originalTile != FLOOR) {
+            console.log("MapUtils.findShortestRoute() error: point not on FLOOR.");
+            return null;
+        }
+        var hasPath = true, dstReached = false;
+        var curX = x1, curY = y1;
+        var nextX, nextY;
+        // first add src point being explored
+        explored.push(mapData[x1][y1]);
+        while (hasPath && !dstReached) {
+            hasPath = false;
+            for (var i = 0; i < 8; i++) {
+                nextX = curX, nextY = curY;
+                var nextCoordinate = getNearbyCoordinate(curX, curY, i);
+                nextX = nextCoordinate.x;
+                nextY = nextCoordinate.y;
+                if (mapData[nextX][nextY].originalTile == FLOOR 
+                    && !explored.includes(mapData[nextX][nextY])
+                    && !path.includes(mapData[nextX][nextY])) {
+                    hasPath = true;
+                    // check if destination reached
+                    if (nextX == x2 && nextY == y2) {
+                        dstReached = true;
+                    } else {
+                        //console.log("node pushed. x: %d, y: %d", nextX, nextY);
+                        path.push(mapData[nextX][nextY]);
+                        explored.push(mapData[nextX][nextY]);
+                        curX = nextX;
+                        curY = nextY;
+                    }
+                    break;
+                }
+            }
+            if (!hasPath) {
+                // dead end, try to go back and try another node from the current path
+                path.pop();
+                if (path.length > 0) {
+                    var lastNode = path[path.length - 1];
+                    curX = lastNode.x;
+                    curY = lastNode.y;
+                    hasPath = true;
+                }
+            }
+        }
+        console.log("original path length: %d", path.length);
+        for (var i = 0; i < path.length; i++) {
+            console.log("x: %d, y: %d", path[i].x, path[i].y);
+        }
+        // refine the path
+        var index = 0;
+        while (index < path.length) {
+            for (var i = path.length - 1; i > index; i--) {
+                if (MapUtils.isNearBy(path[index].x, path[index].y, path[i].x, path[i].y)
+                    && i - index > 1) {
+                    // redundant path between path[index] & path[i]
+                    path.splice(index + 1, i - index - 1);
+                    break;
+                }
+            }
+            index++;
+        }
+        console.log("refined path length: %d", path.length);
+        for (var i = 0; i < path.length; i++) {
+            console.log("x: %d, y: %d", path[i].x, path[i].y);
+        }
+        return path;
+    }
+    
+    MapUtils.isNearBy = function(x1, y1, x2, y2) {
+        if (Math.abs(x1 - x2) < 2 && Math.abs(y1 - y2) < 2) {
+            return true;
+        }
+        return false;
     }
     
     //-----------------------------------------------------------------------------------
@@ -990,6 +1112,7 @@
         this.initialize.apply(this, arguments);
         // NOTE: attribute name must be the same as Game_Actor
         this._hp = 100;
+        this.awareDistance = 8;
     }
 
     Game_Mob.prototype = Object.create(Game_Event.prototype);
@@ -1024,9 +1147,69 @@
         if (Math.abs(this._x - $gamePlayer._x) < 2 && Math.abs(this._y - $gamePlayer._y) < 2) {
             this.turnTowardCharacter($gamePlayer);
             BattleUtils.meleeAttack(this, $gamePlayer);
+        } else if (MapUtils.getDistance(this._x, this._y, $gamePlayer._x, $gamePlayer._y) < this.awareDistance) {
+            this.moveTowardCharacter($gamePlayer);
         } else {
             this.moveRandom();
         }
+    }
+    
+    // Override moveTowardCharacter() function so mobs can move diagonally
+    Game_Mob.prototype.moveTowardCharacter = function(character) {
+        var mapData = $gameVariables[$gameMap.mapId()].mapData;
+        var candidate = [], distanceRecord = [];
+        var nowDistance = MapUtils.getDistance(this._x, this._y, character._x, character._y);
+        for (var i = 0; i < 8; i++) {
+            var coordinate = MapUtils.getNearbyCoordinate(this._x, this._y, i);
+            if (mapData[coordinate.x][coordinate.y].originalTile != FLOOR) {
+                continue;
+            }
+            var distance = MapUtils.getDistance(coordinate.x, coordinate.y, character._x, character._y);
+            if (distance < nowDistance) {
+                if (candidate.length == 0) {
+                    candidate.push(coordinate);
+                    distanceRecord.push(distance);
+                } else {
+                    var added = false;
+                    for (var i = 0; i < candidate.length; i++) {
+                        if (distance < distanceRecord[i]) {
+                            candidate.splice(i, 0, coordinate);
+                            distanceRecord.splice(i, 0, distance);
+                            added = true;
+                            break;
+                        }
+                    }
+                    if (!added) {
+                        candidate.push(coordinate);
+                        distanceRecord.push(distance);
+                    }
+                }
+            }
+        }
+        for (var i = 0; i < candidate.length; i++) {
+            var horz = 0, vert = 0;
+            var sx = this.deltaXFrom(candidate[i].x);
+            var sy = this.deltaYFrom(candidate[i].y);
+            if (sx > 0) {
+                horz = 4;
+            } else if (sx < 0) {
+                horz = 6;
+            }
+            if (sy > 0) {
+                vert = 8;
+            } else if (sy < 0) {
+                vert = 2;
+            }
+            if (sx == 0 || sy == 0) {
+                this.moveStraight((sx == 0) ? vert : horz);
+            } else {
+                this.moveDiagonally(horz, vert);
+            }
+            if (this.isMovementSucceeded()) {
+                break;
+            }
+        }
+        return this.isMovementSucceeded();
     }
     
     // Override moveRandom() function so mobs can move diagonally
@@ -1050,10 +1233,15 @@
     // NOTE: find keyCode using Input._onKeyDown() in rpg_core.js
     Input.keyMapper[190] = '.'; // keyCode for '.'
     Input.keyMapper[12] = 'Numpad5'; // same function as '.'
-    Input.keyMapper[36] = 'Numpad7'; // player move left-up
+    Input.keyMapper[101] = 'Numpad5';
+    Input.keyMapper[36] = 'Numpad7'; // player move left-up (notebook fn+key)
+    Input.keyMapper[103] = 'Numpad7'; // (pc keyboard)
     Input.keyMapper[33] = 'Numpad9'; // player move right-up
+    Input.keyMapper[105] = 'Numpad9';
     Input.keyMapper[35] = 'Numpad1'; // player move left-down
+    Input.keyMapper[97] = 'Numpad1';
     Input.keyMapper[34] = 'Numpad3'; // player move right-down
+    Input.keyMapper[99] = 'Numpad3';
     
     // modify _signX & signY, so arrow key triggered only once when pressed.
     Input._signX = function() {
@@ -1108,9 +1296,13 @@
     }
     
     TimeUtils.afterPlayerMoved = function() {
-        console.log("1 turn passed.");
+        //console.log("1 turn passed.");
         // update all mobs & items
         for (var i = 0; i < $gameMap._events.length; i++) {
+            if ($gameActors._data[1]._hp <= 0) {
+                // player died, stop mob action
+                break;
+            }
             var event = $gameMap._events[i];
             if (!event || event._erased) {
                 continue;
@@ -1151,6 +1343,8 @@
         if (realTarget._hp <= 0) {
             if (target == $gamePlayer) {
                 // TODO: implement player dead mechanism
+                $gameMessage.add("\\N[1]不幸被殭屍咬死了...");
+                SceneManager.goto(Scene_Gameover);
             } else {
                 // remove target event from $dataMap.events
                 // NOTE: Do not remove it from $gameMap._events! will cause crash
