@@ -21,14 +21,36 @@
         this.y = y;
     }
     
+    // need more configuration
+    StairData = function() {
+        // 0: stair up, 1: stair down
+        this.type = 0;
+        this.x = 0;
+        this.y = 0;
+        this.toMapId = -1;
+        this.toX = -1;
+        this.toY = -1;
+    }
+    
     MapVariable = function(mapData, rmDataMap) {
         this.mapData = mapData;
         this.rmDataMap = rmDataMap;
+        
+        // indicates map attributes
+        this.generateRandom = false;
+        this.stairList = [];
     }
     
     Coordinate = function(x, y) {
         this.x = x;
         this.y = y;
+    }
+    
+    // class defined for player transfer
+    TransferInfo = function(toMapId, x, y) {
+        this.toMapId = toMapId;
+        this.nowX = x;
+        this.nowY = y;
     }
     
     rawDataOld = [
@@ -56,9 +78,22 @@
     
     // ----------end of map constants----------
     
+    //-----------------------------------------------------------------------------------
+    // MapUtils
+    //
+    // All random map related algorithm/functions
+    
     MapUtils = function() {
         throw new Error('This is a static class');
     };
+    
+    MapUtils.initialize = function() {
+        // define map variables here
+        for (var i = 0; i < 2; i++) {
+            $gameVariables[i+1] = new MapVariable(null, null);
+        }
+        $gameVariables[2].generateRandom = true;
+    }
     
     function getRandomInt(max) {
         return Math.floor(Math.random() * Math.floor(max));
@@ -339,6 +374,86 @@
                 event.setOpacity(500);
             } else {
                 event.setOpacity(0);
+            }
+        }
+    }
+    
+    MapUtils.transferCharacter = function(character) {
+        // check if this stair already exists
+        var stair = null;
+        var mapVariable = $gameVariables[$gameMap.mapId()];
+        for (var i = 0; i < mapVariable.stairList.length; i++) {
+            var candidate = mapVariable.stairList[i];
+            if (character._x == candidate.x && character._y == candidate.y) {
+                stair = candidate;
+                break;
+            }
+        }
+        if (!stair) {
+            console.log("MapUtils.transferCharacter ERROR: stair should be exist.");
+            return;
+        }
+        
+        stair.toMapId = (stair.type == 0) ? $gameMap.mapId() - 1 : $gameMap.mapId() + 1;
+        // check if target map exists
+        /*if (stair.toMapId == -1) {
+            var targetMapId = (stair.type == 0) ? $gameMap.mapId() - 1 : $gameMap.mapId() + 1;
+            MapUtils.setupNewMap(targetMapId);
+            var targetMapData = $gameVariables[targetMapId].mapData;
+            // collect all FLOOR tiles
+            var floors = [];
+            for (var j = 0; j < targetMapData[0].length; j++) {
+                for (var i = 0; i < targetMapData.length; i++) {
+                    if (targetMapData[i][j].originalTile == FLOOR) {
+                        floors.push(targetMapData[i][j]);
+                    }
+                }
+            }
+            for (var i = 0; i < mapVariable.stairList.length; i++) {
+                var toConnect = mapVariable.stairList[i];
+                if (toConnect.type != stair.type) {
+                    continue;
+                }
+                var positionFound = false;
+                var toX, toY;
+                while (!positionFound) {
+                    positionFound = true;
+                    var candidate = floors[getRandomInt(floors.length)];
+                    for (var j = 0; j < $gameVariables[targetMapId].stairList.length; j++) {
+                        var toCheck = $gameVariables[targetMapId].stairList[j];
+                        if (candidate.x == toCheck.x && candidate.y == toCheck.y) {
+                            positionFound = false;
+                            break;
+                        }
+                    }
+                    if (positionFound) {
+                        var newStair = new StairData();
+                        newStair.type = (toConnect.type == 0) ? 1 : 0;
+                        newStair.x = candidate.x;
+                        newStair.y = candidate.y;
+                        newStair.toMapId = $gameMap.mapId();
+                        newStair.toX = toConnect.x;
+                        newStair.toY = toConnect.y;
+                        $gameVariables[targetMapId].stairList.push(newStair);
+                        
+                        toConnect.toMapId = targetMapId;
+                        toConnect.toX = newStair.x;
+                        toConnect.toY = newStair.y;
+                    }
+                }
+            }
+        }*/
+        
+        // finally transfer character
+        if (character == $gamePlayer) {
+            $gameVariables[0] = new TransferInfo(stair.toMapId, character._x, character._y);
+            if (stair.toX == -1) {
+                // not assigned yet, go to default position
+                $gamePlayer.locate(0, 0);
+                $gamePlayer.reserveTransfer(stair.toMapId, 0, 0, 0, 2);
+            } else {
+                $gamePlayer.locate(stair.toX, stair.toY);
+                $gamePlayer.reserveTransfer(stair.toMapId, stair.toX, stair.toY, 0, 2);
             }
         }
     }
@@ -973,33 +1088,114 @@
         return false;
     }
     
+    MapUtils.setupNewMap = function(mapId) {
+        // first load map
+        console.log("first load map: " + mapId);
+        var rawMap = MapUtils.generateMapData(genMapRoomsFullMaze, 15, 10);
+        var newMapData = MapUtils.translateMap(rawMap);
+        $dataMap.width = rawMap.length;
+        $dataMap.height = rawMap[0].length;
+        $dataMap.data = new Array(newMapData.length * newMapData[0].length * 6);
+        $gameVariables[mapId].mapData = newMapData;
+        $gameVariables[mapId].rmDataMap = $dataMap;
+    }
+    
     //-----------------------------------------------------------------------------------
     // DataManager
     //
     // override map loading mechanism
-    DataManager.isMapLoaded = function() {
-        if ($gameMap && $gameMap.mapId() > 0) {
-            if ($dataMap && !$gameVariables[$gameMap.mapId()]) {
-                // first load map
-                console.log("first load map: " + $gameMap.mapId());
-                var rawMap = MapUtils.generateMapData(genMapRoomsFullMaze, 15, 10);
-                var newMapData = MapUtils.translateMap(rawMap);
-                $dataMap.width = rawMap.length;
-                $dataMap.height = rawMap[0].length;
-                $dataMap.data = new Array(newMapData.length * newMapData[0].length * 6);
-                MapUtils.drawMap(newMapData, $dataMap.data);
-                MapUtils.drawEvents(newMapData);
-                $gameVariables[$gameMap.mapId()] = new MapVariable(newMapData, $dataMap);
-            } else if ($dataMap && $gameVariables[$gameMap.mapId()]) {
-                // assign map data here
-                console.log("assign map data.");
-                $dataMap = $gameVariables[$gameMap.mapId()].rmDataMap;
-                MapUtils.drawMap($gameVariables[$gameMap.mapId()].mapData, $dataMap.data);
-                MapUtils.drawEvents($gameVariables[$gameMap.mapId()].mapData);
+    DataManager.onLoad = function(object) {
+        var array;
+        if (object === $dataMap) {
+            if ($gameMap.mapId() > 0) {
+                var targetMapId = ($gameVariables[0]) ? $gameVariables[0].toMapId : $gameMap.mapId();
+                if ($gameVariables[targetMapId].generateRandom) {
+                    if (!$gameVariables[targetMapId].mapData) {
+                        // first time assign data
+                        MapUtils.setupNewMap(targetMapId);
+                        // connect upper stairs
+                        
+                        // collect all FLOOR tiles
+                        var mapVariable = $gameVariables[$gameMap.mapId()];
+                        var targetMapData = $gameVariables[targetMapId].mapData;
+                        var floors = [];
+                        for (var j = 0; j < targetMapData[0].length; j++) {
+                            for (var i = 0; i < targetMapData.length; i++) {
+                                if (targetMapData[i][j].originalTile == FLOOR) {
+                                    floors.push(targetMapData[i][j]);
+                                }
+                            }
+                        }
+                        for (var i = 0; i < mapVariable.stairList.length; i++) {
+                            var toConnect = mapVariable.stairList[i];
+                            if (toConnect.type != 1) {
+                                // only deal with stairs going down
+                                continue;
+                            }
+                            var positionFound = false;
+                            var toX, toY;
+                            while (!positionFound) {
+                                positionFound = true;
+                                var candidate = floors[getRandomInt(floors.length)];
+                                for (var j = 0; j < $gameVariables[targetMapId].stairList.length; j++) {
+                                    var toCheck = $gameVariables[targetMapId].stairList[j];
+                                    if (candidate.x == toCheck.x && candidate.y == toCheck.y) {
+                                        positionFound = false;
+                                        break;
+                                    }
+                                }
+                                if (positionFound) {
+                                    var newStair = new StairData();
+                                    newStair.type = (toConnect.type == 0) ? 1 : 0;
+                                    newStair.x = candidate.x;
+                                    newStair.y = candidate.y;
+                                    newStair.toMapId = $gameMap.mapId();
+                                    newStair.toX = toConnect.x;
+                                    newStair.toY = toConnect.y;
+                                    $gameVariables[targetMapId].stairList.push(newStair);
+                                    
+                                    toConnect.toMapId = targetMapId;
+                                    toConnect.toX = newStair.x;
+                                    toConnect.toY = newStair.y;
+                                }
+                            }
+                        }
+                        var nowStair = null;
+                        for (var i = 0; i < $gameVariables[$gameMap.mapId()].stairList.length; i++) {
+                            var candidate = $gameVariables[$gameMap.mapId()].stairList[i];
+                            if (candidate.x == $gameVariables[0].nowX && candidate.y == $gameVariables[0].nowY) {
+                                nowStair = candidate;
+                                break;
+                            }
+                        }
+                        $gamePlayer.reserveTransfer(targetMapId, nowStair.toX, nowStair.toY, 0, 2);
+                    } else if ($gameVariables[targetMapId].mapData) {
+                        // assign map data here
+                        console.log("assign map data.");
+                        $dataMap = $gameVariables[targetMapId].rmDataMap;
+                        MapUtils.drawMap($gameVariables[targetMapId].mapData, $dataMap.data);
+                        MapUtils.drawEvents($gameVariables[targetMapId].mapData);
+                    }
+                }
+            }
+            this.extractMetadata(object);
+            array = object.events;
+        } else {
+            array = object;
+        }
+        if (Array.isArray(array)) {
+            for (var i = 0; i < array.length; i++) {
+                var data = array[i];
+                if (data && data.note !== undefined) {
+                    this.extractMetadata(data);
+                }
             }
         }
-        this.checkError();
-        return !!$dataMap;
+        if (object === $dataSystem) {
+            Decrypter.hasEncryptedImages = !!object.hasEncryptedImages;
+            Decrypter.hasEncryptedAudio = !!object.hasEncryptedAudio;
+            Scene_Boot.loadSystemImages();
+        }
     };
     
     //-----------------------------------------------------------------------------------
@@ -1069,25 +1265,31 @@
     // 
     // Modify isPassable() to fit map design
     Game_Map.prototype.isPassable = function(x, y, d) {
-        // check original map tile if can pass
-        switch (d) {
-            case 2: // down
-                y++;
-                break;
-            case 4: // left
-                x--;
-                break;
-            case 6: // right
-                x++;
-                break;
-            case 8: // up
-                y--;
-                break;
+        // check if this map is generated
+        if ($gameVariables[$gameMap.mapId()].generateRandom) {
+            // check original map tile if can pass
+            switch (d) {
+                case 2: // down
+                    y++;
+                    break;
+                case 4: // left
+                    x--;
+                    break;
+                case 6: // right
+                    x++;
+                    break;
+                case 8: // up
+                    y--;
+                    break;
+            }
+            if ($gameVariables[$gameMap.mapId()].mapData[x][y].originalTile != FLOOR) {
+                return false;
+            }
+            return true;
+        } else {
+            // use original logic
+            return this.checkPassage(x, y, (1 << (d / 2 - 1)) & 0x0f);
         }
-        if ($gameVariables[$gameMap.mapId()].mapData[x][y].originalTile != FLOOR) {
-            return false;
-        }
-        return true;
     }
     
     //-----------------------------------------------------------------------------------
@@ -1311,17 +1513,20 @@
                 event.action();
             }
         }
-        MapUtils.drawMap($gameVariables[$gameMap.mapId()].mapData, $dataMap.data);
-        MapUtils.drawEvents($gameVariables[$gameMap.mapId()].mapData);
-        //setTimeout('SceneManager.goto(Scene_Map)', 250);
-        // try to use the following code, which make screen update not lag so much
-        var scene = SceneManager._scene;
-        scene.removeChild(scene._fadeSprite);
-        scene.removeChild(scene._mapNameWindow);
-        scene.removeChild(scene._windowLayer);
-        scene.removeChild(scene._spriteset);
-        scene.createDisplayObjects();
-        scene.setupStatus();
+        if ($gameVariables[$gameMap.mapId()].generateRandom) {
+            // only update maps in random layer
+            MapUtils.drawMap($gameVariables[$gameMap.mapId()].mapData, $dataMap.data);
+            MapUtils.drawEvents($gameVariables[$gameMap.mapId()].mapData);
+            //setTimeout('SceneManager.goto(Scene_Map)', 250);
+            // try to use the following code, which make screen update not lag so much
+            var scene = SceneManager._scene;
+            scene.removeChild(scene._fadeSprite);
+            scene.removeChild(scene._mapNameWindow);
+            scene.removeChild(scene._windowLayer);
+            scene.removeChild(scene._spriteset);
+            scene.createDisplayObjects();
+            scene.setupStatus();
+        }
     }
     
     //-----------------------------------------------------------------------------------
