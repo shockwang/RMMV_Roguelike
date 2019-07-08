@@ -69,6 +69,8 @@
     var wallCenter = 6282;
     var floorCenter = 2816;
     var warFogCenter = 3536;
+    var upStair = 19;
+    var downStair = 27;
     
     // view parameters
     var viewDistance = 8;
@@ -350,6 +352,7 @@
         var index = 0;
         var shadowOffset = mapData.length * mapData[0].length * 4;
         var warFogOffset = mapData.length * mapData[0].length;
+        var stairOffset = mapData.length * mapData[0].length * 3;
         for (var j = 0; j < mapData[0].length; j++) {
             for (var i = 0; i < mapData.length; i++) {
                 // second time update visibility
@@ -361,6 +364,9 @@
                 }
                 if (!mapData[i][j].isVisible && mapData[i][j].isExplored) {
                     mapArray[warFogOffset + index] = warFogCenter;
+                }
+                if (mapData[i][j].isExplored) {
+                    mapArray[stairOffset + index] = mapData[i][j].decorate2;
                 }
                 index++;
             }
@@ -395,61 +401,13 @@
         }
         
         stair.toMapId = (stair.type == 0) ? $gameMap.mapId() - 1 : $gameMap.mapId() + 1;
-        // check if target map exists
-        /*if (stair.toMapId == -1) {
-            var targetMapId = (stair.type == 0) ? $gameMap.mapId() - 1 : $gameMap.mapId() + 1;
-            MapUtils.setupNewMap(targetMapId);
-            var targetMapData = $gameVariables[targetMapId].mapData;
-            // collect all FLOOR tiles
-            var floors = [];
-            for (var j = 0; j < targetMapData[0].length; j++) {
-                for (var i = 0; i < targetMapData.length; i++) {
-                    if (targetMapData[i][j].originalTile == FLOOR) {
-                        floors.push(targetMapData[i][j]);
-                    }
-                }
-            }
-            for (var i = 0; i < mapVariable.stairList.length; i++) {
-                var toConnect = mapVariable.stairList[i];
-                if (toConnect.type != stair.type) {
-                    continue;
-                }
-                var positionFound = false;
-                var toX, toY;
-                while (!positionFound) {
-                    positionFound = true;
-                    var candidate = floors[getRandomInt(floors.length)];
-                    for (var j = 0; j < $gameVariables[targetMapId].stairList.length; j++) {
-                        var toCheck = $gameVariables[targetMapId].stairList[j];
-                        if (candidate.x == toCheck.x && candidate.y == toCheck.y) {
-                            positionFound = false;
-                            break;
-                        }
-                    }
-                    if (positionFound) {
-                        var newStair = new StairData();
-                        newStair.type = (toConnect.type == 0) ? 1 : 0;
-                        newStair.x = candidate.x;
-                        newStair.y = candidate.y;
-                        newStair.toMapId = $gameMap.mapId();
-                        newStair.toX = toConnect.x;
-                        newStair.toY = toConnect.y;
-                        $gameVariables[targetMapId].stairList.push(newStair);
-                        
-                        toConnect.toMapId = targetMapId;
-                        toConnect.toX = newStair.x;
-                        toConnect.toY = newStair.y;
-                    }
-                }
-            }
-        }*/
-        
-        // finally transfer character
         if (character == $gamePlayer) {
             $gameVariables[0] = new TransferInfo(stair.toMapId, character._x, character._y);
+            $gameScreen.startFadeOut(1);
+            setTimeout('$gameScreen.startFadeIn(1);', 300);
             if (stair.toX == -1) {
                 // not assigned yet, go to default position
-                $gamePlayer.locate(0, 0);
+                $gamePlayer.setPosition(-10, -10);
                 $gamePlayer.reserveTransfer(stair.toMapId, 0, 0, 0, 2);
             } else {
                 $gamePlayer.locate(stair.toX, stair.toY);
@@ -1153,6 +1111,12 @@
                                     newStair.toX = toConnect.x;
                                     newStair.toY = toConnect.y;
                                     $gameVariables[targetMapId].stairList.push(newStair);
+                                    targetMapData[newStair.x][newStair.y].decorate2 = (newStair.type == 0) ? upStair : downStair;
+                                    // setup $dataMap event
+                                    var transferEvent = cloneObject($dataMap.events[2]);
+                                    transferEvent.x = newStair.x;
+                                    transferEvent.y = newStair.y;
+                                    $dataMap.events.push(transferEvent);
                                     
                                     toConnect.toMapId = targetMapId;
                                     toConnect.toX = newStair.x;
@@ -1169,12 +1133,13 @@
                             }
                         }
                         $gamePlayer.reserveTransfer(targetMapId, nowStair.toX, nowStair.toY, 0, 2);
+                        setTimeout('SceneManager.goto(Scene_Map);', 200);
                     } else if ($gameVariables[targetMapId].mapData) {
                         // assign map data here
                         console.log("assign map data.");
                         $dataMap = $gameVariables[targetMapId].rmDataMap;
                         MapUtils.drawMap($gameVariables[targetMapId].mapData, $dataMap.data);
-                        MapUtils.drawEvents($gameVariables[targetMapId].mapData);
+                        setTimeout('MapUtils.drawEvents($gameVariables[$gameMap.mapId()].mapData)', 200);
                     }
                 }
             }
@@ -1292,6 +1257,28 @@
         }
     }
     
+    // try to modify setupEvents, so we can create different type events
+    Game_Map.prototype.setupEvents = function() {
+        this._events = [];
+        for (var i = 0; i < $dataMap.events.length; i++) {
+            if ($dataMap.events[i]) {
+                if ($dataMap.events[i].type == 'MOB') {
+                    console.log("mob loaded.");
+                    this._events[i] = new Game_Mob($dataMap.events[i].x, $dataMap.events[i].y, $dataMap.events[i]);
+                } else {
+                    this._events[i] = new Game_Event(this._mapId, i);
+                }
+            }
+            /*if ($dataMap.events[i]) {
+                this._events[i] = new Game_Event(this._mapId, i);
+            }*/
+        }
+        this._commonEvents = this.parallelCommonEvents().map(function(commonEvent) {
+            return new Game_CommonEvent(commonEvent.id);
+        });
+        this.refreshTileEvents();
+    };
+    
     //-----------------------------------------------------------------------------------
     // Game_Mob
     //
@@ -1312,31 +1299,65 @@
 
     Game_Mob = function() {
         this.initialize.apply(this, arguments);
-        // NOTE: attribute name must be the same as Game_Actor
-        this._hp = 100;
-        this.awareDistance = 8;
     }
 
     Game_Mob.prototype = Object.create(Game_Event.prototype);
     Game_Mob.prototype.constructor = Game_Mob;
-
-    Game_Mob.prototype.initialize = function(x, y) {
-        // find empty space for new event
-        var emptyFound = false;
-        var eventId;
-        for (var i = 1; i < $dataMap.events.length; i++) {
-            if (!$dataMap.events[i]) {
-                // found empty space to place new event
-                emptyFound = true;
-                eventId = i;
-                $dataMap.events[i] = newDataMapEvent($dataMap.events[1], eventId, x, y);
+    
+    Game_Mob.prototype.fromEvent = function(src, target) {
+        target._hp = src._hp;
+        target.awareDistance = src.awareDistance;
+        target.type = src.type;
+        target.x = src.x;
+        target.y = src.y;
+    }
+    
+    Game_Mob.prototype.initStatus = function(event) {
+        // NOTE: attribute name must be the same as Game_Actor
+        event._hp = 100;
+        event.awareDistance = 8;
+        event.type = 'MOB';
+    }
+    
+    Game_Mob.prototype.updateDataMap = function() {
+        for (var i = 0; i < $gameMap._events.length; i++) {
+            if ($gameMap._events[i] == this) {
+                Game_Mob.prototype.fromEvent(this, $dataMap.events[i]);
                 break;
             }
         }
-        if (!emptyFound) {
-            // add new event at the bottom of list
-            eventId = $dataMap.events.length;
-            $dataMap.events.push(newDataMapEvent($dataMap.events[1], eventId, x, y));
+    }
+
+    Game_Mob.prototype.initialize = function(x, y, fromData) {
+        var eventId = -1;
+        if (fromData) {
+            for (var i = 1; i < $dataMap.events.length; i++) {
+                if ($dataMap.events[i] && $dataMap.events[i] == fromData) {
+                    eventId = i;
+                    Game_Mob.prototype.fromEvent($dataMap.events[i], this);
+                    break;
+                }
+            }
+        } else {
+            // find empty space for new event
+            var emptyFound = false;
+            for (var i = 1; i < $dataMap.events.length; i++) {
+                if (!$dataMap.events[i]) {
+                    // found empty space to place new event
+                    emptyFound = true;
+                    eventId = i;
+                    $dataMap.events[i] = newDataMapEvent($dataMap.events[1], eventId, x, y);
+                    Game_Mob.prototype.initStatus($dataMap.events[i]);
+                    break;
+                }
+            }
+            if (!emptyFound) {
+                // add new event at the bottom of list
+                eventId = $dataMap.events.length;
+                $dataMap.events.push(newDataMapEvent($dataMap.events[1], eventId, x, y));
+                Game_Mob.prototype.initStatus($dataMap.events[$dataMap.events.length-1]);
+            }
+            Game_Mob.prototype.initStatus(this);
         }
         // store new events back to map variable
         $gameVariables[$gameMap.mapId()].rmDataMap = $dataMap;
@@ -1354,6 +1375,9 @@
         } else {
             this.moveRandom();
         }
+        
+        // store data back to $dataMap
+        this.updateDataMap();
     }
     
     // Override moveTowardCharacter() function so mobs can move diagonally
