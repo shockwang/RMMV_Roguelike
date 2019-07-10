@@ -404,7 +404,7 @@
         if (character == $gamePlayer) {
             $gameVariables[0] = new TransferInfo(stair.toMapId, character._x, character._y);
             $gameScreen.startFadeOut(1);
-            setTimeout('$gameScreen.startFadeIn(1);', 300);
+            setTimeout('$gameScreen.startFadeIn(1);TimeUtils.afterPlayerMoved();', 400);
             if (stair.toX == -1) {
                 // not assigned yet, go to default position
                 $gamePlayer.setPosition(-10, -10);
@@ -1112,11 +1112,6 @@
                                     newStair.toY = toConnect.y;
                                     $gameVariables[targetMapId].stairList.push(newStair);
                                     targetMapData[newStair.x][newStair.y].decorate2 = (newStair.type == 0) ? upStair : downStair;
-                                    // setup $dataMap event
-                                    var transferEvent = cloneObject($dataMap.events[2]);
-                                    transferEvent.x = newStair.x;
-                                    transferEvent.y = newStair.y;
-                                    $dataMap.events.push(transferEvent);
                                     
                                     toConnect.toMapId = targetMapId;
                                     toConnect.toX = newStair.x;
@@ -1225,6 +1220,35 @@
         this.checkEventTriggerTouch(x2, y2);
     };
     
+    // modify canPassDiagonally(), so character can move as long as target tile is empty
+    Game_CharacterBase.prototype.canPassDiagonally = function(x, y, horz, vert) {
+        var x2 = $gameMap.roundXWithDirection(x, horz);
+        var y2 = $gameMap.roundYWithDirection(y, vert);
+        if ($gameVariables[$gameMap.mapId()].mapData) { // map generated
+            var mapData = $gameVariables[$gameMap.mapId()].mapData;
+            if (mapData[x][y].originalTile == mapData[x2][y2].originalTile) {
+                // check if there's event on target tile which priority is as same as player
+                var canPass = true;
+                for (var i = 0; i < $gameMap.events().length; i++) {
+                    var toCheck = $gameMap.events()[i];
+                    if (!toCheck._erased && toCheck._x == x2 && toCheck._y == y2 && toCheck._priorityType == 1) {
+                        canPass = false;
+                        break;
+                    }
+                }
+                return canPass;
+            }
+        } else { // original logic
+            if (this.canPass(x, y, vert) && this.canPass(x, y2, horz)) {
+                return true;
+            }
+            if (this.canPass(x, y, horz) && this.canPass(x2, y, vert)) {
+                return true;
+            }
+        }
+        return false;
+    };
+    
     //-----------------------------------------------------------------------------------
     // Game_Map
     // 
@@ -1263,15 +1287,11 @@
         for (var i = 0; i < $dataMap.events.length; i++) {
             if ($dataMap.events[i]) {
                 if ($dataMap.events[i].type == 'MOB') {
-                    console.log("mob loaded.");
                     this._events[i] = new Game_Mob($dataMap.events[i].x, $dataMap.events[i].y, $dataMap.events[i]);
                 } else {
                     this._events[i] = new Game_Event(this._mapId, i);
                 }
             }
-            /*if ($dataMap.events[i]) {
-                this._events[i] = new Game_Event(this._mapId, i);
-            }*/
         }
         this._commonEvents = this.parallelCommonEvents().map(function(commonEvent) {
             return new Game_CommonEvent(commonEvent.id);
@@ -1493,6 +1513,61 @@
         }
         return y;
     };
+    
+    // override this function for user-defined key detected (only on Scene_Map)
+    Input._onKeyDown = function(event) {
+        if (SceneManager._scene instanceof Scene_Map) {
+            switch (event.key) {
+                case '>': // try to go down
+                    var stair = null;
+                    for (var i in $gameVariables[$gameMap.mapId()].stairList) {
+                        var candidate = $gameVariables[$gameMap.mapId()].stairList[i];
+                        if (candidate.x == $gamePlayer._x && candidate.y == $gamePlayer._y && candidate.type == 1) {
+                            stair = candidate;
+                            break;
+                        }
+                    }
+                    if (stair) {
+                        MapUtils.transferCharacter($gamePlayer);
+                    } else {
+                        $gameMessage.add("這裡沒有往下的樓梯.");
+                    }
+                    break;
+                case '<': // try to go up
+                    var stair = null;
+                    for (var i in $gameVariables[$gameMap.mapId()].stairList) {
+                        var candidate = $gameVariables[$gameMap.mapId()].stairList[i];
+                        if (candidate.x == $gamePlayer._x && candidate.y == $gamePlayer._y && candidate.type == 0) {
+                            stair = candidate;
+                            break;
+                        }
+                    }
+                    if (stair) {
+                        MapUtils.transferCharacter($gamePlayer);
+                    } else {
+                        $gameMessage.add("這裡沒有往上的樓梯.");
+                    }
+                    break;
+            }
+        }
+        if (this._shouldPreventDefault(event.keyCode)) {
+            event.preventDefault();
+        }
+        if (event.keyCode === 144) {    // Numlock
+            this.clear();
+        }
+        var buttonName = this.keyMapper[event.keyCode];
+        if (ResourceHandler.exists() && buttonName === 'ok') {
+            ResourceHandler.retry();
+        } else if (buttonName) {
+            this._currentState[buttonName] = true;
+        }
+    };
+    
+    //-----------------------------------------------------------------------------------
+    // InputUtils
+    //
+    // Deal with user-defined move actions
     
     InputUtils = function() {
         throw new Error('This is a static class');
