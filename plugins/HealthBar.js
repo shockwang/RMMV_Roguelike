@@ -52,11 +52,20 @@
 
 My_Window.prototype.refresh = function(){
     this.contents.clear();
-    this.drawActorName($gameParty.leader(), 0, 0, 100);
-    this.drawActorLevel($gameParty.leader(), 101, 0, 100);
-    this.drawActorHp($gameParty.leader(), 201, 0, 200);
-    this.drawActorMp($gameParty.leader(), 441, 0, 200);
-    this.drawActorIcons($gameParty.leader(), 681, 0, 300);
+    var actor = $gameParty.leader();
+    var offset = 0;
+    var width = this.textWidth(actor.name());
+    this.drawActorName(actor, offset, 0, width);
+    offset += width + 5;
+    this.drawActorLevel(actor, offset, 0, 60);
+    offset += 60;
+    this.drawActorHp(actor, offset, 0, 155);
+    offset += 160;
+    this.drawActorMp(actor, offset, 0, 155);
+    offset += 160;
+    this.drawActorTp(actor, offset, 0, 155);
+    offset += 160;
+    this.drawActorIcons(actor, offset, 0, 300);
 };
 
     My_Window.prototype.windowWidth = function(){

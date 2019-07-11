@@ -93,6 +93,11 @@
     
     // ----------end of map constants----------
     
+    // TP designed for energy, attack/martial skills will decrease it, and will
+    // auto recover when not doing attack actions
+    var playerAttacked = false;
+    var playerMoved = false;
+    
     //-----------------------------------------------------------------------------------
     // MapUtils
     //
@@ -1193,6 +1198,7 @@
         }
         Game_Character.prototype.moveStraight.call(this, d);
         if (moved) {
+            playerMoved = true;
             TimeUtils.afterPlayerMoved();
         }
     };
@@ -1205,6 +1211,7 @@
         }
         Game_Character.prototype.moveDiagonally.call(this, horz, vert);
         if (moved) {
+            playerMoved = true;
             TimeUtils.afterPlayerMoved();
         }
     };
@@ -1579,8 +1586,8 @@
                 }
                 break;
             case 'd': // try to drop things from player inventory
-                if (Object.entries($gameParty._items).length == 0 && Object.entries($gameParty._weapons).length == 0
-                    && Object.entries($gameParty._armors).length == 0) {
+                if (Object.keys($gameParty._items).length == 0 && Object.keys($gameParty._weapons).length == 0
+                    && Object.keys($gameParty._armors).length == 0) {
                     $gameMessage.add("你的身上沒有任何物品.");
                 } else {
                     SceneManager.push(Scene_DropItem);
@@ -1650,6 +1657,15 @@
                 event.action();
             }
         }
+        // deal with energy calculation
+        if (!playerAttacked && !playerMoved) {
+            BattleUtils.playerUpdateTp(6);
+        } else if (!playerAttacked) {
+            BattleUtils.playerUpdateTp(3);
+        }
+        playerAttacked = false;
+        playerMoved = false;
+        
         if ($gameVariables[$gameMap.mapId()].generateRandom) {
             // only update maps in random layer
             MapUtils.drawMap($gameVariables[$gameMap.mapId()].mapData, $dataMap.data);
@@ -1678,6 +1694,10 @@
         // TODO: need to implement attack damage formula
         var value = 10;
         var realTarget = (target == $gamePlayer) ? $gameActors._data[1] : target;
+        if (src == $gamePlayer && !BattleUtils.playerUpdateTp(-5)) {
+            $gameMessage.add('你氣喘吁吁, 沒有足夠的體力攻擊!');
+            return;
+        }
         $gameSystem.createPopup(0, "", "\\c[02]  -" + value, target);
         realTarget._hp -= value;
         // hit animation
@@ -1697,8 +1717,21 @@
             }
         }
         if (src == $gamePlayer) {
+            playerAttacked = true;
             TimeUtils.afterPlayerMoved();
         }
+    }
+    
+    // energy recovery
+    BattleUtils.playerUpdateTp = function(value) {
+        if (value > 0) {
+            $gameActors._data[1]._tp = ($gameActors._data[1]._tp + value < 100) ? $gameActors._data[1]._tp + value : 100;
+            return true;
+        } else if ($gameActors._data[1]._tp + value >= 0) {
+            $gameActors._data[1]._tp += value;
+            return true;
+        }
+        return false;
     }
     
     //-----------------------------------------------------------------------------------
@@ -1756,8 +1789,8 @@
         for (var i in $gameVariables[$gameMap.mapId()].itemPileList) {
             var candidate = $gameVariables[$gameMap.mapId()].itemPileList[i];
             if (candidate.x == $gamePlayer._x && candidate.y == $gamePlayer._y) {
-                if (Object.entries(candidate.items).length == 0 && Object.entries(candidate.weapons).length == 0
-                    && Object.entries(candidate.armors).length == 0) {
+                if (Object.keys(candidate.items).length == 0 && Object.keys(candidate.weapons).length == 0
+                    && Object.keys(candidate.armors).length == 0) {
                     $gameVariables[$gameMap.mapId()].itemPileList.splice(i, 1);
                     break;
                 }
@@ -1940,4 +1973,14 @@
             setTimeout('TimeUtils.afterPlayerMoved();', 100);
         }
     }
+    
+    //-----------------------------------------------------------------------------------
+    // Scene_Item
+    //
+    // override the useItem method, so it take turns
+    Scene_Item.prototype.useItem = function() {
+        Scene_ItemBase.prototype.useItem.call(this);
+        SceneManager.goto(Scene_Map);
+        setTimeout('TimeUtils.afterPlayerMoved();', 100);
+    };
 })();
