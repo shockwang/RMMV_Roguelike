@@ -21,7 +21,7 @@
         this.y = y;
     }
     
-    // need more configuration
+    // data type for stairs
     StairData = function() {
         // 0: stair up, 1: stair down
         this.type = 0;
@@ -32,6 +32,15 @@
         this.toY = -1;
     }
     
+    // data type for item piles
+    ItemPile = function(x, y) {
+        this.x = x;
+        this.y = y;
+        this.items = {};
+        this.weapons = {};
+        this.armors = {};
+    }
+    
     MapVariable = function(mapData, rmDataMap) {
         this.mapData = mapData;
         this.rmDataMap = rmDataMap;
@@ -39,6 +48,7 @@
         // indicates map attributes
         this.generateRandom = false;
         this.stairList = [];
+        this.itemPileList = [];
     }
     
     Coordinate = function(x, y) {
@@ -71,6 +81,9 @@
     var warFogCenter = 3536;
     var upStair = 19;
     var downStair = 27;
+    
+    // item figures
+    var bagIcon = 864;
     
     // view parameters
     var viewDistance = 8;
@@ -350,9 +363,11 @@
         }
         
         var index = 0;
-        var shadowOffset = mapData.length * mapData[0].length * 4;
-        var warFogOffset = mapData.length * mapData[0].length;
-        var stairOffset = mapData.length * mapData[0].length * 3;
+        var mapSize = mapData.length * mapData[0].length;
+        var shadowOffset = mapSize * 4;
+        var warFogOffset = mapSize;
+        var stairOffset = mapSize * 2;
+        var itemOffset = mapSize * 3;
         for (var j = 0; j < mapData[0].length; j++) {
             for (var i = 0; i < mapData.length; i++) {
                 // second time update visibility
@@ -370,6 +385,14 @@
                 }
                 index++;
             }
+        }
+        
+        // draw items (isolate it because of view design)
+        // TODO: implement the view item mechanism
+        for (var i in $gameVariables[$gameMap.mapId()].itemPileList) {
+            var itemPile = $gameVariables[$gameMap.mapId()].itemPileList[i];
+            var index = itemOffset + itemPile.y * mapData.length + itemPile.x;
+            mapArray[index] = bagIcon;
         }
     }
     
@@ -1518,36 +1541,51 @@
     Input._onKeyDown = function(event) {
         if (SceneManager._scene instanceof Scene_Map) {
             switch (event.key) {
-                case '>': // try to go down
-                    var stair = null;
-                    for (var i in $gameVariables[$gameMap.mapId()].stairList) {
-                        var candidate = $gameVariables[$gameMap.mapId()].stairList[i];
-                        if (candidate.x == $gamePlayer._x && candidate.y == $gamePlayer._y && candidate.type == 1) {
-                            stair = candidate;
-                            break;
-                        }
+            case '>': // try to go down
+                var stair = null;
+                for (var i in $gameVariables[$gameMap.mapId()].stairList) {
+                    var candidate = $gameVariables[$gameMap.mapId()].stairList[i];
+                    if (candidate.x == $gamePlayer._x && candidate.y == $gamePlayer._y && candidate.type == 1) {
+                        stair = candidate;
+                        break;
                     }
-                    if (stair) {
-                        MapUtils.transferCharacter($gamePlayer);
-                    } else {
-                        $gameMessage.add("這裡沒有往下的樓梯.");
+                }
+                if (stair) {
+                    MapUtils.transferCharacter($gamePlayer);
+                } else {
+                    $gameMessage.add("這裡沒有往下的樓梯.");
+                }
+                break;
+            case '<': // try to go up
+                var stair = null;
+                for (var i in $gameVariables[$gameMap.mapId()].stairList) {
+                    var candidate = $gameVariables[$gameMap.mapId()].stairList[i];
+                    if (candidate.x == $gamePlayer._x && candidate.y == $gamePlayer._y && candidate.type == 0) {
+                        stair = candidate;
+                        break;
                     }
-                    break;
-                case '<': // try to go up
-                    var stair = null;
-                    for (var i in $gameVariables[$gameMap.mapId()].stairList) {
-                        var candidate = $gameVariables[$gameMap.mapId()].stairList[i];
-                        if (candidate.x == $gamePlayer._x && candidate.y == $gamePlayer._y && candidate.type == 0) {
-                            stair = candidate;
-                            break;
-                        }
-                    }
-                    if (stair) {
-                        MapUtils.transferCharacter($gamePlayer);
-                    } else {
-                        $gameMessage.add("這裡沒有往上的樓梯.");
-                    }
-                    break;
+                }
+                if (stair) {
+                    MapUtils.transferCharacter($gamePlayer);
+                } else {
+                    $gameMessage.add("這裡沒有往上的樓梯.");
+                }
+                break;
+            case ',': // try to pick things up from the ground
+                if (ItemUtils.findMapItemPile($gamePlayer._x, $gamePlayer._y)) {
+                    SceneManager.push(Scene_OnMapItem);
+                } else {
+                    $gameMessage.add("這裡沒有東西可以撿.");
+                }
+                break;
+            case 'd': // try to drop things from player inventory
+                if (Object.entries($gameParty._items).length == 0 && Object.entries($gameParty._weapons).length == 0
+                    && Object.entries($gameParty._armors).length == 0) {
+                    $gameMessage.add("你的身上沒有任何物品.");
+                } else {
+                    SceneManager.push(Scene_DropItem);
+                }
+                break;
             }
         }
         if (this._shouldPreventDefault(event.keyCode)) {
@@ -1597,7 +1635,7 @@
     }
     
     TimeUtils.afterPlayerMoved = function() {
-        //console.log("1 turn passed.");
+        console.log("1 turn passed.");
         // update all mobs & items
         for (var i = 0; i < $gameMap._events.length; i++) {
             if ($gameActors._data[1]._hp <= 0) {
@@ -1660,6 +1698,246 @@
         }
         if (src == $gamePlayer) {
             TimeUtils.afterPlayerMoved();
+        }
+    }
+    
+    //-----------------------------------------------------------------------------------
+    // ItemUtils
+    //
+    // deal with item related methods
+    ItemUtils = function() {
+        throw new Error('This is a static class');
+    }
+    
+    ItemUtils.findMapItemPile = function(x, y) {
+        for (var i in $gameVariables[$gameMap.mapId()].itemPileList) {
+            var candidate = $gameVariables[$gameMap.mapId()].itemPileList[i];
+            if (candidate.x == x && candidate.y == y) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+    
+    // itemType 0: item, 1: weapon, 2: armor
+    ItemUtils.addItemToMap = function(x, y, itemType, id) {
+        var itemPile = ItemUtils.findMapItemPile(x, y);
+        if (!itemPile) {
+            itemPile = new ItemPile(x, y);
+            $gameVariables[$gameMap.mapId()].itemPileList.push(itemPile);
+        }
+        switch (itemType) {
+            case 0:
+                itemPile.items[id] = (itemPile.items[id]) ? itemPile.items[id] + 1 : 1;
+                break;
+            case 1:
+                itemPile.weapons[id] = (itemPile.weapons[id]) ? itemPile.weapons[id] + 1 : 1;
+                break;
+            case 2:
+                itemPile.armors[id] = (itemPile.armors[id]) ? itemPile.armors[id] + 1 : 1;
+                break;
+            default:
+                console.log("ItemUtils.addItemToMap ERROR: should not contain this type: %d", itemType);
+        }
+    }
+    
+    ItemUtils.addItemToSet = function(toAdd, itemSet, weaponSet, armorSet) {
+        var id = toAdd.id;
+        if (DataManager.isItem(toAdd)) {
+            itemSet[id] = (itemSet[id]) ? itemSet[id] + 1 : 1;
+        } else if (DataManager.isWeapon(toAdd)) {
+            weaponSet[id] = (weaponSet[id]) ? weaponSet[id] + 1 : 1;
+        } else if (DataManager.isArmor(toAdd)) {
+            armorSet[id] = (armorSet[id]) ? armorSet[id] + 1 : 1;
+        }
+    }
+    
+    ItemUtils.checkAndRemoveEmptyItemPile = function() {
+        for (var i in $gameVariables[$gameMap.mapId()].itemPileList) {
+            var candidate = $gameVariables[$gameMap.mapId()].itemPileList[i];
+            if (candidate.x == $gamePlayer._x && candidate.y == $gamePlayer._y) {
+                if (Object.entries(candidate.items).length == 0 && Object.entries(candidate.weapons).length == 0
+                    && Object.entries(candidate.armors).length == 0) {
+                    $gameVariables[$gameMap.mapId()].itemPileList.splice(i, 1);
+                    break;
+                }
+            }
+        }
+    }
+    
+    ItemUtils.addItemToItemPile = function(x, y, item) {
+        var itemPile = ItemUtils.findMapItemPile(x, y);
+        if (!itemPile) {
+            itemPile = new ItemPile(x, y);
+            $gameVariables[$gameMap.mapId()].itemPileList.push(itemPile);
+        }
+        ItemUtils.addItemToSet(item, itemPile.items, itemPile.weapons, itemPile.armors);
+    }
+    
+    //-----------------------------------------------------------------------------------
+    // Window_GetDropItemList
+    //
+    // class for items on the map, inherit from Window_ItemList
+    function Window_GetDropItemList() {
+        this.initialize.apply(this, arguments);
+    }
+
+    Window_GetDropItemList.prototype = Object.create(Window_ItemList.prototype);
+    Window_GetDropItemList.prototype.constructor = Window_GetDropItemList;
+    
+    Window_GetDropItemList.prototype.initialize = function(x, y, width, height) {
+        Window_ItemList.prototype.initialize.call(this, x, y, width, height);
+    };
+    
+    // always return true, because every item can be got/dropped
+    Window_GetDropItemList.prototype.isEnabled = function(item) {
+        return true;
+    };
+    
+    //-----------------------------------------------------------------------------------
+    // Scene_OnMapItem
+    //
+    // handle the action when trying to pick up item from the ground
+    Scene_OnMapItem = function() {
+        this.initialize.apply(this, arguments);
+    }
+
+    Scene_OnMapItem.prototype = Object.create(Scene_Item.prototype);
+    Scene_OnMapItem.prototype.constructor = Scene_OnMapItem;
+
+    Scene_OnMapItem.prototype.initialize = function() {
+        Scene_Item.prototype.initialize.call(this);
+        // indicates if player really moved
+        this.moved = false;
+        var itemPile = ItemUtils.findMapItemPile($gamePlayer._x, $gamePlayer._y);
+        // modify $gameParty items, will change it back when scene closed
+        this.tempItems = $gameParty._items;
+        this.tempWeapons = $gameParty._weapons;
+        this.tempArmors = $gameParty._armors;
+        
+        $gameParty._items = itemPile.items;
+        $gameParty._weapons = itemPile.weapons;
+        $gameParty._armors = itemPile.armors;
+    };
+    
+    // override this function so it creates Window_GetDropItemList window
+    Scene_OnMapItem.prototype.createItemWindow = function() {
+        var wy = this._categoryWindow.y + this._categoryWindow.height;
+        var wh = Graphics.boxHeight - wy;
+        this._itemWindow = new Window_GetDropItemList(0, wy, Graphics.boxWidth, wh);
+        this._itemWindow.setHelpWindow(this._helpWindow);
+        this._itemWindow.setHandler('ok',     this.onItemOk.bind(this));
+        this._itemWindow.setHandler('cancel', this.onItemCancel.bind(this));
+        this.addWindow(this._itemWindow);
+        this._categoryWindow.setItemWindow(this._itemWindow);
+    };
+    
+    // override this, so we can change $gameParty items back when popScene
+    Scene_OnMapItem.prototype.createCategoryWindow = function() {
+        this._categoryWindow = new Window_ItemCategory();
+        this._categoryWindow.setHelpWindow(this._helpWindow);
+        this._helpWindow.drawTextEx('請選擇要撿起的物品.', 0, 0);
+        this._categoryWindow.y = this._helpWindow.height;
+        this._categoryWindow.setHandler('ok',     this.onCategoryOk.bind(this));
+        this._categoryWindow.setHandler('cancel', this.popSceneAndRestoreItems.bind(this));
+        this.addWindow(this._categoryWindow);
+    };
+    
+    // override this to show hint message
+    Scene_OnMapItem.prototype.onItemCancel = function() {
+        Scene_Item.prototype.onItemCancel.call(this);
+        this._helpWindow.drawTextEx('請選擇要撿起的物品.', 0, 0);
+    }
+    
+    Scene_OnMapItem.prototype.popSceneAndRestoreItems = function() {
+        // restore $gameParty items
+        $gameParty._items = this.tempItems;
+        $gameParty._weapons = this.tempWeapons;
+        $gameParty._armors = this.tempArmors;
+        SceneManager.pop();
+        if (this.moved) {
+            setTimeout('TimeUtils.afterPlayerMoved();', 100);
+        }
+    }
+    
+    Scene_OnMapItem.prototype.onItemOk = function() {
+        $gameParty.setLastItem(this.item());
+        if (this.item()) {
+            this.moved = true;
+            // remove item from the ground
+            $gameParty.loseItem(this.item(), 1);
+            // setup item to 'temp', which means real $gameParty
+            ItemUtils.addItemToSet(this.item(), this.tempItems, this.tempWeapons, this.tempArmors);
+            // check if itemPile is empty
+            ItemUtils.checkAndRemoveEmptyItemPile();
+        }
+        this._itemWindow.refresh();
+        this._itemWindow.activate();
+    };
+    
+    //-----------------------------------------------------------------------------------
+    // Scene_DropItem
+    //
+    // handle the action when trying to drop items from player inventory
+    Scene_DropItem = function() {
+        this.initialize.apply(this, arguments);
+    }
+
+    Scene_DropItem.prototype = Object.create(Scene_Item.prototype);
+    Scene_DropItem.prototype.constructor = Scene_DropItem;
+
+    Scene_DropItem.prototype.initialize = function() {
+        Scene_Item.prototype.initialize.call(this);
+        // indicates if player really moved
+        this.moved = false;
+    };
+    
+    // override this function so it creates Window_GetDropItemList window
+    Scene_DropItem.prototype.createItemWindow = function() {
+        var wy = this._categoryWindow.y + this._categoryWindow.height;
+        var wh = Graphics.boxHeight - wy;
+        this._itemWindow = new Window_GetDropItemList(0, wy, Graphics.boxWidth, wh);
+        this._itemWindow.setHelpWindow(this._helpWindow);
+        this._itemWindow.setHandler('ok',     this.onItemOk.bind(this));
+        this._itemWindow.setHandler('cancel', this.onItemCancel.bind(this));
+        this.addWindow(this._itemWindow);
+        this._categoryWindow.setItemWindow(this._itemWindow);
+    };
+    
+    // override this to show hint message
+    Scene_DropItem.prototype.createCategoryWindow = function() {
+        this._categoryWindow = new Window_ItemCategory();
+        this._categoryWindow.setHelpWindow(this._helpWindow);
+        this._helpWindow.drawTextEx('請選擇要丟下的物品.', 0, 0);
+        this._categoryWindow.y = this._helpWindow.height;
+        this._categoryWindow.setHandler('ok',     this.onCategoryOk.bind(this));
+        this._categoryWindow.setHandler('cancel', this.popScene.bind(this));
+        this.addWindow(this._categoryWindow);
+    };
+    
+    // override this to show hint message
+    Scene_DropItem.prototype.onItemCancel = function() {
+        Scene_Item.prototype.onItemCancel.call(this);
+        this._helpWindow.drawTextEx('請選擇要丟下的物品.', 0, 0);
+    }
+    
+    Scene_DropItem.prototype.onItemOk = function() {
+        $gameParty.setLastItem(this.item());
+        if (this.item()) {
+            this.moved = true;
+            // remove item from player inventory
+            $gameParty.loseItem(this.item(), 1);
+            // setup item to itemPile on the ground
+            ItemUtils.addItemToItemPile($gamePlayer._x, $gamePlayer._y, this.item());
+        }
+        this._itemWindow.refresh();
+        this._itemWindow.activate();
+    };
+    
+    Scene_DropItem.prototype.popScene = function() {
+        Scene_Item.prototype.popScene.call(this);
+        if (this.moved) {
+            setTimeout('TimeUtils.afterPlayerMoved();', 100);
         }
     }
 })();
