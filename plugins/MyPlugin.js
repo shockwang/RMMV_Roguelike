@@ -47,6 +47,7 @@
         
         // indicates map attributes
         this.generateRandom = false;
+        this.stairDownNum = 1;
         this.stairList = [];
         this.itemPileList = [];
     }
@@ -89,7 +90,8 @@
     var viewDistance = 8;
     
     // room parameters
-    var roomNum = 5, minRoomSize = 4, maxRoomSize = 9;
+    var roomNum = 10, minRoomSize = 4, maxRoomSize = 16;
+    var roomPercentage = 0.6;
     
     // ----------end of map constants----------
     
@@ -109,10 +111,12 @@
     
     MapUtils.initialize = function() {
         // define map variables here
-        for (var i = 0; i < 2; i++) {
+        for (var i = 0; i < 5; i++) {
             $gameVariables[i+1] = new MapVariable(null, null);
         }
-        $gameVariables[2].generateRandom = true;
+        for (var i = 1; i < 5; i++) {
+            $gameVariables[i+1].generateRandom = true;
+        }
     }
     
     function getRandomInt(max) {
@@ -432,7 +436,17 @@
         if (character == $gamePlayer) {
             $gameVariables[0] = new TransferInfo(stair.toMapId, character._x, character._y);
             $gameScreen.startFadeOut(1);
-            setTimeout('$gameScreen.startFadeIn(1);TimeUtils.afterPlayerMoved();', 400);
+            // wait until map is fully loaded
+            var checkMapReady = function() {
+                if (SceneManager.isCurrentSceneStarted()) {
+                    $gameScreen.startFadeIn(1);
+                    TimeUtils.afterPlayerMoved();
+                } else {
+                    console.log("map not ready yet.");
+                    setTimeout(checkMapReady, 100);
+                }
+            }
+            setTimeout(checkMapReady, 100);
             if (stair.toX == -1) {
                 // not assigned yet, go to default position
                 $gamePlayer.setPosition(-10, -10);
@@ -762,8 +776,8 @@
                 var roomHeight = getRandomIntRange(2, candidateArea.height);
                 if (roomWidth * roomHeight >= minRoomSize && roomWidth * roomHeight <= maxRoomSize) {
                     // randomize start position
-                    var xOffset = getRandomInt(candidateArea.width - candidateArea.start.x);
-                    var yOffset = getRandomInt(candidateArea.height - candidateArea.start.y);
+                    var xOffset = getRandomInt(candidateArea.width - roomWidth);
+                    var yOffset = getRandomInt(candidateArea.height - roomHeight);
                     newRoom = new BaseRoom(candidateArea.start.x + xOffset, candidateArea.start.y + yOffset, roomWidth, roomHeight);
                 }
             }
@@ -773,9 +787,84 @@
         return rooms;
     }
     
+    function createRoomsPercentage(map) {
+        var percentage = 0;
+        var rooms = [];
+        while (percentage < roomPercentage) {
+            // find largest empty space
+            // initialize an 0 room size
+            var candidateArea = null;
+            for (var j = 0; j < map[0].length; j++) {
+                for (var i = 0; i < map.length; i++) {
+                    if (map[i][j].done) {
+                        continue;
+                    }
+                    var startX = i, startY = j;
+                    var toX = i, toY = j;
+                    // check x-axis available range
+                    for (var k = startX; k < map.length; k++) {
+                        if (map[k][startY].done) {
+                            break;
+                        }
+                        toX++;
+                    }
+                    // check y-axis available range
+                    toY = map[0].length;
+                    for (var l = startY; l < map[0].length; l++) {
+                        for (var k = startX; k < toX; k++) {
+                            if (map[k][l].done) {
+                                toY = (toY > l) ? l : toY;
+                                break;
+                            }
+                        }
+                    }
+                    // room edge length must > 1
+                    if (toX - startX > 1 && toY - startY > 1) {
+                        // check area size
+                        var size = (toX - startX) * (toY - startY);
+                        if (size >= minRoomSize) {
+                            if (!candidateArea || size > candidateArea.width * candidateArea.height) {
+                                candidateArea = new BaseRoom(startX, startY, toX - startX, toY - startY);
+                            }
+                        }
+                    }
+                }
+            }
+            if (!candidateArea) {
+                // unable to find more empty space meet the requirement
+                break;
+            }
+            
+            // generate a suitable room from candidateArea
+            var newRoom = null;
+            while (!newRoom) {
+                var roomWidth = getRandomIntRange(2, candidateArea.width);
+                var roomHeight = getRandomIntRange(2, candidateArea.height);
+                if (roomWidth * roomHeight >= minRoomSize && roomWidth * roomHeight <= maxRoomSize) {
+                    // randomize start position
+                    var xOffset = getRandomInt(candidateArea.width - roomWidth);
+                    var yOffset = getRandomInt(candidateArea.height - roomHeight);
+                    newRoom = new BaseRoom(candidateArea.start.x + xOffset, candidateArea.start.y + yOffset, roomWidth, roomHeight);
+                }
+            }
+            rooms.push(newRoom);
+            fillRoomSetup(map, newRoom);
+            
+            // calculate room percentage
+            var totalCell = map.length * map[0].length;
+            var roomCell = 0;
+            for (var id in rooms) {
+                var room = rooms[id];
+                roomCell += room.width * room.height;
+            }
+            percentage = roomCell / totalCell;
+        }
+        return rooms;
+    }
+    
     genMapRoomsFullMaze = function(width, height) {
         var map = initMaze(width, height);
-        var rooms = createRooms(map);
+        var rooms = createRoomsPercentage(map);
         
         // fill the rest with maze
         var regionId = 0;
@@ -1099,7 +1188,6 @@
                     if (!$gameVariables[targetMapId].mapData) {
                         // first time assign data
                         MapUtils.setupNewMap(targetMapId);
-                        // connect upper stairs
                         
                         // collect all FLOOR tiles
                         var mapVariable = $gameVariables[$gameMap.mapId()];
@@ -1112,6 +1200,30 @@
                                 }
                             }
                         }
+                        // create down stairs
+                        var stairDownCreated = 0;
+                        while (stairDownCreated < $gameVariables[targetMapId].stairDownNum) {
+                            var candidate = floors[getRandomInt(floors.length)];
+                            var positionFound = true;
+                            for (var i in $gameVariables[targetMapId].stairList) {
+                                var toCheck = $gameVariables[targetMapId].stairList[i];
+                                if (candidate.x == toCheck.x && candidate.y == toCheck.y) {
+                                    positionFound = false;
+                                    break;
+                                }
+                            }
+                            if (positionFound) {
+                                var newStair = new StairData();
+                                newStair.type = 1;
+                                newStair.x = candidate.x;
+                                newStair.y = candidate.y;
+                                $gameVariables[targetMapId].stairList.push(newStair);
+                                // no need to deal with connect information
+                                stairDownCreated++;
+                            }
+                        }
+                        
+                        // connect upper stairs
                         for (var i = 0; i < mapVariable.stairList.length; i++) {
                             var toConnect = mapVariable.stairList[i];
                             if (toConnect.type != 1) {
@@ -1132,7 +1244,7 @@
                                 }
                                 if (positionFound) {
                                     var newStair = new StairData();
-                                    newStair.type = (toConnect.type == 0) ? 1 : 0;
+                                    newStair.type = 0;
                                     newStair.x = candidate.x;
                                     newStair.y = candidate.y;
                                     newStair.toMapId = $gameMap.mapId();
@@ -1317,7 +1429,7 @@
         for (var i = 0; i < $dataMap.events.length; i++) {
             if ($dataMap.events[i]) {
                 if ($dataMap.events[i].type == 'MOB') {
-                    this._events[i] = new Game_Mob($dataMap.events[i].x, $dataMap.events[i].y, $dataMap.events[i]);
+                    this._events[i] = new Game_Mob($dataMap.events[i].x, $dataMap.events[i].y, $dataMap.events[i].mob._enemyId, $dataMap.events[i]);
                 } else {
                     this._events[i] = new Game_Event(this._mapId, i);
                 }
@@ -1355,7 +1467,7 @@
     Game_Mob.prototype.constructor = Game_Mob;
     
     Game_Mob.prototype.fromEvent = function(src, target) {
-        target._hp = src._hp;
+        target.mob = src.mob;
         target.awareDistance = src.awareDistance;
         target.type = src.type;
         target.x = src.x;
@@ -1364,7 +1476,7 @@
     
     Game_Mob.prototype.initStatus = function(event) {
         // NOTE: attribute name must be the same as Game_Actor
-        event._hp = 100;
+        event.mob = this.mob;
         event.awareDistance = 8;
         event.type = 'MOB';
     }
@@ -1378,7 +1490,7 @@
         }
     }
 
-    Game_Mob.prototype.initialize = function(x, y, fromData) {
+    Game_Mob.prototype.initialize = function(x, y, mobId, fromData) {
         var eventId = -1;
         if (fromData) {
             for (var i = 1; i < $dataMap.events.length; i++) {
@@ -1389,6 +1501,8 @@
                 }
             }
         } else {
+            // new mob instance from mobId
+            this.mob = new Game_Enemy(mobId, x, y);
             // find empty space for new event
             var emptyFound = false;
             for (var i = 1; i < $dataMap.events.length; i++) {
@@ -1397,7 +1511,7 @@
                     emptyFound = true;
                     eventId = i;
                     $dataMap.events[i] = newDataMapEvent($dataMap.events[1], eventId, x, y);
-                    Game_Mob.prototype.initStatus($dataMap.events[i]);
+                    this.initStatus($dataMap.events[i]);
                     break;
                 }
             }
@@ -1407,7 +1521,7 @@
                 $dataMap.events.push(newDataMapEvent($dataMap.events[1], eventId, x, y));
                 Game_Mob.prototype.initStatus($dataMap.events[$dataMap.events.length-1]);
             }
-            Game_Mob.prototype.initStatus(this);
+            this.initStatus(this);
         }
         // store new events back to map variable
         $gameVariables[$gameMap.mapId()].rmDataMap = $dataMap;
@@ -1559,6 +1673,7 @@
                 }
                 if (stair) {
                     MapUtils.transferCharacter($gamePlayer);
+                    playerMoved = true;
                 } else {
                     $gameMessage.add("這裡沒有往下的樓梯.");
                 }
@@ -1574,6 +1689,7 @@
                 }
                 if (stair) {
                     MapUtils.transferCharacter($gamePlayer);
+                    playerMoved = true;
                 } else {
                     $gameMessage.add("這裡沒有往上的樓梯.");
                 }
@@ -1693,7 +1809,7 @@
     BattleUtils.meleeAttack = function(src, target) {
         // TODO: need to implement attack damage formula
         var value = 10;
-        var realTarget = (target == $gamePlayer) ? $gameActors._data[1] : target;
+        var realTarget = (target == $gamePlayer) ? $gameActors._data[1] : target.mob;
         if (src == $gamePlayer && !BattleUtils.playerUpdateTp(-5)) {
             $gameMessage.add('你氣喘吁吁, 沒有足夠的體力攻擊!');
             return;
