@@ -90,7 +90,7 @@
     var viewDistance = 8;
     
     // room parameters
-    var roomNum = 10, minRoomSize = 4, maxRoomSize = 16;
+    var roomNum = 3, minRoomSize = 4, maxRoomSize = 16;
     var roomPercentage = 0.6;
     
     // ----------end of map constants----------
@@ -117,6 +117,7 @@
         for (var i = 1; i < 5; i++) {
             $gameVariables[i+1].generateRandom = true;
         }
+        $gameVariables[5].stairDownNum = 0;
     }
     
     function getRandomInt(max) {
@@ -670,119 +671,75 @@
         }
     }
     
-    function createRooms(map) {
-        var width = map.length;
-        var height = map[0].length;
-    
-        // generate rooms (randomly)
-        var rooms = [];
-        var retryCount = 0;
-        while (rooms.length < roomNum && retryCount < 10) {
-            var roomWidth = getRandomIntRange(2, Math.round(width / 3));
-            var minRoomHeight = Math.round(minRoomSize / roomWidth);
-            var maxRoomHeight = Math.round(maxRoomSize / roomWidth);
-            if (minRoomHeight < height && maxRoomHeight < height && maxRoomHeight >= minRoomHeight && maxRoomHeight >= 2) {
-                if (minRoomHeight == 1) {
-                    minRoomHeight++;
+    function genRoomFromEmptySpaces(map) {
+        // find largest empty space
+        var candidateArea = null;
+        for (var j = 0; j < map[0].length; j++) {
+            for (var i = 0; i < map.length; i++) {
+                if (map[i][j].done) {
+                    continue;
                 }
-                var roomHeight = getRandomIntRange(minRoomHeight, maxRoomHeight);
-                
-                // decide starting point
-                var startX, startY;
-                var findPlaceRetryCount = 0, newRoom = null;
-                while (!newRoom && findPlaceRetryCount < 10) {
-                    startX = getRandomInt(width - roomWidth);
-                    startY = getRandomInt(height - roomHeight);
-                    // check if room location conflicts
-                    var conflict = false;
-                    for (var i = 0; i < rooms.length; i++) {
-                        if (!(rooms[i].start.x > startX + roomWidth || rooms[i].start.x + rooms[i].width < startX) &&
-                            !(rooms[i].start.y > startY + roomHeight || rooms[i].start.Y + rooms[i].height < startY)) {
-                                conflict = true;
-                                break;
-                        }
+                var startX = i, startY = j;
+                var toX = i, toY = j;
+                // check x-axis available range
+                for (var k = startX; k < map.length; k++) {
+                    if (map[k][startY].done) {
+                        break;
                     }
-                    if (conflict) {
-                        findPlaceRetryCount++;
-                    } else {
-                        newRoom = new BaseRoom(startX, startY, roomWidth, roomHeight);
-                        findPlaceRetryCount = 0;
-                    }
+                    toX++;
                 }
-                if (newRoom) {
-                    rooms.push(newRoom);
-                    retryCount = 0;
-                } else {
-                    retryCount++;
-                }
-            }
-        }
-        
-        // fill room setup
-        for (var i = 0; i < rooms.length; i++) {
-            fillRoomSetup(map, rooms[i]);
-        }
-        
-        // generate rooms (from empty space lefts)
-        while (rooms.length < roomNum) {
-            // find largest empty space
-            // initialize an 0 room size
-            var candidateArea = null;
-            for (var j = 0; j < map[0].length; j++) {
-                for (var i = 0; i < map.length; i++) {
-                    if (map[i][j].done) {
-                        continue;
-                    }
-                    var startX = i, startY = j;
-                    var toX = i, toY = j;
-                    // check x-axis available range
-                    for (var k = startX; k < map.length; k++) {
-                        if (map[k][startY].done) {
+                // check y-axis available range
+                toY = map[0].length;
+                for (var l = startY; l < map[0].length; l++) {
+                    for (var k = startX; k < toX; k++) {
+                        if (map[k][l].done) {
+                            toY = (toY > l) ? l : toY;
                             break;
                         }
-                        toX++;
                     }
-                    // check y-axis available range
-                    toY = map[0].length;
-                    for (var l = startY; l < map[0].length; l++) {
-                        for (var k = startX; k < toX; k++) {
-                            if (map[k][l].done) {
-                                toY = (toY > l) ? l : toY;
-                                break;
-                            }
-                        }
-                    }
-                    // room edge length must > 1
-                    if (toX - startX > 1 && toY - startY > 1) {
-                        // check area size
-                        var size = (toX - startX) * (toY - startY);
-                        if (size >= minRoomSize) {
-                            if (!candidateArea || size > candidateArea.width * candidateArea.height) {
-                                candidateArea = new BaseRoom(startX, startY, toX - startX, toY - startY);
-                            }
+                }
+                // room edge length must > 1
+                if (toX - startX > 1 && toY - startY > 1) {
+                    // check area size
+                    var size = (toX - startX) * (toY - startY);
+                    if (size >= minRoomSize) {
+                        if (!candidateArea || size > candidateArea.width * candidateArea.height) {
+                            candidateArea = new BaseRoom(startX, startY, toX - startX, toY - startY);
                         }
                     }
                 }
             }
-            if (!candidateArea) {
-                // unable to find more empty space meet the requirement
+        }
+        if (!candidateArea) {
+            // unable to find more empty space meet the requirement
+            return null;
+        }
+        
+        // generate a suitable room from candidateArea
+        var newRoom = null;
+        while (!newRoom) {
+            var roomWidth = getRandomIntRange(2, candidateArea.width);
+            var roomHeight = getRandomIntRange(2, candidateArea.height);
+            if (roomWidth * roomHeight >= minRoomSize && roomWidth * roomHeight <= maxRoomSize) {
+                // randomize start position
+                var xOffset = getRandomInt(candidateArea.width - roomWidth);
+                var yOffset = getRandomInt(candidateArea.height - roomHeight);
+                newRoom = new BaseRoom(candidateArea.start.x + xOffset, candidateArea.start.y + yOffset, roomWidth, roomHeight);
+            }
+        }
+        fillRoomSetup(map, newRoom);
+        return newRoom;
+    }
+    
+    function createRoomsNum(map) {
+        var rooms = [];
+        while (rooms.length < roomNum) {
+            var newRoom = genRoomFromEmptySpaces(map);
+            if (newRoom) {
+                rooms.push(newRoom);
+            } else {
                 break;
             }
-            
-            // generate a suitable room from candidateArea
-            var newRoom = null;
-            while (!newRoom) {
-                var roomWidth = getRandomIntRange(2, candidateArea.width);
-                var roomHeight = getRandomIntRange(2, candidateArea.height);
-                if (roomWidth * roomHeight >= minRoomSize && roomWidth * roomHeight <= maxRoomSize) {
-                    // randomize start position
-                    var xOffset = getRandomInt(candidateArea.width - roomWidth);
-                    var yOffset = getRandomInt(candidateArea.height - roomHeight);
-                    newRoom = new BaseRoom(candidateArea.start.x + xOffset, candidateArea.start.y + yOffset, roomWidth, roomHeight);
-                }
-            }
-            rooms.push(newRoom);
-            fillRoomSetup(map, newRoom);
         }
         return rooms;
     }
@@ -791,64 +748,12 @@
         var percentage = 0;
         var rooms = [];
         while (percentage < roomPercentage) {
-            // find largest empty space
-            // initialize an 0 room size
-            var candidateArea = null;
-            for (var j = 0; j < map[0].length; j++) {
-                for (var i = 0; i < map.length; i++) {
-                    if (map[i][j].done) {
-                        continue;
-                    }
-                    var startX = i, startY = j;
-                    var toX = i, toY = j;
-                    // check x-axis available range
-                    for (var k = startX; k < map.length; k++) {
-                        if (map[k][startY].done) {
-                            break;
-                        }
-                        toX++;
-                    }
-                    // check y-axis available range
-                    toY = map[0].length;
-                    for (var l = startY; l < map[0].length; l++) {
-                        for (var k = startX; k < toX; k++) {
-                            if (map[k][l].done) {
-                                toY = (toY > l) ? l : toY;
-                                break;
-                            }
-                        }
-                    }
-                    // room edge length must > 1
-                    if (toX - startX > 1 && toY - startY > 1) {
-                        // check area size
-                        var size = (toX - startX) * (toY - startY);
-                        if (size >= minRoomSize) {
-                            if (!candidateArea || size > candidateArea.width * candidateArea.height) {
-                                candidateArea = new BaseRoom(startX, startY, toX - startX, toY - startY);
-                            }
-                        }
-                    }
-                }
-            }
-            if (!candidateArea) {
-                // unable to find more empty space meet the requirement
+            var newRoom = genRoomFromEmptySpaces(map);
+            if (newRoom) {
+                rooms.push(newRoom);
+            } else {
                 break;
             }
-            
-            // generate a suitable room from candidateArea
-            var newRoom = null;
-            while (!newRoom) {
-                var roomWidth = getRandomIntRange(2, candidateArea.width);
-                var roomHeight = getRandomIntRange(2, candidateArea.height);
-                if (roomWidth * roomHeight >= minRoomSize && roomWidth * roomHeight <= maxRoomSize) {
-                    // randomize start position
-                    var xOffset = getRandomInt(candidateArea.width - roomWidth);
-                    var yOffset = getRandomInt(candidateArea.height - roomHeight);
-                    newRoom = new BaseRoom(candidateArea.start.x + xOffset, candidateArea.start.y + yOffset, roomWidth, roomHeight);
-                }
-            }
-            rooms.push(newRoom);
-            fillRoomSetup(map, newRoom);
             
             // calculate room percentage
             var totalCell = map.length * map[0].length;
@@ -1018,7 +923,7 @@
     
     genMapRoomsRoguelike = function(width, height) {
         var map = initMaze(width, height);
-        var rooms = createRooms(map);
+        var rooms = createRoomsPercentage(map);
         
         var connectedRooms = [];
         // start to connect all rooms
@@ -1166,7 +1071,7 @@
     MapUtils.setupNewMap = function(mapId) {
         // first load map
         console.log("first load map: " + mapId);
-        var rawMap = MapUtils.generateMapData(genMapRoomsFullMaze, 15, 10);
+        var rawMap = MapUtils.generateMapData(genMapRoomsFullMaze, 9, 6);
         var newMapData = MapUtils.translateMap(rawMap);
         $dataMap.width = rawMap.length;
         $dataMap.height = rawMap[0].length;
@@ -1218,6 +1123,7 @@
                                 newStair.x = candidate.x;
                                 newStair.y = candidate.y;
                                 $gameVariables[targetMapId].stairList.push(newStair);
+                                $gameVariables[targetMapId].mapData[newStair.x][newStair.y].decorate2 = downStair;
                                 // no need to deal with connect information
                                 stairDownCreated++;
                             }
@@ -1251,7 +1157,7 @@
                                     newStair.toX = toConnect.x;
                                     newStair.toY = toConnect.y;
                                     $gameVariables[targetMapId].stairList.push(newStair);
-                                    targetMapData[newStair.x][newStair.y].decorate2 = (newStair.type == 0) ? upStair : downStair;
+                                    targetMapData[newStair.x][newStair.y].decorate2 = upStair;
                                     
                                     toConnect.toMapId = targetMapId;
                                     toConnect.toX = newStair.x;
