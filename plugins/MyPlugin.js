@@ -118,6 +118,42 @@
             $gameVariables[i+1].generateRandom = true;
         }
         $gameVariables[5].stairDownNum = 0;
+        
+        // initialize $gameVariables[0] for multiple usage
+        $gameVariables[0] = {};
+        $gameVariables[0].transferInfo = null;
+        $gameVariables[0].directionalAction = null;
+        $gameVariables[0].directionalFlag = false;
+        $gameVariables[0].messageFlag = false;
+        $gameVariables[0].messageWindow = null;
+        $gameVariables[0].templateEvents = [];
+        // monster template
+        $gameVariables[0].templateEvents.push($dataMap.events[3]);
+        $gameMap._events[3].erase();
+        // door template
+        $gameVariables[0].templateEvents.push($dataMap.events[4]);
+        $gameMap._events[4].erase();
+    }
+    
+    MapUtils.displayMessage = function(msg) {
+        $gameVariables[0].messageFlag = true;
+        if (!$gameVariables[0].messageWindow) {
+            var width = Graphics.boxWidth;
+            var height = Graphics.boxHeight / 4;
+            var y = Graphics.boxHeight - height;
+            var messageWindow = new Window_Base(0, y, width, height);
+            $gameVariables[0].messageWindow = messageWindow;
+        } else {
+            $gameVariables[0].messageWindow.contents.clear();
+        }
+        $gameVariables[0].messageWindow.drawTextEx(msg, 0, 0);
+        SceneManager._scene.addChild($gameVariables[0].messageWindow);
+    }
+    
+    // used when message console already exists on map
+    MapUtils.updateMessage = function(msg) {
+        $gameVariables[0].messageWindow.contents.clear();
+        $gameVariables[0].messageWindow.drawTextEx(msg, 0, 0);
     }
     
     function getRandomInt(max) {
@@ -435,7 +471,7 @@
         
         stair.toMapId = (stair.type == 0) ? $gameMap.mapId() - 1 : $gameMap.mapId() + 1;
         if (character == $gamePlayer) {
-            $gameVariables[0] = new TransferInfo(stair.toMapId, character._x, character._y);
+            $gameVariables[0].transferInfo = new TransferInfo(stair.toMapId, character._x, character._y);
             $gameScreen.startFadeOut(1);
             // wait until map is fully loaded
             var checkMapReady = function() {
@@ -1088,7 +1124,7 @@
         var array;
         if (object === $dataMap) {
             if ($gameMap.mapId() > 0) {
-                var targetMapId = ($gameVariables[0]) ? $gameVariables[0].toMapId : $gameMap.mapId();
+                var targetMapId = ($gameVariables[0].transferInfo) ? $gameVariables[0].transferInfo.toMapId : $gameMap.mapId();
                 if ($gameVariables[targetMapId].generateRandom) {
                     if (!$gameVariables[targetMapId].mapData) {
                         // first time assign data
@@ -1168,7 +1204,7 @@
                         var nowStair = null;
                         for (var i = 0; i < $gameVariables[$gameMap.mapId()].stairList.length; i++) {
                             var candidate = $gameVariables[$gameMap.mapId()].stairList[i];
-                            if (candidate.x == $gameVariables[0].nowX && candidate.y == $gameVariables[0].nowY) {
+                            if (candidate.x == $gameVariables[0].transferInfo.nowX && candidate.y == $gameVariables[0].transferInfo.nowY) {
                                 nowStair = candidate;
                                 break;
                             }
@@ -1416,7 +1452,7 @@
                     // found empty space to place new event
                     emptyFound = true;
                     eventId = i;
-                    $dataMap.events[i] = newDataMapEvent($dataMap.events[1], eventId, x, y);
+                    $dataMap.events[i] = newDataMapEvent($gameVariables[0].templateEvents[0], eventId, x, y);
                     this.initStatus($dataMap.events[i]);
                     break;
                 }
@@ -1424,7 +1460,7 @@
             if (!emptyFound) {
                 // add new event at the bottom of list
                 eventId = $dataMap.events.length;
-                $dataMap.events.push(newDataMapEvent($dataMap.events[1], eventId, x, y));
+                $dataMap.events.push(newDataMapEvent($gameVariables[0].templateEvents[0], eventId, x, y));
                 Game_Mob.prototype.initStatus($dataMap.events[$dataMap.events.length-1]);
             }
             this.initStatus(this);
@@ -1523,21 +1559,156 @@
     }
     
     //-----------------------------------------------------------------------------------
+    // Game_Door
+    //
+    // The game object class for a door (opened/closed/locked), inherit from Game_Event
+    Game_Door = function() {
+        this.initialize.apply(this, arguments);
+    }
+
+    Game_Door.prototype = Object.create(Game_Event.prototype);
+    Game_Door.prototype.constructor = Game_Door;
+    
+    Game_Door.prototype.fromEvent = function(src, target) {
+        target.type = src.type;
+        target.x = src.x;
+        target.y = src.y;
+        target.status = src.status;
+    }
+    
+    Game_Door.prototype.initStatus = function(event) {
+        event.type = 'DOOR';
+        // 0: locked, 1: closed, 2: opened
+        event.status = 1;
+    }
+    
+    Game_Door.prototype.updateDataMap = function() {
+        for (var i = 0; i < $gameMap._events.length; i++) {
+            if ($gameMap._events[i] == this) {
+                Game_Door.prototype.fromEvent(this, $dataMap.events[i]);
+                break;
+            }
+        }
+    }
+
+    Game_Door.prototype.initialize = function(x, y, fromData) {
+        var eventId = -1;
+        if (fromData) {
+            for (var i = 1; i < $dataMap.events.length; i++) {
+                if ($dataMap.events[i] && $dataMap.events[i] == fromData) {
+                    eventId = i;
+                    Game_Door.prototype.fromEvent($dataMap.events[i], this);
+                    break;
+                }
+            }
+        } else {
+            // add new event at the bottom of list
+            eventId = $dataMap.events.length;
+            $dataMap.events.push(newDataMapEvent($gameVariables[0].templateEvents[1], eventId, x, y));
+            Game_Door.prototype.initStatus($dataMap.events[$dataMap.events.length-1]);
+            this.initStatus(this);
+        }
+        // store new events back to map variable
+        $gameVariables[$gameMap.mapId()].rmDataMap = $dataMap;
+        Game_Event.prototype.initialize.call(this, $gameMap.mapId(), eventId);
+        $gameMap._events[eventId] = this;
+    };
+    
+    // try to open a door
+    Game_Door.prototype.openDoor = function(character, x, y) {
+        var events = $gameMap.eventsXy(x, y);
+        var door = null;
+        for (var i in events) {
+            if (events[i] instanceof Game_Door) {
+                door = events[i];
+                break;
+            }
+        }
+        if (!door) {
+            if (character == $gamePlayer) {
+                MapUtils.updateMessage('這個方向沒有門哦.');
+            }
+            return false;
+        }
+        if (door.status == 2) {
+            if (character == $gamePlayer) {
+                MapUtils.updateMessage("這扇門已經是打開的了.");
+            }
+            return false;
+        } else if (door.status == 0) {
+            if (character == $gamePlayer) {
+                MapUtils.updateMessage("這扇門是鎖著的.");
+            }
+            return false;
+        }
+        // open the door successfully
+        door.status = 2;
+        $gameSelfSwitches.setValue([$gameMap.mapId(), door._eventId, 'A'], true);
+        door.updateDataMap();
+        $gameVariables[0].messageFlag = false;
+        SceneManager._scene.removeChild($gameVariables[0].messageWindow);
+        return true;
+    }
+    
+    // try to close this door
+    Game_Door.prototype.closeDoor = function(character, x, y) {
+        var events = $gameMap.eventsXy(x, y);
+        var door = null;
+        for (var i in events) {
+            if (events[i] instanceof Game_Door) {
+                door = events[i];
+                break;
+            }
+        }
+        if (!door) {
+            if (character == $gamePlayer) {
+                MapUtils.updateMessage("這個方向沒有門哦.");
+            }
+            return false;
+        }
+        if (door.status != 2) {
+            if (character == $gamePlayer) {
+                MapUtils.updateMessage("這扇門已經是關上的了.");
+            }
+            return false;
+        }
+        // check if there's object blocked the doorway
+        if (events.length > 1 || $gamePlayer.pos(x, y)) {
+            if (character == $gamePlayer) {
+                MapUtils.updateMessage("這扇門被什麼卡住了, 關不起來.");
+            }
+            return false;
+        }
+        // close the door successfully
+        door.status = 1;
+        $gameSelfSwitches.setValue([$gameMap.mapId(), door._eventId, 'A'], false);
+        door.updateDataMap();
+        $gameVariables[0].messageFlag = false;
+        SceneManager._scene.removeChild($gameVariables[0].messageWindow);
+        return true;
+    }
+    
+    //-----------------------------------------------------------------------------------
     // Input
     //
     // try to add key defined by Input class
     // NOTE: find keyCode using Input._onKeyDown() in rpg_core.js
     Input.keyMapper[190] = '.'; // keyCode for '.'
-    Input.keyMapper[12] = 'Numpad5'; // same function as '.'
-    Input.keyMapper[101] = 'Numpad5';
-    Input.keyMapper[36] = 'Numpad7'; // player move left-up (notebook fn+key)
-    Input.keyMapper[103] = 'Numpad7'; // (pc keyboard)
-    Input.keyMapper[33] = 'Numpad9'; // player move right-up
-    Input.keyMapper[105] = 'Numpad9';
-    Input.keyMapper[35] = 'Numpad1'; // player move left-down
-    Input.keyMapper[97] = 'Numpad1';
-    Input.keyMapper[34] = 'Numpad3'; // player move right-down
-    Input.keyMapper[99] = 'Numpad3';
+    Input.keyMapper[101] = 'Numpad5'; // same function as '.'
+    Input.keyMapper[53] = 'Numpad5';
+    Input.keyMapper[12] = 'Numpad5';
+    Input.keyMapper[103] = 'Numpad7'; // player move left-up (pc keyboard)
+    Input.keyMapper[55] = 'Numpad7'; // (num key below f1~f12)
+    Input.keyMapper[36] = 'Numpad7';
+    Input.keyMapper[105] = 'Numpad9'; // player move right-up
+    Input.keyMapper[57] = 'Numpad9';
+    Input.keyMapper[33] = 'Numpad9';
+    Input.keyMapper[97] = 'Numpad1'; // player move left-down
+    Input.keyMapper[49] = 'Numpad1';
+    Input.keyMapper[35] = 'Numpad1';
+    Input.keyMapper[99] = 'Numpad3'; // player move right-down
+    Input.keyMapper[51] = 'Numpad3';
+    Input.keyMapper[34] = 'Numpad3';
     
     // modify _signX & signY, so arrow key triggered only once when pressed.
     Input._signX = function() {
@@ -1566,7 +1737,48 @@
     
     // override this function for user-defined key detected (only on Scene_Map)
     Input._onKeyDown = function(event) {
-        if (SceneManager._scene instanceof Scene_Map) {
+        if (SceneManager._scene instanceof Scene_Map && !$gameMessage.isBusy()) {
+            if ($gameVariables[0].directionalFlag) {
+                // choose direction mode
+                switch (event.key) {
+                    case 'ArrowUp':
+                        $gameVariables[0].directionalAction($gamePlayer, $gamePlayer._x, $gamePlayer._y-1);
+                        break;
+                    case 'ArrowDown':
+                        $gameVariables[0].directionalAction($gamePlayer, $gamePlayer._x, $gamePlayer._y+1);
+                        break;
+                    case 'ArrowLeft':
+                        $gameVariables[0].directionalAction($gamePlayer, $gamePlayer._x-1, $gamePlayer._y);
+                        break;
+                    case 'ArrowRight':
+                        $gameVariables[0].directionalAction($gamePlayer, $gamePlayer._x+1, $gamePlayer._y);
+                        break;
+                    case '1': case 'End':
+                        $gameVariables[0].directionalAction($gamePlayer, $gamePlayer._x-1, $gamePlayer._y+1);
+                        break;
+                    case '3': case 'PageDown':
+                        $gameVariables[0].directionalAction($gamePlayer, $gamePlayer._x+1, $gamePlayer._y+1);
+                        break;
+                    case '7': case 'Home':
+                        $gameVariables[0].directionalAction($gamePlayer, $gamePlayer._x-1, $gamePlayer._y-1);
+                        break;
+                    case '9': case 'PageUp':
+                        $gameVariables[0].directionalAction($gamePlayer, $gamePlayer._x+1, $gamePlayer._y-1);
+                        break;
+                    default:
+                        MapUtils.updateMessage('這不是一個方向.');
+                        break;
+                }
+                $gameVariables[0].directionalFlag = false;
+                //$gameVariables[0].messageFlag = false;
+                //SceneManager._scene.removeChild($gameVariables[0].messageWindow);
+                return;
+            } else if ($gameVariables[0].messageFlag) {
+                // just wait for next input to make the window disappear
+                $gameVariables[0].messageFlag = false;
+                SceneManager._scene.removeChild($gameVariables[0].messageWindow);
+                return;
+            }
             switch (event.key) {
             case '>': // try to go down
                 var stair = null;
@@ -1581,7 +1793,7 @@
                     MapUtils.transferCharacter($gamePlayer);
                     playerMoved = true;
                 } else {
-                    $gameMessage.add("這裡沒有往下的樓梯.");
+                    MapUtils.displayMessage("這裡沒有往下的樓梯.");
                 }
                 break;
             case '<': // try to go up
@@ -1597,23 +1809,33 @@
                     MapUtils.transferCharacter($gamePlayer);
                     playerMoved = true;
                 } else {
-                    $gameMessage.add("這裡沒有往上的樓梯.");
+                    MapUtils.displayMessage("這裡沒有往上的樓梯.");
                 }
                 break;
             case ',': // try to pick things up from the ground
                 if (ItemUtils.findMapItemPile($gamePlayer._x, $gamePlayer._y)) {
                     SceneManager.push(Scene_OnMapItem);
                 } else {
-                    $gameMessage.add("這裡沒有東西可以撿.");
+                    MapUtils.displayMessage("這裡沒有東西可以撿.");
                 }
                 break;
             case 'd': // try to drop things from player inventory
                 if (Object.keys($gameParty._items).length == 0 && Object.keys($gameParty._weapons).length == 0
                     && Object.keys($gameParty._armors).length == 0) {
-                    $gameMessage.add("你的身上沒有任何物品.");
+                    MapUtils.displayMessage("你的身上沒有任何物品.");
                 } else {
                     SceneManager.push(Scene_DropItem);
                 }
+                break;
+            case 'o': // try to open a door
+                $gameVariables[0].directionalAction = Game_Door.prototype.openDoor;
+                $gameVariables[0].directionalFlag = true;
+                MapUtils.displayMessage('開哪個方向的門?');
+                break;
+            case 'c': // try to close a door
+                $gameVariables[0].directionalAction = Game_Door.prototype.closeDoor;
+                $gameVariables[0].directionalFlag = true;
+                MapUtils.displayMessage('關哪個方向的門?');
                 break;
             }
         }
@@ -1717,7 +1939,7 @@
         var value = 10;
         var realTarget = (target == $gamePlayer) ? $gameActors._data[1] : target.mob;
         if (src == $gamePlayer && !BattleUtils.playerUpdateTp(-5)) {
-            $gameMessage.add('你氣喘吁吁, 沒有足夠的體力攻擊!');
+            MapUtils.displayMessage('你氣喘吁吁, 沒有足夠的體力攻擊!');
             return;
         }
         $gameSystem.createPopup(0, "", "\\c[02]  -" + value, target);
@@ -1727,7 +1949,7 @@
         if (realTarget._hp <= 0) {
             if (target == $gamePlayer) {
                 // TODO: implement player dead mechanism
-                $gameMessage.add("\\N[1]不幸被殭屍咬死了...");
+                MapUtils.displayMessage("\\N[1]不幸被殭屍咬死了...");
                 SceneManager.goto(Scene_Gameover);
             } else {
                 // remove target event from $dataMap.events
