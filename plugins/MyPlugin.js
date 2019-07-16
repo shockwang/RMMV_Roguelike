@@ -74,6 +74,7 @@
     var FLOOR = '□';
     var CEILING = '■';
     var WALL = 'Ⅲ';
+    var DOOR = 'Ｄ';
     
     // ----------map constants----------
     var ceilingCenter = 5888;
@@ -85,6 +86,10 @@
     
     // item figures
     var bagIcon = 864;
+    
+    // door figures
+    var doorClosedIcon = 512;
+    var doorOpenedIcon = 528;
     
     // view parameters
     var viewDistance = 8;
@@ -206,10 +211,21 @@
                 
                 for (var i = 0; i < path.length; i++) {
                     // does not count the (x, y) point
-                    if (mapData[path[i].x][path[i].y].originalTile != FLOOR && !(path[i].x == x && path[i].y == y)) {
-                        visible = false;
-                        break;
-                    }
+                    if (!(path[i].x == x && path[i].y == y)) {
+                        if (mapData[path[i].x][path[i].y].originalTile != FLOOR) {
+                            visible = false;
+                            break;
+                        } else {
+                            // check if there's closed door
+                            var events = $gameMap.eventsXy(path[i].x, path[i].y);
+                            for (var id in events) {
+                                if (events[id] instanceof Game_Door && events[id].status != 2) {
+                                    visible = false;
+                                    break;
+                                }
+                            }
+                        }
+                    } 
                 }
             } else {
                 var start = (src._y - y > 0) ? y : src._y;
@@ -220,6 +236,15 @@
                     if (mapData[x][i].originalTile != FLOOR) {
                         visible = false;
                         break;
+                    } else {
+                        // check if there's closed door
+                        var events = $gameMap.eventsXy(x, i);
+                        for (var id in events) {
+                            if (events[id] instanceof Game_Door && events[id].status != 2) {
+                                visible = false;
+                                break;
+                            }
+                        }
                     }
                 }
             }
@@ -389,6 +414,9 @@
                         }
                     }
                     mapData[i][j].base = result;
+                } else if (rawData[i][j] == DOOR) {
+                    // TODO: need bug fix, doors not shown
+                    new Game_Door(i, j);
                 }
             }
         }
@@ -397,7 +425,12 @@
     };
     
     MapUtils.drawMap = function(mapData, mapArray) {
-        for (var i = 0; i < mapArray.length; i++) {
+        var mapSize = mapData.length * mapData[0].length;
+        // do not update item piles & doors
+        for (var i = 0; i < mapSize * 2; i++) {
+            mapArray[i] = 0;
+        }
+        for (var i = mapSize * 4; i < mapArray.length; i++) {
             mapArray[i] = 0;
         }
         
@@ -409,7 +442,6 @@
         }
         
         var index = 0;
-        var mapSize = mapData.length * mapData[0].length;
         var shadowOffset = mapSize * 4;
         var warFogOffset = mapSize;
         var stairOffset = mapSize * 2;
@@ -422,23 +454,42 @@
                     mapArray[index] = mapData[i][j].base;
                     mapArray[shadowOffset + index] = mapData[i][j].shadow;
                     mapData[i][j].isExplored = true;
+                    if (mapData[i][j].isVisible) {
+                        // update item piles
+                        mapArray[itemOffset + index] = 0;
+                    }
                 }
                 if (!mapData[i][j].isVisible && mapData[i][j].isExplored) {
                     mapArray[warFogOffset + index] = warFogCenter;
                 }
-                if (mapData[i][j].isExplored) {
-                    mapArray[stairOffset + index] = mapData[i][j].decorate2;
-                }
                 index++;
+            }
+        }
+        // draw stairs
+        for (var i in $gameVariables[$gameMap.mapId()].stairList) {
+            var stair = $gameVariables[$gameMap.mapId()].stairList[i];
+            if (mapData[stair.x][stair.y].isExplored) {
+                var index = stairOffset + stair.y * mapData.length + stair.x;
+                mapArray[index] = mapData[stair.x][stair.y].decorate2;
             }
         }
         
         // draw items (isolate it because of view design)
-        // TODO: implement the view item mechanism
         for (var i in $gameVariables[$gameMap.mapId()].itemPileList) {
             var itemPile = $gameVariables[$gameMap.mapId()].itemPileList[i];
-            var index = itemOffset + itemPile.y * mapData.length + itemPile.x;
-            mapArray[index] = bagIcon;
+            if (mapData[itemPile.x][itemPile.y].isVisible) {
+                var index = itemOffset + itemPile.y * mapData.length + itemPile.x;
+                mapArray[index] = bagIcon;
+            }
+        }
+        
+        // draw doors
+        for (var i in $gameMap.events()) {
+            var event = $gameMap.events()[i];
+            if (event instanceof Game_Door && mapData[event._x][event._y].isVisible) {
+                var index = stairOffset + event._y * mapData.length + event._x;
+                mapArray[index] = (event.status == 2) ? doorOpenedIcon : doorClosedIcon;
+            }
         }
     }
     
@@ -446,7 +497,7 @@
         for (var i = 0; i < $gameMap.events().length; i++) {
             var event = $gameMap.events()[i];
             if (mapData[event._x][event._y].isVisible) {
-                event.setOpacity(500);
+                event.setOpacity(255);
             } else {
                 event.setOpacity(0);
             }
@@ -550,6 +601,8 @@
                 var north;
                 if (genMap[i][j].northWall) {
                     north = CEILING;
+                } else if (genMap[i][j].northDoor) {
+                    north = DOOR;
                 } else {
                     north = FLOOR;
                 }
@@ -558,6 +611,8 @@
                 var east;
                 if (genMap[i][j].eastWall) {
                     east = CEILING;
+                } else if (genMap[i][j].eastDoor) {
+                    east = DOOR;
                 } else {
                     east = FLOOR;
                 }
@@ -581,6 +636,9 @@
                 if (j+1 < map[0].length && map[i][j+1] == FLOOR && map[i][j] == CEILING) {
                     needWall = true;
                     map2[i][j+index+1] = WALL;
+                } else if (map[i][j] == DOOR) {
+                    map2[i][j+index] = DOOR;
+                    map2[i][j+index+1] = FLOOR;
                 } else {
                     map2[i][j+index+1] = map[i][j];
                 }
@@ -598,6 +656,10 @@
         this.y = y;
         this.northWall = true;
         this.eastWall = true;
+        // indicate doors
+        this.northDoor = false;
+        this.eastDoor = false;
+        // indicates if room setup is done
         this.done = false;
         // room indicator
         this.isRoom = false;
@@ -858,16 +920,20 @@
                 switch (exit.direction) {
                     case "SOUTH":
                         map[exit.cell.x][exit.cell.y-1].northWall = false;
+                        map[exit.cell.x][exit.cell.y-1].northDoor = true;
                         break;
                     case "NORTH":
                         exit.cell.northWall = false;
+                        exit.cell.northDoor = true;
                         exit.cell.isRoom = false;
                         break;
                     case "WEST":
                         map[exit.cell.x-1][exit.cell.y].eastWall = false;
+                        map[exit.cell.x-1][exit.cell.y].eastDoor = true;
                         break;
                     case "EAST":
                         exit.cell.eastWall = false;
+                        exit.cell.eastDoor = true;
                         exit.cell.isRoom = false;
                         break;
                 }
@@ -885,6 +951,7 @@
                             var x = getRandomIntRange(room.start.x, room.start.x + room.width);
                             var y = room.start.y + room.height - 1;
                             map[x][y].northWall = false;
+                            map[x][y].northDoor = true;
                             map[x][y].isRoom = false;
                             done = true;
                             break;
@@ -895,6 +962,7 @@
                             var x = getRandomIntRange(room.start.x, room.start.x + room.width);
                             var y = room.start.y - 1;
                             map[x][y].northWall = false;
+                            map[x][y].northDoor = true;
                             map[x][y].isRoom = false;
                             done = true;
                             break;
@@ -905,6 +973,7 @@
                             var x = room.start.x + room.width - 1;
                             var y = getRandomIntRange(room.start.y, room.start.y + room.height);
                             map[x][y].eastWall = false;
+                            map[x][y].eastDoor = true;
                             map[x][y].isRoom = false;
                             done = true;
                             break;
@@ -915,6 +984,7 @@
                             var x = room.start.x - 1;
                             var y = getRandomIntRange(room.start.y, room.start.y + room.height);
                             map[x][y].eastWall = false;
+                            map[x][y].eastDoor = true;
                             map[x][y].isRoom = false;
                             done = true;
                             break;
@@ -1610,6 +1680,7 @@
         }
         // store new events back to map variable
         $gameVariables[$gameMap.mapId()].rmDataMap = $dataMap;
+        console.log("new door, mapId: %d", $gameMap.mapId());
         Game_Event.prototype.initialize.call(this, $gameMap.mapId(), eventId);
         $gameMap._events[eventId] = this;
     };
@@ -1673,7 +1744,7 @@
             return false;
         }
         // check if there's object blocked the doorway
-        if (events.length > 1 || $gamePlayer.pos(x, y)) {
+        if (events.length > 1 || $gamePlayer.pos(x, y) || ItemUtils.findMapItemPile(x, y)) {
             if (character == $gamePlayer) {
                 MapUtils.updateMessage("這扇門被什麼卡住了, 關不起來.");
             }
@@ -1740,38 +1811,48 @@
         if (SceneManager._scene instanceof Scene_Map && !$gameMessage.isBusy()) {
             if ($gameVariables[0].directionalFlag) {
                 // choose direction mode
+                var x = $gamePlayer._x, y = $gamePlayer._y;
                 switch (event.key) {
-                    case 'ArrowUp':
-                        $gameVariables[0].directionalAction($gamePlayer, $gamePlayer._x, $gamePlayer._y-1);
+                    case 'ArrowUp': case '8':
+                        y--;
                         break;
-                    case 'ArrowDown':
-                        $gameVariables[0].directionalAction($gamePlayer, $gamePlayer._x, $gamePlayer._y+1);
+                    case 'ArrowDown': case '2':
+                        y++;
                         break;
-                    case 'ArrowLeft':
-                        $gameVariables[0].directionalAction($gamePlayer, $gamePlayer._x-1, $gamePlayer._y);
+                    case 'ArrowLeft': case '4':
+                        x--;
                         break;
-                    case 'ArrowRight':
-                        $gameVariables[0].directionalAction($gamePlayer, $gamePlayer._x+1, $gamePlayer._y);
+                    case 'ArrowRight': case '6':
+                        x++;
                         break;
                     case '1': case 'End':
-                        $gameVariables[0].directionalAction($gamePlayer, $gamePlayer._x-1, $gamePlayer._y+1);
+                        x--;
+                        y++;
                         break;
                     case '3': case 'PageDown':
-                        $gameVariables[0].directionalAction($gamePlayer, $gamePlayer._x+1, $gamePlayer._y+1);
+                        x++;
+                        y++;
                         break;
                     case '7': case 'Home':
-                        $gameVariables[0].directionalAction($gamePlayer, $gamePlayer._x-1, $gamePlayer._y-1);
+                        x--;
+                        y--;
                         break;
                     case '9': case 'PageUp':
-                        $gameVariables[0].directionalAction($gamePlayer, $gamePlayer._x+1, $gamePlayer._y-1);
+                        x++;
+                        y--;
                         break;
                     default:
                         MapUtils.updateMessage('這不是一個方向.');
                         break;
                 }
+                if (!(x == $gamePlayer._x && y == $gamePlayer._y)) {
+                    playerMoved = $gameVariables[0].directionalAction($gamePlayer, x, y);
+                }
+                // check if player moved
+                if (playerMoved) {
+                    TimeUtils.afterPlayerMoved();
+                }
                 $gameVariables[0].directionalFlag = false;
-                //$gameVariables[0].messageFlag = false;
-                //SceneManager._scene.removeChild($gameVariables[0].messageWindow);
                 return;
             } else if ($gameVariables[0].messageFlag) {
                 // just wait for next input to make the window disappear
