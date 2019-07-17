@@ -161,6 +161,14 @@
         $gameVariables[0].messageWindow.drawTextEx(msg, 0, 0);
     }
     
+    // used to judge visible/walkable tiles
+    MapUtils.isTilePassable = function(tile) {
+        if (tile == FLOOR || tile == DOOR) {
+            return true;
+        }
+        return false;
+    }
+    
     function getRandomInt(max) {
         return Math.floor(Math.random() * Math.floor(max));
     };
@@ -212,7 +220,7 @@
                 for (var i = 0; i < path.length; i++) {
                     // does not count the (x, y) point
                     if (!(path[i].x == x && path[i].y == y)) {
-                        if (mapData[path[i].x][path[i].y].originalTile != FLOOR) {
+                        if (!MapUtils.isTilePassable(mapData[path[i].x][path[i].y].originalTile)) {
                             visible = false;
                             break;
                         } else {
@@ -233,7 +241,7 @@
                 
                 // start to check if vision blocked
                 for (var i = start+1; i < end; i++) {
-                    if (mapData[x][i].originalTile != FLOOR) {
+                    if (!MapUtils.isTilePassable(mapData[x][i].originalTile)) {
                         visible = false;
                         break;
                     } else {
@@ -359,7 +367,8 @@
             for (var i = 0; i < rawData.length; i++) {
                 if (rawData[i][j] == FLOOR) {
                     // deal with shadow
-                    if (i-1 >= 0 && j-1 >= 0 && rawData[i][j] == FLOOR && rawData[i-1][j] != FLOOR && rawData[i-1][j-1] != FLOOR) {
+                    if (i-1 >= 0 && j-1 >= 0 && MapUtils.isTilePassable(rawData[i][j]) 
+                        && !MapUtils.isTilePassable(rawData[i-1][j]) && !MapUtils.isTilePassable(rawData[i-1][j-1])) {
                         mapData[i][j].shadow = 5;
                     }
                     // skip the floor tunning
@@ -415,7 +424,6 @@
                     }
                     mapData[i][j].base = result;
                 } else if (rawData[i][j] == DOOR) {
-                    // TODO: need bug fix, doors not shown
                     new Game_Door(i, j);
                 }
             }
@@ -535,12 +543,11 @@
                 }
             }
             setTimeout(checkMapReady, 100);
+            $gamePlayer.setPosition(-10, -10);
             if (stair.toX == -1) {
                 // not assigned yet, go to default position
-                $gamePlayer.setPosition(-10, -10);
                 $gamePlayer.reserveTransfer(stair.toMapId, 0, 0, 0, 2);
             } else {
-                $gamePlayer.locate(stair.toX, stair.toY);
                 $gamePlayer.reserveTransfer(stair.toMapId, stair.toX, stair.toY, 0, 2);
             }
         }
@@ -1285,8 +1292,6 @@
                         // assign map data here
                         console.log("assign map data.");
                         $dataMap = $gameVariables[targetMapId].rmDataMap;
-                        MapUtils.drawMap($gameVariables[targetMapId].mapData, $dataMap.data);
-                        setTimeout('MapUtils.drawEvents($gameVariables[$gameMap.mapId()].mapData)', 200);
                     }
                 }
             }
@@ -1380,7 +1385,7 @@
         var y2 = $gameMap.roundYWithDirection(y, vert);
         if ($gameVariables[$gameMap.mapId()].mapData) { // map generated
             var mapData = $gameVariables[$gameMap.mapId()].mapData;
-            if (mapData[x][y].originalTile == mapData[x2][y2].originalTile) {
+            if (MapUtils.isTilePassable(mapData[x2][y2].originalTile)) {
                 // check if there's event on target tile which priority is as same as player
                 var canPass = true;
                 for (var i = 0; i < $gameMap.events().length; i++) {
@@ -1425,10 +1430,10 @@
                     y--;
                     break;
             }
-            if ($gameVariables[$gameMap.mapId()].mapData[x][y].originalTile != FLOOR) {
-                return false;
+            if (MapUtils.isTilePassable($gameVariables[$gameMap.mapId()].mapData[x][y].originalTile)) {
+                return true;
             }
-            return true;
+            return false;
         } else {
             // use original logic
             return this.checkPassage(x, y, (1 << (d / 2 - 1)) & 0x0f);
@@ -1442,6 +1447,8 @@
             if ($dataMap.events[i]) {
                 if ($dataMap.events[i].type == 'MOB') {
                     this._events[i] = new Game_Mob($dataMap.events[i].x, $dataMap.events[i].y, $dataMap.events[i].mob._enemyId, $dataMap.events[i]);
+                } else if ($dataMap.events[i].type == 'DOOR') {
+                    this._events[i] = new Game_Door($dataMap.events[i].x, $dataMap.events[i].y, $dataMap.events[i]);
                 } else {
                     this._events[i] = new Game_Event(this._mapId, i);
                 }
@@ -1563,7 +1570,7 @@
         var nowDistance = MapUtils.getDistance(this._x, this._y, character._x, character._y);
         for (var i = 0; i < 8; i++) {
             var coordinate = MapUtils.getNearbyCoordinate(this._x, this._y, i);
-            if (mapData[coordinate.x][coordinate.y].originalTile != FLOOR) {
+            if (!MapUtils.isTilePassable(mapData[coordinate.x][coordinate.y].originalTile)) {
                 continue;
             }
             var distance = MapUtils.getDistance(coordinate.x, coordinate.y, character._x, character._y);
@@ -1628,6 +1635,11 @@
         }
     }
     
+    // override this function, so mobs can pass through door/itemPiles
+    Game_Mob.prototype.isCollidedWithEvents = function(x, y) {
+        return Game_CharacterBase.prototype.isCollidedWithEvents.call(this, x, y);
+    };
+    
     //-----------------------------------------------------------------------------------
     // Game_Door
     //
@@ -1679,9 +1691,9 @@
             this.initStatus(this);
         }
         // store new events back to map variable
-        $gameVariables[$gameMap.mapId()].rmDataMap = $dataMap;
-        console.log("new door, mapId: %d", $gameMap.mapId());
-        Game_Event.prototype.initialize.call(this, $gameMap.mapId(), eventId);
+        $gameVariables[$gameVariables[0].transferInfo.toMapId].rmDataMap = $dataMap;
+        console.log("new door, mapId: %d", $gameVariables[0].transferInfo.toMapId);
+        Game_Event.prototype.initialize.call(this, $gameVariables[0].transferInfo.toMapId, eventId);
         $gameMap._events[eventId] = this;
     };
     
@@ -1850,7 +1862,8 @@
                 }
                 // check if player moved
                 if (playerMoved) {
-                    TimeUtils.afterPlayerMoved();
+                    // use async strategy, because $gameSelfSwitches needs time to update to event
+                    setTimeout('TimeUtils.afterPlayerMoved();', 100);
                 }
                 $gameVariables[0].directionalFlag = false;
                 return;
@@ -1861,6 +1874,9 @@
                 return;
             }
             switch (event.key) {
+            case '.': case 'Numpad5': // wait action
+                TimeUtils.afterPlayerMoved();
+                break;
             case '>': // try to go down
                 var stair = null;
                 for (var i in $gameVariables[$gameMap.mapId()].stairList) {
@@ -1944,10 +1960,7 @@
     }
     
     InputUtils.checkKeyPressed = function() {
-        if (Input.isTriggered('.') || Input.isTriggered('Numpad5')) {
-            // player waits for 1 turn
-            TimeUtils.afterPlayerMoved();
-        } else if (Input.isTriggered('Numpad7')) {
+        if (Input.isTriggered('Numpad7')) {
             $gamePlayer.moveDiagonally(4, 8);
         } else if (Input.isTriggered('Numpad9')) {
             $gamePlayer.moveDiagonally(6, 8);
@@ -2036,8 +2049,8 @@
                 // remove target event from $dataMap.events
                 // NOTE: Do not remove it from $gameMap._events! will cause crash
                 $gameMap.eraseEvent(target._eventId);
-                //target._x = 0;
-                //target._y = 0;
+                // move dead mobs so it won't block the door
+                target.setPosition(0, 0);
                 $dataMap.events[target._eventId] = null;
             }
         }
