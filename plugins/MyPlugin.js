@@ -131,8 +131,6 @@
         $gameVariables[0].directionalFlag = false;
         $gameVariables[0].messageFlag = false;
         $gameVariables[0].messageWindow = null;
-        // indicates nearby mobs when moving upstair/downstairs
-        $gameVariables[0].nearbyMobs = [];
         $gameVariables[0].templateEvents = [];
         // monster template
         $gameVariables[0].templateEvents.push($dataMap.events[3]);
