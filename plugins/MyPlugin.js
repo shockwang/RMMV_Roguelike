@@ -8,19 +8,19 @@
         this.decorate2 = 0;
         this.shadow = 0;
         this.region = 0;
-        
+
         // data added for explored/visible
         this.isExplored = false;
         this.isVisible = false;
-        
+
         // original tile
         this.originalTile = original;
-        
+
         // add for path finding
         this.x = x;
         this.y = y;
     }
-    
+
     // data type for stairs
     StairData = function() {
         // 0: stair up, 1: stair down
@@ -31,7 +31,7 @@
         this.toX = -1;
         this.toY = -1;
     }
-    
+
     // data type for item piles
     ItemPile = function(x, y) {
         this.x = x;
@@ -40,30 +40,30 @@
         this.weapons = {};
         this.armors = {};
     }
-    
+
     MapVariable = function(mapData, rmDataMap) {
         this.mapData = mapData;
         this.rmDataMap = rmDataMap;
-        
+
         // indicates map attributes
         this.generateRandom = false;
         this.stairDownNum = 1;
         this.stairList = [];
         this.itemPileList = [];
     }
-    
+
     Coordinate = function(x, y) {
         this.x = x;
         this.y = y;
     }
-    
+
     // class defined for player transfer
     TransferInfo = function(toMapId, x, y) {
         this.toMapId = toMapId;
         this.nowX = x;
         this.nowY = y;
     }
-    
+
     rawDataOld = [
         ['C','C','C','C','C'],
         ['C','W','F','F','C'],
@@ -75,7 +75,7 @@
     var CEILING = '■';
     var WALL = 'Ⅲ';
     var DOOR = 'Ｄ';
-    
+
     // ----------map constants----------
     var ceilingCenter = 5888;
     var wallCenter = 6282;
@@ -83,37 +83,37 @@
     var warFogCenter = 3536;
     var upStair = 19;
     var downStair = 27;
-    
+
     // item figures
     var bagIcon = 864;
-    
+
     // door figures
     var doorClosedIcon = 512;
     var doorOpenedIcon = 528;
-    
+
     // view parameters
     var viewDistance = 8;
-    
+
     // room parameters
     var roomNum = 3, minRoomSize = 4, maxRoomSize = 16;
     var roomPercentage = 0.6;
-    
+
     // ----------end of map constants----------
-    
+
     // TP designed for energy, attack/martial skills will decrease it, and will
     // auto recover when not doing attack actions
     var playerAttacked = false;
     var playerMoved = false;
-    
+
     //-----------------------------------------------------------------------------------
     // MapUtils
     //
     // All random map related algorithm/functions
-    
+
     MapUtils = function() {
         throw new Error('This is a static class');
     };
-    
+
     MapUtils.initialize = function() {
         // define map variables here
         for (var i = 0; i < 5; i++) {
@@ -123,7 +123,7 @@
             $gameVariables[i+1].generateRandom = true;
         }
         $gameVariables[5].stairDownNum = 0;
-        
+
         // initialize $gameVariables[0] for multiple usage
         $gameVariables[0] = {};
         $gameVariables[0].transferInfo = null;
@@ -131,15 +131,15 @@
         $gameVariables[0].directionalFlag = false;
         $gameVariables[0].messageFlag = false;
         $gameVariables[0].messageWindow = null;
+        // indicates nearby mobs when moving upstair/downstairs
+        $gameVariables[0].nearbyMobs = [];
         $gameVariables[0].templateEvents = [];
         // monster template
         $gameVariables[0].templateEvents.push($dataMap.events[3]);
-        $gameMap._events[3].erase();
         // door template
         $gameVariables[0].templateEvents.push($dataMap.events[4]);
-        $gameMap._events[4].erase();
     }
-    
+
     MapUtils.displayMessage = function(msg) {
         $gameVariables[0].messageFlag = true;
         if (!$gameVariables[0].messageWindow) {
@@ -154,13 +154,13 @@
         $gameVariables[0].messageWindow.drawTextEx(msg, 0, 0);
         SceneManager._scene.addChild($gameVariables[0].messageWindow);
     }
-    
+
     // used when message console already exists on map
     MapUtils.updateMessage = function(msg) {
         $gameVariables[0].messageWindow.contents.clear();
         $gameVariables[0].messageWindow.drawTextEx(msg, 0, 0);
     }
-    
+
     // used to judge visible/walkable tiles
     MapUtils.isTilePassable = function(tile) {
         if (tile == FLOOR || tile == DOOR) {
@@ -168,18 +168,18 @@
         }
         return false;
     }
-    
+
     function getRandomInt(max) {
         return Math.floor(Math.random() * Math.floor(max));
     };
-    
+
     function getRandomIntRange(min, max) {
         if (min == max) {
             return min;
         }
         return Math.floor(Math.random() * Math.floor(max - min)) + min;
     }
-    
+
     // this function should be called twice (src must be a Game_Event)
     function updateVisible(src, distance, x, y, mapData) {
         var visible = false;
@@ -203,7 +203,7 @@
                 // start to check if vision blocked
                 for (var i = startX+1; i <= endX; i++) {
                     var estimatedY = Math.round(m * (i - src._x) + src._y);
-                    
+
                     // fill y-axis coordinates
                     if (Math.abs(lastY - estimatedY) > 1) {
                         var startY = (lastY - estimatedY > 0) ? estimatedY : lastY;
@@ -216,7 +216,7 @@
                     path.push(new Coordinate(i, estimatedY));
                     lastY = estimatedY;
                 }
-                
+
                 for (var i = 0; i < path.length; i++) {
                     // does not count the (x, y) point
                     if (!(path[i].x == x && path[i].y == y)) {
@@ -233,12 +233,12 @@
                                 }
                             }
                         }
-                    } 
+                    }
                 }
             } else {
                 var start = (src._y - y > 0) ? y : src._y;
                 var end = (src._y - y > 0) ? src._y : y;
-                
+
                 // start to check if vision blocked
                 for (var i = start+1; i < end; i++) {
                     if (!MapUtils.isTilePassable(mapData[x][i].originalTile)) {
@@ -256,12 +256,12 @@
                     }
                 }
             }
-            
+
             // ceiling followed by wall check
             if (visible && mapData[x][y].originalTile == WALL) {
                 mapData[x][y-1].isVisible = true;
             }
-            
+
             // other ceiling check
             if (!visible && mapData[x][y].originalTile == CEILING) {
                 if (y+1 < mapData[0].length && mapData[x][y+1].originalTile == WALL && mapData[x][y+1].isVisible) {
@@ -282,10 +282,10 @@
                 }
             }
         }
-        
+
         mapData[x][y].isVisible = visible;
     }
-    
+
     function refineMapTile(east, west, south, north, centerTile) {
         var result = centerTile;
         if (east) {
@@ -351,7 +351,7 @@
         }
         return result;
     }
-    
+
     MapUtils.translateMap = function(rawData){
         var mapData = new Array(rawData.length);
         for (var i = 0; i < mapData.length; i++) {
@@ -360,14 +360,14 @@
                 mapData[i][j] = new MapData(floorCenter, rawData[i][j], i, j);
             }
         }
-        
+
         // deal with tile IDs
         var north, south, east, west;
         for (var j = 0; j < rawData[0].length; j++) {
             for (var i = 0; i < rawData.length; i++) {
                 if (rawData[i][j] == FLOOR) {
                     // deal with shadow
-                    if (i-1 >= 0 && j-1 >= 0 && MapUtils.isTilePassable(rawData[i][j]) 
+                    if (i-1 >= 0 && j-1 >= 0 && MapUtils.isTilePassable(rawData[i][j])
                         && !MapUtils.isTilePassable(rawData[i-1][j]) && !MapUtils.isTilePassable(rawData[i-1][j-1])) {
                         mapData[i][j].shadow = 5;
                     }
@@ -392,7 +392,7 @@
                     if (j+1 < rawData.length && rawData[i][j+1] != CEILING) {
                         south = true;
                     }
-                    
+
                     // now decide tile type
                     mapData[i][j].base = refineMapTile(east, west, south, north, ceilingCenter);
                 } else if (rawData[i][j] == WALL) {
@@ -406,7 +406,7 @@
                     if (i-1 >= 0 && rawData[i-1][j] != WALL) {
                         west = true;
                     }
-                    
+
                     // now decide tile type
                     var result = wallCenter;
                     if (east) {
@@ -428,10 +428,10 @@
                 }
             }
         }
-        
+
         return mapData;
     };
-    
+
     MapUtils.drawMap = function(mapData, mapArray) {
         var mapSize = mapData.length * mapData[0].length;
         // do not update item piles & doors
@@ -441,14 +441,14 @@
         for (var i = mapSize * 4; i < mapArray.length; i++) {
             mapArray[i] = 0;
         }
-        
+
         // first time update visibility
         for (var j = 0; j < mapData[0].length; j++) {
             for (var i = 0; i < mapData.length; i++) {
                 updateVisible($gamePlayer, viewDistance, i, j, mapData);
             }
         }
-        
+
         var index = 0;
         var shadowOffset = mapSize * 4;
         var warFogOffset = mapSize;
@@ -481,7 +481,7 @@
                 mapArray[index] = mapData[stair.x][stair.y].decorate2;
             }
         }
-        
+
         // draw items (isolate it because of view design)
         for (var i in $gameVariables[$gameMap.mapId()].itemPileList) {
             var itemPile = $gameVariables[$gameMap.mapId()].itemPileList[i];
@@ -490,7 +490,7 @@
                 mapArray[index] = bagIcon;
             }
         }
-        
+
         // draw doors
         for (var i in $gameMap.events()) {
             var event = $gameMap.events()[i];
@@ -500,11 +500,11 @@
             }
         }
     }
-    
+
     MapUtils.drawEvents = function(mapData) {
         for (var i = 0; i < $gameMap.events().length; i++) {
             var event = $gameMap.events()[i];
-            if (mapData[event._x][event._y].isVisible) {
+            if (event._x > 0 && event._y > 0 && mapData[event._x][event._y].isVisible) {
                 event.setOpacity(255);
             } else {
                 event.setOpacity(0);
@@ -512,6 +512,17 @@
         }
     }
     
+    MapUtils.findEmptyFromList = function(list) {
+        for (var i = 1; i < list.length; i++) {
+            if (!list[i]) {
+                return i;
+            }
+        }
+        // list is full, extend its length;
+        list.length++;
+        return list.length - 1;
+    }
+
     MapUtils.transferCharacter = function(character) {
         // check if this stair already exists
         var stair = null;
@@ -527,7 +538,7 @@
             console.log("MapUtils.transferCharacter ERROR: stair should be exist.");
             return;
         }
-        
+
         stair.toMapId = (stair.type == 0) ? $gameMap.mapId() - 1 : $gameMap.mapId() + 1;
         if (character == $gamePlayer) {
             $gameVariables[0].transferInfo = new TransferInfo(stair.toMapId, character._x, character._y);
@@ -548,11 +559,85 @@
                 // not assigned yet, go to default position
                 $gamePlayer.reserveTransfer(stair.toMapId, 0, 0, 0, 2);
             } else {
+                MapUtils.transferNearbyMobs($gameMap.mapId(), stair.toMapId, stair.x, stair.y, stair.toX, stair.toY);
                 $gamePlayer.reserveTransfer(stair.toMapId, stair.toX, stair.toY, 0, 2);
             }
+            
+            // transfer nearby mobs
+            
         }
     }
     
+    MapUtils.findEventsXyFromDataMap = function(dataMap, x, y) {
+        var events = [];
+        for (var i in dataMap.events) {
+            var event = dataMap.events[i];
+            if (event && event.x == x && event.y == y) {
+                events.push(event);
+            }
+        }
+        return events;
+    }
+    
+    function isTileAvailableForMob(mapId, x, y) {
+        var occupied = false;
+        var exists = MapUtils.findEventsXyFromDataMap($gameVariables[mapId].rmDataMap, x, y);
+        for (var i in exists) {
+            if (exists[i].type == 'MOB' || (exists[i].type == 'DOOR' && exists[i].status != 2)) {
+                occupied = true;
+            }
+        }
+        var tileAvailable = false;
+        if (MapUtils.isTilePassable($gameVariables[mapId].mapData[x][y].originalTile)) {
+            tileAvailable = true;
+        }
+        return !occupied && tileAvailable;
+    }
+    
+    // nowMapId & toMapId $dataMap should be ready before call this function
+    MapUtils.transferNearbyMobs = function(nowMapId, toMapId, nowX, nowY, newX, newY) {
+        if (!$gameVariables[nowMapId].generateRandom || !$gameVariables[toMapId].generateRandom) {
+            // no need to update static map
+            return;
+        }
+        for (var i = 0; i < 8; i++) {
+            var coordinate = MapUtils.getNearbyCoordinate(nowX, nowY, i);
+            var events = MapUtils.findEventsXyFromDataMap($dataMap, coordinate.x, coordinate.y);
+            for (var id in events) {
+                if (events[id].type == 'MOB') {
+                    var mobData = events[id];
+                    // check for empty space, attempt to stand on the same relative location as player
+                    var toCheck = MapUtils.getNearbyCoordinate(newX, newY, i);
+                    var placeFound = false;
+                    if (isTileAvailableForMob(toMapId, toCheck.x, toCheck.y)) {
+                        placeFound = true;
+                    }
+                    if (!placeFound) {
+                        for (var j = 0; j < 8; j++) {
+                            toCheck = MapUtils.getNearbyCoordinate(newX, newY, j);
+                            if (isTileAvailableForMob(toMapId, toCheck.x, toCheck.y)) {
+                                placeFound = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (placeFound) {
+                        // remove it from current $dataMap
+                        $gameVariables[nowMapId].rmDataMap.events[mobData.id] = null;
+                        // add it to new $dataMap
+                        var eventId = MapUtils.findEmptyFromList($gameVariables[toMapId].rmDataMap.events);
+                        mobData.id = eventId;
+                        mobData.x = toCheck.x;
+                        mobData.y = toCheck.y;
+                        $gameVariables[toMapId].rmDataMap.events[eventId] = mobData;
+                    } else {
+                        console.log("no empty found, stay at same level.");
+                    }
+                }
+            }
+        }
+    }
+
     var RNG = [
         [0, 1, 2, 3],
         [0, 1, 3, 2],
@@ -586,7 +671,7 @@
         for (var i = 0; i < genMap.length * 2 + 1; i++) {
             map[i] = new Array(genMap[0].length * 2 + 1);
         }
-        
+
         // fill the map
         for (var i = 0; i < map.length; i++) {
             map[i][0] = CEILING;
@@ -594,7 +679,7 @@
         for (var j = 0; j < map[0].length; j++) {
             map[0][j] = CEILING;
         }
-        
+
         var index = 1;
         for (var i = 0; i < genMap.length; i++) {
             for (var j = 0; j < genMap[i].length; j++) {
@@ -604,7 +689,7 @@
                 if (genMap[i][j].isRoom && !genMap[i][j].northWall && !genMap[i][j].eastWall) {
                     map[i * 2 + 1 + index][j * 2 + 1 + index] = FLOOR;
                 }
-                
+
                 var north;
                 if (genMap[i][j].northWall) {
                     north = CEILING;
@@ -614,7 +699,7 @@
                     north = FLOOR;
                 }
                 map[i * 2 + index][j * 2 + 1 + index] = north;
-                
+
                 var east;
                 if (genMap[i][j].eastWall) {
                     east = CEILING;
@@ -673,7 +758,7 @@
         // region indicator
         this.regionId = 0;
     }
-    
+
     function BaseRoom(startX, startY, width, height) {
         this.start = new Coordinate(startX, startY);
         this.width = width;
@@ -681,12 +766,12 @@
         // center coordinate for distance calculation
         this.center = new Coordinate(Math.round((2*startX+width)/2), Math.round((2*startY+height)/2));
     }
-    
+
     function ExitCandidate(cell, direction) {
         this.cell = cell;
         this.direction = direction;
     }
-    
+
     function fillMaze(map, startX, startY, regionId) {
         // generate map
         var queue = [];
@@ -732,7 +817,7 @@
                     queue.push(map[x][y]);
                     moved = true;
                     break;
-                } 
+                }
             }
             if (!moved) { // no way to go
                 var nextCell = queue.shift();
@@ -740,7 +825,7 @@
             }
         }
     }
-    
+
     function initMaze(width, height) {
         // initialize
         var map = new Array(width);
@@ -758,7 +843,7 @@
         fillMaze(map, 0, 0, 0);
         return map;
     }
-    
+
     function fillRoomSetup(map, newRoom) {
         for (var j = newRoom.start.y; j < newRoom.start.y + newRoom.height; j++) {
             for (var i = newRoom.start.x; i < newRoom.start.x + newRoom.width; i++) {
@@ -775,7 +860,7 @@
             }
         }
     }
-    
+
     function genRoomFromEmptySpaces(map) {
         // find largest empty space
         var candidateArea = null;
@@ -819,7 +904,7 @@
             // unable to find more empty space meet the requirement
             return null;
         }
-        
+
         // generate a suitable room from candidateArea
         var newRoom = null;
         while (!newRoom) {
@@ -835,7 +920,7 @@
         fillRoomSetup(map, newRoom);
         return newRoom;
     }
-    
+
     function createRoomsNum(map) {
         var rooms = [];
         while (rooms.length < roomNum) {
@@ -848,7 +933,7 @@
         }
         return rooms;
     }
-    
+
     function createRoomsPercentage(map) {
         var percentage = 0;
         var rooms = [];
@@ -859,7 +944,7 @@
             } else {
                 break;
             }
-            
+
             // calculate room percentage
             var totalCell = map.length * map[0].length;
             var roomCell = 0;
@@ -871,11 +956,11 @@
         }
         return rooms;
     }
-    
+
     genMapRoomsFullMaze = function(width, height) {
         var map = initMaze(width, height);
         var rooms = createRoomsPercentage(map);
-        
+
         // fill the rest with maze
         var regionId = 0;
         for (var j = 0; j < map[0].length; j++) {
@@ -886,7 +971,7 @@
                 }
             }
         }
-        
+
         // add exists to each room, connect all isolated regions
         var maxRegions = 20;
         for (var i = 0; i < rooms.length; i++) {
@@ -914,7 +999,7 @@
                     regions[map[room.start.x+room.width][j].regionId].push(new ExitCandidate(map[room.start.x+room.width-1][j], "EAST"));
                 }
             }
-            
+
             // now generate exits for each region
             var totalExits = 0;
             for (var j = 0; j < regions.length; j++) {
@@ -1001,17 +1086,17 @@
         }
         return map;
     }
-    
+
     function findShortestPossiblePath(map, path, targetRoom) {
         var found = false;
         var nowX = path[path.length - 1].x;
         var nowY = path[path.length - 1].y;
         while (!found) {
-            
+
         }
         return found;
     }
-    
+
     function findPathBetweenRooms(map, room1, room2) {
         var pathFound = false;
         var path = [];
@@ -1029,15 +1114,15 @@
             }
         }
     }
-    
+
     MapUtils.getDistance = function(x1, y1, x2, y2) {
         return Math.sqrt(Math.pow(x1 - x2, 2) + Math.pow(y1 - y2, 2));
     }
-    
+
     genMapRoomsRoguelike = function(width, height) {
         var map = initMaze(width, height);
         var rooms = createRoomsPercentage(map);
-        
+
         var connectedRooms = [];
         // start to connect all rooms
         while (rooms.length > 0) {
@@ -1055,18 +1140,18 @@
                     candidate = rooms[i];
                 }
             }
-            
+
         }
         return map;
     }
-    
+
     MapUtils.generateMapData = function(genMapFunction, width, height) {
         var mapRaw = genMapFunction(width, height);
         var mapPixel = genMapToMap(mapRaw);
         //return mapPixel;
         return addWall(mapPixel);
     }
-    
+
     MapUtils.getNearbyCoordinate = function(x, y, index) {
         var result = new Coordinate(x, y);
         switch (index) { // check path clock-wise
@@ -1101,7 +1186,7 @@
         }
         return result;
     }
-    
+
     // find route between two events (not very useful...put away by now)
     MapUtils.findShortestRoute = function(x1, y1, x2, y2) {
         var mapData = $gameVariables[$gameMap.mapId()].mapData;
@@ -1122,7 +1207,7 @@
                 var nextCoordinate = getNearbyCoordinate(curX, curY, i);
                 nextX = nextCoordinate.x;
                 nextY = nextCoordinate.y;
-                if (mapData[nextX][nextY].originalTile == FLOOR 
+                if (mapData[nextX][nextY].originalTile == FLOOR
                     && !explored.includes(mapData[nextX][nextY])
                     && !path.includes(mapData[nextX][nextY])) {
                     hasPath = true;
@@ -1173,14 +1258,14 @@
         }
         return path;
     }
-    
+
     MapUtils.isNearBy = function(x1, y1, x2, y2) {
         if (Math.abs(x1 - x2) < 2 && Math.abs(y1 - y2) < 2) {
             return true;
         }
         return false;
     }
-    
+
     MapUtils.setupNewMap = function(mapId) {
         // first load map
         console.log("first load map: " + mapId);
@@ -1192,7 +1277,7 @@
         $gameVariables[mapId].mapData = newMapData;
         $gameVariables[mapId].rmDataMap = $dataMap;
     }
-    
+
     //-----------------------------------------------------------------------------------
     // DataManager
     //
@@ -1206,7 +1291,7 @@
                     if (!$gameVariables[targetMapId].mapData) {
                         // first time assign data
                         MapUtils.setupNewMap(targetMapId);
-                        
+
                         // collect all FLOOR tiles
                         var mapVariable = $gameVariables[$gameMap.mapId()];
                         var targetMapData = $gameVariables[targetMapId].mapData;
@@ -1241,7 +1326,7 @@
                                 stairDownCreated++;
                             }
                         }
-                        
+
                         // connect upper stairs
                         for (var i = 0; i < mapVariable.stairList.length; i++) {
                             var toConnect = mapVariable.stairList[i];
@@ -1271,7 +1356,7 @@
                                     newStair.toY = toConnect.y;
                                     $gameVariables[targetMapId].stairList.push(newStair);
                                     targetMapData[newStair.x][newStair.y].decorate2 = upStair;
-                                    
+
                                     toConnect.toMapId = targetMapId;
                                     toConnect.toX = newStair.x;
                                     toConnect.toY = newStair.y;
@@ -1287,6 +1372,7 @@
                             }
                         }
                         $gamePlayer.reserveTransfer(targetMapId, nowStair.toX, nowStair.toY, 0, 2);
+                        MapUtils.transferNearbyMobs($gameMap.mapId(), targetMapId, nowStair.x, nowStair.y, nowStair.toX, nowStair.toY);
                         setTimeout('SceneManager.goto(Scene_Map);', 200);
                     } else if ($gameVariables[targetMapId].mapData) {
                         // assign map data here
@@ -1314,7 +1400,7 @@
             Scene_Boot.loadSystemImages();
         }
     };
-    
+
     //-----------------------------------------------------------------------------------
     // Game_Player
     //
@@ -1344,10 +1430,10 @@
             TimeUtils.afterPlayerMoved();
         }
     };
-    
+
     //-----------------------------------------------------------------------------------
     // Game_CharacterBase
-    // 
+    //
     // Modify moveDiagonally(), so it can trigger diagonal events
     Game_CharacterBase.prototype.moveDiagonally = function(horz, vert) {
         this.setMovementSuccess(this.canPassDiagonally(this._x, this._y, horz, vert));
@@ -1371,14 +1457,14 @@
             this.checkEventTriggerTouchDiagonal(horz, vert);
         }
     };
-    
+
     // add check function for diagonal events
     Game_CharacterBase.prototype.checkEventTriggerTouchDiagonal = function(horz, vert) {
         var x2 = $gameMap.roundXWithDirection(this._x, horz);
         var y2 = $gameMap.roundYWithDirection(this._y, vert);
         this.checkEventTriggerTouch(x2, y2);
     };
-    
+
     // modify canPassDiagonally(), so character can move as long as target tile is empty
     Game_CharacterBase.prototype.canPassDiagonally = function(x, y, horz, vert) {
         var x2 = $gameMap.roundXWithDirection(x, horz);
@@ -1407,10 +1493,10 @@
         }
         return false;
     };
-    
+
     //-----------------------------------------------------------------------------------
     // Game_Map
-    // 
+    //
     // Modify isPassable() to fit map design
     Game_Map.prototype.isPassable = function(x, y, d) {
         // check if this map is generated
@@ -1439,7 +1525,7 @@
             return this.checkPassage(x, y, (1 << (d / 2 - 1)) & 0x0f);
         }
     }
-    
+
     // try to modify setupEvents, so we can create different type events
     Game_Map.prototype.setupEvents = function() {
         this._events = [];
@@ -1459,17 +1545,17 @@
         });
         this.refreshTileEvents();
     };
-    
+
     //-----------------------------------------------------------------------------------
     // Game_Mob
     //
     // The game object class for a mob (aggressive/passive), define mob status in
     // it. (HP/MP/attribute, etc)
-    
+
     function cloneObject(obj) {
         return JSON.parse(JSON.stringify(obj));
     }
-    
+
     newDataMapEvent = function(fromObj, id, x, y) {
         var newObj = cloneObject(fromObj);
         newObj.id = id;
@@ -1484,7 +1570,7 @@
 
     Game_Mob.prototype = Object.create(Game_Event.prototype);
     Game_Mob.prototype.constructor = Game_Mob;
-    
+
     Game_Mob.prototype.fromEvent = function(src, target) {
         target.mob = src.mob;
         target.awareDistance = src.awareDistance;
@@ -1492,14 +1578,14 @@
         target.x = src.x;
         target.y = src.y;
     }
-    
+
     Game_Mob.prototype.initStatus = function(event) {
         // NOTE: attribute name must be the same as Game_Actor
         event.mob = this.mob;
         event.awareDistance = 8;
         event.type = 'MOB';
     }
-    
+
     Game_Mob.prototype.updateDataMap = function() {
         for (var i = 0; i < $gameMap._events.length; i++) {
             if ($gameMap._events[i] == this) {
@@ -1523,23 +1609,9 @@
             // new mob instance from mobId
             this.mob = new Game_Enemy(mobId, x, y);
             // find empty space for new event
-            var emptyFound = false;
-            for (var i = 1; i < $dataMap.events.length; i++) {
-                if (!$dataMap.events[i]) {
-                    // found empty space to place new event
-                    emptyFound = true;
-                    eventId = i;
-                    $dataMap.events[i] = newDataMapEvent($gameVariables[0].templateEvents[0], eventId, x, y);
-                    this.initStatus($dataMap.events[i]);
-                    break;
-                }
-            }
-            if (!emptyFound) {
-                // add new event at the bottom of list
-                eventId = $dataMap.events.length;
-                $dataMap.events.push(newDataMapEvent($gameVariables[0].templateEvents[0], eventId, x, y));
-                Game_Mob.prototype.initStatus($dataMap.events[$dataMap.events.length-1]);
-            }
+            var eventId = MapUtils.findEmptyFromList($dataMap.events);
+            $dataMap.events[eventId] = newDataMapEvent($gameVariables[0].templateEvents[0], eventId, x, y);
+            this.initStatus($dataMap.events[eventId]);
             this.initStatus(this);
         }
         // store new events back to map variable
@@ -1547,7 +1619,7 @@
         Game_Event.prototype.initialize.call(this, $gameMap.mapId(), eventId);
         $gameMap._events[eventId] = this;
     };
-    
+
     Game_Mob.prototype.action = function() {
         // check if player is nearby
         if (Math.abs(this._x - $gamePlayer._x) < 2 && Math.abs(this._y - $gamePlayer._y) < 2) {
@@ -1558,11 +1630,11 @@
         } else {
             this.moveRandom();
         }
-        
+
         // store data back to $dataMap
         this.updateDataMap();
     }
-    
+
     // Override moveTowardCharacter() function so mobs can move diagonally
     Game_Mob.prototype.moveTowardCharacter = function(character) {
         var mapData = $gameVariables[$gameMap.mapId()].mapData;
@@ -1620,7 +1692,7 @@
         }
         return this.isMovementSucceeded();
     }
-    
+
     // Override moveRandom() function so mobs can move diagonally
     Game_Mob.prototype.moveRandom = function() {
         var moveType = Math.randomInt(2);
@@ -1634,12 +1706,12 @@
             }
         }
     }
-    
+
     // override this function, so mobs can pass through door/itemPiles
     Game_Mob.prototype.isCollidedWithEvents = function(x, y) {
         return Game_CharacterBase.prototype.isCollidedWithEvents.call(this, x, y);
     };
-    
+
     //-----------------------------------------------------------------------------------
     // Game_Door
     //
@@ -1650,20 +1722,20 @@
 
     Game_Door.prototype = Object.create(Game_Event.prototype);
     Game_Door.prototype.constructor = Game_Door;
-    
+
     Game_Door.prototype.fromEvent = function(src, target) {
         target.type = src.type;
         target.x = src.x;
         target.y = src.y;
         target.status = src.status;
     }
-    
+
     Game_Door.prototype.initStatus = function(event) {
         event.type = 'DOOR';
         // 0: locked, 1: closed, 2: opened
         event.status = 1;
     }
-    
+
     Game_Door.prototype.updateDataMap = function() {
         for (var i = 0; i < $gameMap._events.length; i++) {
             if ($gameMap._events[i] == this) {
@@ -1696,7 +1768,7 @@
         Game_Event.prototype.initialize.call(this, $gameVariables[0].transferInfo.toMapId, eventId);
         $gameMap._events[eventId] = this;
     };
-    
+
     // try to open a door
     Game_Door.prototype.openDoor = function(character, x, y) {
         var events = $gameMap.eventsXy(x, y);
@@ -1732,7 +1804,7 @@
         SceneManager._scene.removeChild($gameVariables[0].messageWindow);
         return true;
     }
-    
+
     // try to close this door
     Game_Door.prototype.closeDoor = function(character, x, y) {
         var events = $gameMap.eventsXy(x, y);
@@ -1770,7 +1842,7 @@
         SceneManager._scene.removeChild($gameVariables[0].messageWindow);
         return true;
     }
-    
+
     //-----------------------------------------------------------------------------------
     // Input
     //
@@ -1792,7 +1864,7 @@
     Input.keyMapper[99] = 'Numpad3'; // player move right-down
     Input.keyMapper[51] = 'Numpad3';
     Input.keyMapper[34] = 'Numpad3';
-    
+
     // modify _signX & signY, so arrow key triggered only once when pressed.
     Input._signX = function() {
         var x = 0;
@@ -1817,7 +1889,7 @@
         }
         return y;
     };
-    
+
     // override this function for user-defined key detected (only on Scene_Map)
     Input._onKeyDown = function(event) {
         if (SceneManager._scene instanceof Scene_Map && !$gameMessage.isBusy()) {
@@ -1949,16 +2021,16 @@
             this._currentState[buttonName] = true;
         }
     };
-    
+
     //-----------------------------------------------------------------------------------
     // InputUtils
     //
     // Deal with user-defined move actions
-    
+
     InputUtils = function() {
         throw new Error('This is a static class');
     }
-    
+
     InputUtils.checkKeyPressed = function() {
         if (Input.isTriggered('Numpad7')) {
             $gamePlayer.moveDiagonally(4, 8);
@@ -1970,7 +2042,7 @@
             $gamePlayer.moveDiagonally(6, 2);
         }
     }
-    
+
     //-----------------------------------------------------------------------------------
     // TimeUtils
     //
@@ -1978,7 +2050,7 @@
     TimeUtils = function() {
         throw new Error('This is a static class');
     }
-    
+
     TimeUtils.afterPlayerMoved = function() {
         console.log("1 turn passed.");
         // update all mobs & items
@@ -2003,7 +2075,7 @@
         }
         playerAttacked = false;
         playerMoved = false;
-        
+
         if ($gameVariables[$gameMap.mapId()].generateRandom) {
             // only update maps in random layer
             MapUtils.drawMap($gameVariables[$gameMap.mapId()].mapData, $dataMap.data);
@@ -2019,7 +2091,7 @@
             scene.setupStatus();
         }
     }
-    
+
     //-----------------------------------------------------------------------------------
     // BattleUtils
     //
@@ -2027,7 +2099,7 @@
     BattleUtils = function() {
         throw new Error('This is a static class');
     }
-    
+
     BattleUtils.meleeAttack = function(src, target) {
         // TODO: need to implement attack damage formula
         var value = 10;
@@ -2050,7 +2122,7 @@
                 // NOTE: Do not remove it from $gameMap._events! will cause crash
                 $gameMap.eraseEvent(target._eventId);
                 // move dead mobs so it won't block the door
-                target.setPosition(0, 0);
+                target.setPosition(-10, -10);
                 $dataMap.events[target._eventId] = null;
             }
         }
@@ -2059,7 +2131,7 @@
             TimeUtils.afterPlayerMoved();
         }
     }
-    
+
     // energy recovery
     BattleUtils.playerUpdateTp = function(value) {
         if (value > 0) {
@@ -2071,7 +2143,7 @@
         }
         return false;
     }
-    
+
     //-----------------------------------------------------------------------------------
     // ItemUtils
     //
@@ -2079,7 +2151,7 @@
     ItemUtils = function() {
         throw new Error('This is a static class');
     }
-    
+
     ItemUtils.findMapItemPile = function(x, y) {
         for (var i in $gameVariables[$gameMap.mapId()].itemPileList) {
             var candidate = $gameVariables[$gameMap.mapId()].itemPileList[i];
@@ -2089,7 +2161,7 @@
         }
         return null;
     }
-    
+
     // itemType 0: item, 1: weapon, 2: armor
     ItemUtils.addItemToMap = function(x, y, itemType, id) {
         var itemPile = ItemUtils.findMapItemPile(x, y);
@@ -2111,7 +2183,7 @@
                 console.log("ItemUtils.addItemToMap ERROR: should not contain this type: %d", itemType);
         }
     }
-    
+
     ItemUtils.addItemToSet = function(toAdd, itemSet, weaponSet, armorSet) {
         var id = toAdd.id;
         if (DataManager.isItem(toAdd)) {
@@ -2122,7 +2194,7 @@
             armorSet[id] = (armorSet[id]) ? armorSet[id] + 1 : 1;
         }
     }
-    
+
     ItemUtils.checkAndRemoveEmptyItemPile = function() {
         for (var i in $gameVariables[$gameMap.mapId()].itemPileList) {
             var candidate = $gameVariables[$gameMap.mapId()].itemPileList[i];
@@ -2135,7 +2207,7 @@
             }
         }
     }
-    
+
     ItemUtils.addItemToItemPile = function(x, y, item) {
         var itemPile = ItemUtils.findMapItemPile(x, y);
         if (!itemPile) {
@@ -2144,7 +2216,7 @@
         }
         ItemUtils.addItemToSet(item, itemPile.items, itemPile.weapons, itemPile.armors);
     }
-    
+
     //-----------------------------------------------------------------------------------
     // Window_GetDropItemList
     //
@@ -2155,16 +2227,16 @@
 
     Window_GetDropItemList.prototype = Object.create(Window_ItemList.prototype);
     Window_GetDropItemList.prototype.constructor = Window_GetDropItemList;
-    
+
     Window_GetDropItemList.prototype.initialize = function(x, y, width, height) {
         Window_ItemList.prototype.initialize.call(this, x, y, width, height);
     };
-    
+
     // always return true, because every item can be got/dropped
     Window_GetDropItemList.prototype.isEnabled = function(item) {
         return true;
     };
-    
+
     //-----------------------------------------------------------------------------------
     // Scene_OnMapItem
     //
@@ -2185,12 +2257,12 @@
         this.tempItems = $gameParty._items;
         this.tempWeapons = $gameParty._weapons;
         this.tempArmors = $gameParty._armors;
-        
+
         $gameParty._items = itemPile.items;
         $gameParty._weapons = itemPile.weapons;
         $gameParty._armors = itemPile.armors;
     };
-    
+
     // override this function so it creates Window_GetDropItemList window
     Scene_OnMapItem.prototype.createItemWindow = function() {
         var wy = this._categoryWindow.y + this._categoryWindow.height;
@@ -2202,7 +2274,7 @@
         this.addWindow(this._itemWindow);
         this._categoryWindow.setItemWindow(this._itemWindow);
     };
-    
+
     // override this, so we can change $gameParty items back when popScene
     Scene_OnMapItem.prototype.createCategoryWindow = function() {
         this._categoryWindow = new Window_ItemCategory();
@@ -2213,13 +2285,13 @@
         this._categoryWindow.setHandler('cancel', this.popSceneAndRestoreItems.bind(this));
         this.addWindow(this._categoryWindow);
     };
-    
+
     // override this to show hint message
     Scene_OnMapItem.prototype.onItemCancel = function() {
         Scene_Item.prototype.onItemCancel.call(this);
         this._helpWindow.drawTextEx('請選擇要撿起的物品.', 0, 0);
     }
-    
+
     Scene_OnMapItem.prototype.popSceneAndRestoreItems = function() {
         // restore $gameParty items
         $gameParty._items = this.tempItems;
@@ -2230,7 +2302,7 @@
             setTimeout('TimeUtils.afterPlayerMoved();', 100);
         }
     }
-    
+
     Scene_OnMapItem.prototype.onItemOk = function() {
         $gameParty.setLastItem(this.item());
         if (this.item()) {
@@ -2245,7 +2317,7 @@
         this._itemWindow.refresh();
         this._itemWindow.activate();
     };
-    
+
     //-----------------------------------------------------------------------------------
     // Scene_DropItem
     //
@@ -2262,7 +2334,7 @@
         // indicates if player really moved
         this.moved = false;
     };
-    
+
     // override this function so it creates Window_GetDropItemList window
     Scene_DropItem.prototype.createItemWindow = function() {
         var wy = this._categoryWindow.y + this._categoryWindow.height;
@@ -2274,7 +2346,7 @@
         this.addWindow(this._itemWindow);
         this._categoryWindow.setItemWindow(this._itemWindow);
     };
-    
+
     // override this to show hint message
     Scene_DropItem.prototype.createCategoryWindow = function() {
         this._categoryWindow = new Window_ItemCategory();
@@ -2285,13 +2357,13 @@
         this._categoryWindow.setHandler('cancel', this.popScene.bind(this));
         this.addWindow(this._categoryWindow);
     };
-    
+
     // override this to show hint message
     Scene_DropItem.prototype.onItemCancel = function() {
         Scene_Item.prototype.onItemCancel.call(this);
         this._helpWindow.drawTextEx('請選擇要丟下的物品.', 0, 0);
     }
-    
+
     Scene_DropItem.prototype.onItemOk = function() {
         $gameParty.setLastItem(this.item());
         if (this.item()) {
@@ -2304,14 +2376,14 @@
         this._itemWindow.refresh();
         this._itemWindow.activate();
     };
-    
+
     Scene_DropItem.prototype.popScene = function() {
         Scene_Item.prototype.popScene.call(this);
         if (this.moved) {
             setTimeout('TimeUtils.afterPlayerMoved();', 100);
         }
     }
-    
+
     //-----------------------------------------------------------------------------------
     // Scene_Item
     //
