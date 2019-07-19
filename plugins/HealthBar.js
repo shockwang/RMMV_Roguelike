@@ -43,6 +43,16 @@
         this.refresh();
     };
     
+    My_Window.prototype.drawGameTime = function(x, y) {
+        this.changeTextColor(this.systemColor());
+        var length = this.textWidth("T:");
+        this.drawText("T:", x, y, length);
+        this.resetTextColor();
+        var value = Math.round($gameVariables[0].gameTime / $gameVariables[0].gameTimeAmp);
+        length = this.textWidth(value);
+        this.drawText(value, x + 30, y, length, 'right');
+    }
+    
     Window_Base.prototype.drawActorLevel = function(actor, x, y) {
         this.changeTextColor(this.systemColor());
         this.drawText(TextManager.levelA, x, y, 48);
@@ -50,23 +60,30 @@
         this.drawText(actor.level, x + 20, y, 36, 'right');
     };
 
-My_Window.prototype.refresh = function(){
-    this.contents.clear();
-    var actor = $gameParty.leader();
-    var offset = 0;
-    var width = this.textWidth(actor.name());
-    this.drawActorName(actor, offset, 0, width);
-    offset += width + 5;
-    this.drawActorLevel(actor, offset, 0, 60);
-    offset += 60;
-    this.drawActorHp(actor, offset, 0, 155);
-    offset += 160;
-    this.drawActorMp(actor, offset, 0, 155);
-    offset += 160;
-    this.drawActorTp(actor, offset, 0, 155);
-    offset += 160;
-    this.drawActorIcons(actor, offset, 0, 300);
-};
+    My_Window.prototype.refresh = function(){
+        this.contents.clear();
+        var actor = $gameParty.leader();
+        var offset = 0;
+        var width = this.textWidth(actor.name());
+        this.drawActorName(actor, offset, 0, width);
+        offset += width + 5;
+        this.drawActorLevel(actor, offset, 0, 60);
+        offset += 60;
+        this.drawActorHp(actor, offset, 0, 155);
+        offset += 160;
+        this.drawActorMp(actor, offset, 0, 155);
+        offset += 160;
+        this.drawActorTp(actor, offset, 0, 155);
+        offset += 160;
+        
+        if ($gameVariables[0]) {
+            var value = "T:" + Math.round($gameVariables[0].gameTime / $gameVariables[0].gameTimeAmp);
+            width = this.textWidth(value);
+            this.drawGameTime(offset, 0);
+            offset += width + 10;
+        }
+        //this.drawActorIcons(actor, offset, 0, 300);
+    };
 
     My_Window.prototype.windowWidth = function(){
     	//return 580;

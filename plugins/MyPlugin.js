@@ -64,13 +64,6 @@
         this.nowY = y;
     }
 
-    rawDataOld = [
-        ['C','C','C','C','C'],
-        ['C','W','F','F','C'],
-        ['C','W','F','F','C'],
-        ['C','W','F','F','C'],
-        ['C','C','C','C','C']
-    ];
     var FLOOR = '□';
     var CEILING = '■';
     var WALL = 'Ⅲ';
@@ -99,6 +92,18 @@
     var roomPercentage = 0.6;
 
     // ----------end of map constants----------
+    
+    // ----------start of game characters attributes setup
+    // mapping: atk, param(2) -> 力量
+    //          def, param(3) -> 體格
+    //          mat, param(4) -> 智力
+    //          mdf, param(5) -> 睿智
+    //          agi, param(6) -> 敏捷
+    //          luk, param(7) -> 運氣
+    //          hit, param(8) -> 護甲強度
+    //          eva, param(9) -> 魔法抗性
+    var attributeNum = 8;
+    //-----------end of game character attributes setup
 
     // TP designed for energy, attack/martial skills will decrease it, and will
     // auto recover when not doing attack actions
@@ -131,6 +136,9 @@
         $gameVariables[0].directionalFlag = false;
         $gameVariables[0].messageFlag = false;
         $gameVariables[0].messageWindow = null;
+        // define game time (counts * gameTimeAmp for possible future extends)
+        $gameVariables[0].gameTime = 0;
+        $gameVariables[0].gameTimeAmp = 100;
         $gameVariables[0].templateEvents = [];
         // monster template
         $gameVariables[0].templateEvents.push($dataMap.events[3]);
@@ -1762,7 +1770,6 @@
         }
         // store new events back to map variable
         $gameVariables[$gameVariables[0].transferInfo.toMapId].rmDataMap = $dataMap;
-        console.log("new door, mapId: %d", $gameVariables[0].transferInfo.toMapId);
         Game_Event.prototype.initialize.call(this, $gameVariables[0].transferInfo.toMapId, eventId);
         $gameMap._events[eventId] = this;
     };
@@ -2004,6 +2011,16 @@
                 $gameVariables[0].directionalFlag = true;
                 MapUtils.displayMessage('關哪個方向的門?');
                 break;
+            case 'i': // try to open inventory
+                if (Object.keys($gameParty._items).length == 0 && Object.keys($gameParty._weapons).length == 0
+                    && Object.keys($gameParty._armors).length == 0) {
+                    MapUtils.displayMessage("你的身上沒有任何物品.");
+                } else {
+                    SceneManager.push(Scene_Item);
+                }
+                break;
+            case 'W': case 'w': // open equipment window
+                SceneManager.push(Scene_Equip);
             }
         }
         if (this._shouldPreventDefault(event.keyCode)) {
@@ -2050,7 +2067,7 @@
     }
 
     TimeUtils.afterPlayerMoved = function() {
-        console.log("1 turn passed.");
+        $gameVariables[0].gameTime += $gameVariables[0].gameTimeAmp;
         // update all mobs & items
         for (var i = 0; i < $gameMap._events.length; i++) {
             if ($gameActors._data[1]._hp <= 0) {
@@ -2388,6 +2405,106 @@
     // override the useItem method, so it take turns
     Scene_Item.prototype.useItem = function() {
         Scene_ItemBase.prototype.useItem.call(this);
+        SceneManager.goto(Scene_Map);
+        setTimeout('TimeUtils.afterPlayerMoved();', 100);
+    };
+    
+    //-----------------------------------------------------------------------------------
+    // Game_BattlerBase
+    //
+    // override the param() method, so it can show our desired attributes
+    Game_BattlerBase.prototype.param = function(paramId) {
+        if (paramId < attributeNum) {
+            var value = this.paramBase(paramId) + this.paramPlus(paramId);
+            value *= this.paramRate(paramId) * this.paramBuffRate(paramId);
+            var maxValue = this.paramMax(paramId);
+            var minValue = this.paramMin(paramId);
+            return Math.round(value.clamp(minValue, maxValue));
+        } else {
+            return this.xparam(paramId - attributeNum) * 100;
+        }
+    };
+    
+    //-----------------------------------------------------------------------------------
+    // Window_Status
+    //
+    // override this to show our desired attributes name
+    Window_Status.prototype.drawParameters = function(x, y) {
+        var lineHeight = this.lineHeight();
+        for (var i = 0; i < attributeNum; i++) {
+            var paramId = i + 2;
+            var y2 = y + lineHeight * i;
+            this.changeTextColor(this.systemColor());
+            this.drawText(TextManager.param(paramId), x, y2, 160);
+            this.resetTextColor();
+            this.drawText(this._actor.param(paramId), x + 160, y2, 60, 'right');
+        }
+    };
+    
+    Window_Status.prototype.refresh = function() {
+        this.contents.clear();
+        if (this._actor) {
+            var lineHeight = this.lineHeight();
+            this.drawBlock1(lineHeight * 0);
+            this.drawHorzLine(lineHeight * 1);
+            this.drawBlock2(lineHeight * 2);
+            this.drawHorzLine(lineHeight * 6);
+            this.drawBlock3(lineHeight * 7);
+            this.drawHorzLine(lineHeight * (7 + attributeNum));
+            this.drawBlock4(lineHeight * (8 + attributeNum));
+        }
+    };
+    
+    //-----------------------------------------------------------------------------------
+    // Window_EquipStatus
+    //
+    // override this to show our desired attributes when equipping
+    Window_EquipStatus.prototype.refresh = function() {
+        this.contents.clear();
+        if (this._actor) {
+            this.drawActorName(this._actor, this.textPadding(), 0);
+            for (var i = 0; i < attributeNum; i++) {
+                this.drawItem(0, this.lineHeight() * (1 + i), 2 + i);
+            }
+        }
+    };
+    
+    Window_EquipStatus.prototype.numVisibleRows = function() {
+        return attributeNum + 1;
+    };
+    
+    //-----------------------------------------------------------------------------------
+    // Scene_Equip
+    // 
+    // override this to judge if player really changed equipment, then update time
+    Scene_Equip.prototype.onItemOk = function() {
+        SoundManager.playEquip();
+        this.actor().changeEquip(this._slotWindow.index(), this._itemWindow.item());
+        this._slotWindow.activate();
+        this._slotWindow.refresh();
+        this._itemWindow.deselect();
+        this._itemWindow.refresh();
+        this._statusWindow.refresh();
+        SceneManager.goto(Scene_Map);
+        setTimeout('TimeUtils.afterPlayerMoved();', 100);
+    };
+
+    Scene_Equip.prototype.commandOptimize = function() {
+        SoundManager.playEquip();
+        this.actor().optimizeEquipments();
+        this._statusWindow.refresh();
+        this._slotWindow.refresh();
+        this._commandWindow.activate();
+        SceneManager.goto(Scene_Map);
+        setTimeout('TimeUtils.afterPlayerMoved();', 100);
+    };
+
+    Scene_Equip.prototype.commandClear = function() {
+        SoundManager.playEquip();
+        this.actor().clearEquipments();
+        this._statusWindow.refresh();
+        this._slotWindow.refresh();
+        this._commandWindow.activate();
         SceneManager.goto(Scene_Map);
         setTimeout('TimeUtils.afterPlayerMoved();', 100);
     };
