@@ -585,7 +585,7 @@
         return events;
     }
     
-    function isTileAvailableForMob(mapId, x, y) {
+    MapUtils.isTileAvailableForMob = function(mapId, x, y) {
         var occupied = false;
         var exists = MapUtils.findEventsXyFromDataMap($gameVariables[mapId].rmDataMap, x, y);
         for (var i in exists) {
@@ -608,20 +608,20 @@
         }
         for (var i = 0; i < 8; i++) {
             var coordinate = MapUtils.getNearbyCoordinate(nowX, nowY, i);
-            var events = MapUtils.findEventsXyFromDataMap($dataMap, coordinate.x, coordinate.y);
+            var events = MapUtils.findEventsXyFromDataMap($gameVariables[nowMapId].rmDataMap, coordinate.x, coordinate.y);
             for (var id in events) {
                 if (events[id].type == 'MOB') {
                     var mobData = events[id];
                     // check for empty space, attempt to stand on the same relative location as player
                     var toCheck = MapUtils.getNearbyCoordinate(newX, newY, i);
                     var placeFound = false;
-                    if (isTileAvailableForMob(toMapId, toCheck.x, toCheck.y)) {
+                    if (MapUtils.isTileAvailableForMob(toMapId, toCheck.x, toCheck.y)) {
                         placeFound = true;
                     }
                     if (!placeFound) {
                         for (var j = 0; j < 8; j++) {
                             toCheck = MapUtils.getNearbyCoordinate(newX, newY, j);
-                            if (isTileAvailableForMob(toMapId, toCheck.x, toCheck.y)) {
+                            if (MapUtils.isTileAvailableForMob(toMapId, toCheck.x, toCheck.y)) {
                                 placeFound = true;
                                 break;
                             }
@@ -1283,6 +1283,28 @@
         $gameVariables[mapId].mapData = newMapData;
         $gameVariables[mapId].rmDataMap = $dataMap;
     }
+    
+    MapUtils.generateNewMapMobs = function(mapId) {
+        var floors = MapUtils.findMapDataFloor($gameVariables[mapId].mapData);
+        for (var id in floors) {
+            if (Math.random() <= 0.02) {
+                var floor = floors[id];
+                new Game_Mob(floor.x, floor.y, 1);
+            }
+        }
+    }
+    
+    MapUtils.findMapDataFloor = function(mapData) {
+        var floors = [];
+        for (var j = 0; j < mapData[0].length; j++) {
+            for (var i = 0; i < mapData.length; i++) {
+                if (mapData[i][j].originalTile == FLOOR) {
+                    floors.push(mapData[i][j]);
+                }
+            }
+        }
+        return floors;
+    }
 
     //-----------------------------------------------------------------------------------
     // DataManager
@@ -1295,20 +1317,14 @@
                 var targetMapId = ($gameVariables[0].transferInfo) ? $gameVariables[0].transferInfo.toMapId : $gameMap.mapId();
                 if ($gameVariables[targetMapId].generateRandom) {
                     if (!$gameVariables[targetMapId].mapData) {
+                        var nowMapId = $gameMap.mapId();
                         // first time assign data
                         MapUtils.setupNewMap(targetMapId);
 
                         // collect all FLOOR tiles
-                        var mapVariable = $gameVariables[$gameMap.mapId()];
+                        var mapVariable = $gameVariables[nowMapId];
                         var targetMapData = $gameVariables[targetMapId].mapData;
-                        var floors = [];
-                        for (var j = 0; j < targetMapData[0].length; j++) {
-                            for (var i = 0; i < targetMapData.length; i++) {
-                                if (targetMapData[i][j].originalTile == FLOOR) {
-                                    floors.push(targetMapData[i][j]);
-                                }
-                            }
-                        }
+                        var floors = MapUtils.findMapDataFloor(targetMapData);
                         // create down stairs
                         var stairDownCreated = 0;
                         while (stairDownCreated < $gameVariables[targetMapId].stairDownNum) {
@@ -1357,7 +1373,7 @@
                                     newStair.type = 0;
                                     newStair.x = candidate.x;
                                     newStair.y = candidate.y;
-                                    newStair.toMapId = $gameMap.mapId();
+                                    newStair.toMapId = nowMapId;
                                     newStair.toX = toConnect.x;
                                     newStair.toY = toConnect.y;
                                     $gameVariables[targetMapId].stairList.push(newStair);
@@ -1370,16 +1386,27 @@
                             }
                         }
                         var nowStair = null;
-                        for (var i = 0; i < $gameVariables[$gameMap.mapId()].stairList.length; i++) {
-                            var candidate = $gameVariables[$gameMap.mapId()].stairList[i];
+                        for (var i = 0; i < $gameVariables[nowMapId].stairList.length; i++) {
+                            var candidate = $gameVariables[nowMapId].stairList[i];
                             if (candidate.x == $gameVariables[0].transferInfo.nowX && candidate.y == $gameVariables[0].transferInfo.nowY) {
                                 nowStair = candidate;
                                 break;
                             }
                         }
                         $gamePlayer.reserveTransfer(targetMapId, nowStair.toX, nowStair.toY, 0, 2);
-                        MapUtils.transferNearbyMobs($gameMap.mapId(), targetMapId, nowStair.x, nowStair.y, nowStair.toX, nowStair.toY);
-                        setTimeout('SceneManager.goto(Scene_Map);', 200);
+                        MapUtils.transferNearbyMobs(nowMapId, targetMapId, nowStair.x, nowStair.y, nowStair.toX, nowStair.toY);
+                        
+                        // new mobs in map
+                        var setupEvents = function(nowMapId, targetMapId, nowStair) {
+                            if (SceneManager.isCurrentSceneStarted()) {
+                                MapUtils.generateNewMapMobs(targetMapId);
+                                MapUtils.drawEvents($gameVariables[targetMapId].mapData);
+                                SceneManager.goto(Scene_Map);
+                            } else {
+                                setTimeout(setupEvents.bind(null, nowMapId, targetMapId, nowStair), 100);
+                            }
+                        }
+                        setTimeout(setupEvents.bind(null, nowMapId, targetMapId, nowStair), 100);
                     } else if ($gameVariables[targetMapId].mapData) {
                         // assign map data here
                         console.log("assign map data.");
@@ -1585,7 +1612,7 @@
         target.y = src.y;
     }
 
-    Game_Mob.prototype.initStatus = function(event) {
+    Game_Mob.prototype.initStatus = function(event, mobId) {
         // NOTE: attribute name must be the same as Game_Actor
         event.mob = this.mob;
         event.awareDistance = 8;
@@ -1617,12 +1644,18 @@
             // find empty space for new event
             var eventId = MapUtils.findEmptyFromList($dataMap.events);
             $dataMap.events[eventId] = newDataMapEvent($gameVariables[0].templateEvents[0], eventId, x, y);
-            this.initStatus($dataMap.events[eventId]);
-            this.initStatus(this);
+            this.initStatus($dataMap.events[eventId], mobId);
+            this.initStatus(this, mobId);
         }
         // store new events back to map variable
         $gameVariables[$gameMap.mapId()].rmDataMap = $dataMap;
         Game_Event.prototype.initialize.call(this, $gameMap.mapId(), eventId);
+        // setup images
+        switch (mobId) {
+        case 1: // Bat
+            this.setImage('Monster', 0);
+            break;
+        }
         $gameMap._events[eventId] = this;
     };
 
@@ -1951,7 +1984,7 @@
                 return;
             }
             switch (event.key) {
-            case '.': case 'Numpad5': // wait action
+            case '.': case '5': // wait action
                 TimeUtils.afterPlayerMoved();
                 break;
             case '>': // try to go down
@@ -2068,9 +2101,22 @@
 
     TimeUtils.afterPlayerMoved = function() {
         $gameVariables[0].gameTime += $gameVariables[0].gameTimeAmp;
+        // TODO: implement mob/player status generating mechanism
+        var player = $gameActors._data[1];
+        if ($gameVariables[0].gameTime / $gameVariables[0].gameTimeAmp % 20 == 0) {
+            // regenerate HP
+            var regenValue = Math.round(1 + player.param(3) / 3);
+            regenValue = getRandomIntRange(1, regenValue);
+            $gameActors._data[1].gainHp(regenValue);
+            
+            // regenerate MP
+            regenValue = Math.round(1 + player.param(5) / 3);
+            regenValue = getRandomIntRange(1, regenValue);
+            $gameActors._data[1].gainMp(regenValue);
+        }
         // update all mobs & items
         for (var i = 0; i < $gameMap._events.length; i++) {
-            if ($gameActors._data[1]._hp <= 0) {
+            if (player._hp <= 0) {
                 // player died, stop mob action
                 break;
             }
@@ -2078,15 +2124,15 @@
             if (!event || event._erased) {
                 continue;
             }
-            if (event instanceof Game_Mob) {
+            if (event.type == 'MOB') {
                 event.action();
             }
         }
         // deal with energy calculation
         if (!playerAttacked && !playerMoved) {
-            BattleUtils.playerUpdateTp(6);
+            player.gainTp(6);
         } else if (!playerAttacked) {
-            BattleUtils.playerUpdateTp(3);
+            player.gainTp(3);
         }
         playerAttacked = false;
         playerMoved = false;
@@ -2116,13 +2162,21 @@
     }
 
     BattleUtils.meleeAttack = function(src, target) {
-        // TODO: need to implement attack damage formula
-        var value = 10;
+        var realSrc = (src == $gamePlayer) ? $gameActors._data[1] : src.mob;
         var realTarget = (target == $gamePlayer) ? $gameActors._data[1] : target.mob;
-        if (src == $gamePlayer && !BattleUtils.playerUpdateTp(-5)) {
-            MapUtils.displayMessage('你氣喘吁吁, 沒有足夠的體力攻擊!');
-            return;
+        if (src == $gamePlayer) {
+            if (realSrc._tp < 5) {
+                MapUtils.displayMessage('你氣喘吁吁, 沒有足夠的體力攻擊!');
+                return;
+            } else {
+                realSrc.gainTp(-5);
+            }
         }
+        // TODO: need to implement attack damage formula
+        // calculate the damage
+        var value = Math.round(realSrc.param(2) - realTarget.param(8) / 3);
+        value = (value > 0) ? value : 1;
+        value = getRandomIntRange(1, value);
         $gameSystem.createPopup(0, "", "\\c[02]  -" + value, target);
         realTarget._hp -= value;
         // hit animation
@@ -2130,14 +2184,17 @@
         if (realTarget._hp <= 0) {
             if (target == $gamePlayer) {
                 // TODO: implement player dead mechanism
-                MapUtils.displayMessage("\\N[1]不幸被殭屍咬死了...");
                 SceneManager.goto(Scene_Gameover);
             } else {
+                realSrc.gainExp(realTarget.exp());
                 // remove target event from $dataMap.events
                 // NOTE: Do not remove it from $gameMap._events! will cause crash
                 $gameMap.eraseEvent(target._eventId);
                 // move dead mobs so it won't block the door
-                target.setPosition(-10, -10);
+                var moveMob = function(target) {
+                    target.setPosition(-10, -10);
+                }
+                setTimeout(moveMob.bind(null, target), 100);
                 $dataMap.events[target._eventId] = null;
             }
         }
@@ -2145,18 +2202,6 @@
             playerAttacked = true;
             TimeUtils.afterPlayerMoved();
         }
-    }
-
-    // energy recovery
-    BattleUtils.playerUpdateTp = function(value) {
-        if (value > 0) {
-            $gameActors._data[1]._tp = ($gameActors._data[1]._tp + value < 100) ? $gameActors._data[1]._tp + value : 100;
-            return true;
-        } else if ($gameActors._data[1]._tp + value >= 0) {
-            $gameActors._data[1]._tp += value;
-            return true;
-        }
-        return false;
     }
 
     //-----------------------------------------------------------------------------------
