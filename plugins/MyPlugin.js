@@ -102,13 +102,15 @@
     //          luk, param(7) -> 運氣
     //          hit, param(8) -> 護甲強度
     //          eva, param(9) -> 魔法抗性
-    var attributeNum = 8;
+    //          cri, param(10) -> 武器威力
+    var attributeNum = 9;
     //-----------end of game character attributes setup
 
     // TP designed for energy, attack/martial skills will decrease it, and will
     // auto recover when not doing attack actions
     var playerAttacked = false;
     var playerMoved = false;
+    var playerDashed = false;
 
     //-----------------------------------------------------------------------------------
     // MapUtils
@@ -128,6 +130,9 @@
             $gameVariables[i+1].generateRandom = true;
         }
         $gameVariables[5].stairDownNum = 0;
+        
+        // game system setup
+        $dataSystem.terms.params.push("武器威力"); // this one should be param(10)
 
         // initialize $gameVariables[0] for multiple usage
         $gameVariables[0] = {};
@@ -139,6 +144,8 @@
         // define game time (counts * gameTimeAmp for possible future extends)
         $gameVariables[0].gameTime = 0;
         $gameVariables[0].gameTimeAmp = 100;
+        // define player skills exp
+        $gameVariables[0].playerSkillExp = {};
         $gameVariables[0].templateEvents = [];
         // monster template
         $gameVariables[0].templateEvents.push($dataMap.events[3]);
@@ -552,6 +559,14 @@
             // wait until map is fully loaded
             var checkMapReady = function() {
                 if (SceneManager.isCurrentSceneStarted()) {
+                    // update mobs time at target layer
+                    // TODO: implement mobs recovery mechanism
+                    for (var id in $gameMap.events()) {
+                        var event = $gameMap.events()[id];
+                        if (event instanceof Game_Mob) {
+                            event.mob.lastTimeMoved = $gameVariables[0].gameTime;
+                        }
+                    }
                     $gameScreen.startFadeIn(1);
                     TimeUtils.afterPlayerMoved();
                 } else {
@@ -1440,27 +1455,49 @@
     // handle map change when player moved
     Game_Player.prototype.moveStraight = function(d) {
         var moved = false;
+        var timeSpent = $gameVariables[0].gameTimeAmp;
         if (this.canPass(this.x, this.y, d)) {
+            if (Input.isPressed('shift')) {
+                if ($gameActors._data[1]._tp < 10) {
+                    MapUtils.displayMessage('你跑不動了...');
+                    return;
+                } else {
+                    $gameActors._data[1].gainTp(-10);
+                    timeSpent /= 2;
+                    playerDashed = true;
+                }
+            }
             this._followers.updateMove();
             moved = true;
         }
         Game_Character.prototype.moveStraight.call(this, d);
         if (moved) {
             playerMoved = true;
-            TimeUtils.afterPlayerMoved();
+            TimeUtils.afterPlayerMoved(timeSpent);
         }
     };
 
     Game_Player.prototype.moveDiagonally = function(horz, vert) {
         var moved = false;
+        var timeSpent = $gameVariables[0].gameTimeAmp;
         if (this.canPassDiagonally(this.x, this.y, horz, vert)) {
+            if (Input.isPressed('shift')) {
+                if ($gameActors._data[1]._tp < 10) {
+                    MapUtils.displayMessage('你跑不動了...');
+                    return;
+                } else {
+                    $gameActors._data[1].gainTp(-10);
+                    timeSpent /= 2;
+                    playerDashed = true;
+                }
+            }
             this._followers.updateMove();
             moved = true;
         }
         Game_Character.prototype.moveDiagonally.call(this, horz, vert);
         if (moved) {
             playerMoved = true;
-            TimeUtils.afterPlayerMoved();
+            TimeUtils.afterPlayerMoved(timeSpent);
         }
     };
 
@@ -2099,20 +2136,24 @@
         throw new Error('This is a static class');
     }
 
-    TimeUtils.afterPlayerMoved = function() {
-        $gameVariables[0].gameTime += $gameVariables[0].gameTimeAmp;
-        // TODO: implement mob/player status generating mechanism
+    TimeUtils.afterPlayerMoved = function(timeSpent) {
         var player = $gameActors._data[1];
+        player.lastTimeMoved += timeSpent;
+        if (!timeSpent) {
+            timeSpent = $gameVariables[0].gameTimeAmp;
+        }
+        $gameVariables[0].gameTime += timeSpent;
+        // TODO: implement mob/player status generating mechanism
         if ($gameVariables[0].gameTime / $gameVariables[0].gameTimeAmp % 20 == 0) {
             // regenerate HP
             var regenValue = Math.round(1 + player.param(3) / 3);
             regenValue = getRandomIntRange(1, regenValue);
-            $gameActors._data[1].gainHp(regenValue);
+            player.gainHp(regenValue);
             
             // regenerate MP
             regenValue = Math.round(1 + player.param(5) / 3);
             regenValue = getRandomIntRange(1, regenValue);
-            $gameActors._data[1].gainMp(regenValue);
+            player.gainMp(regenValue);
         }
         // update all mobs & items
         for (var i = 0; i < $gameMap._events.length; i++) {
@@ -2125,17 +2166,25 @@
                 continue;
             }
             if (event.type == 'MOB') {
-                event.action();
+                // TODO: implement mob action speed
+                while (event.mob.lastTimeMoved + $gameVariables[0].gameTimeAmp <= $gameVariables[0].gameTime) {
+                    event.mob.lastTimeMoved += $gameVariables[0].gameTimeAmp;
+                    event.action();
+                }
             }
         }
         // deal with energy calculation
-        if (!playerAttacked && !playerMoved) {
-            player.gainTp(6);
-        } else if (!playerAttacked) {
+        if (playerDashed || playerAttacked) {
+            // huge movement, do nothing
+        } else if (playerMoved) {
             player.gainTp(3);
+        } else {
+            // player rest
+            player.gainTp(6);
         }
         playerAttacked = false;
         playerMoved = false;
+        playerDashed = false;
 
         if ($gameVariables[$gameMap.mapId()].generateRandom) {
             // only update maps in random layer
@@ -2174,7 +2223,34 @@
         }
         // TODO: need to implement attack damage formula
         // calculate the damage
-        var value = Math.round(realSrc.param(2) - realTarget.param(8) / 3);
+        var skillBonus = 0;
+        if (realSrc._equips && realSrc._equips[0].itemId() != 0 && realSrc._skills) {
+            var weapon = $dataWeapons[realSrc._equips[0].itemId()];
+            switch (weapon.wtypeId) {
+            case 2: // sword
+                for (var id in realSrc._skills) {
+                    var skillId = realSrc._skills[id];
+                    if ($dataSkills[skillId].name == "劍術") {
+                        var prop = JSON.parse($dataSkills[skillId].note);
+                        if (!$gameVariables[0].playerSkillExp[skillId]) {
+                            $gameVariables[0].playerSkillExp[skillId] = {};
+                            $gameVariables[0].playerSkillExp[skillId].lv = 1;
+                            $gameVariables[0].playerSkillExp[skillId].exp = 1;
+                        }
+                        var index = $gameVariables[0].playerSkillExp[skillId].lv - 1;
+                        skillBonus = prop[index].atk;
+                        $gameVariables[0].playerSkillExp[skillId].exp++;
+                        if (prop[index].levelUp != -1 && $gameVariables[0].playerSkillExp[skillId].exp >= prop[index].levelUp) {
+                            $gameMessage.add('你的' + $dataSkills[skillId].name + '更加熟練了!');
+                            $gameVariables[0].playerSkillExp[skillId].lv++;
+                            $gameVariables[0].playerSkillExp[skillId].exp = 0;
+                        }
+                    }
+                }
+                break;
+            }
+        }
+        var value = Math.round(realSrc.param(2) + realSrc.param(10) - realTarget.param(8));
         value = (value > 0) ? value : 1;
         value = getRandomIntRange(1, value);
         $gameSystem.createPopup(0, "", "\\c[02]  -" + value, target);
@@ -2459,15 +2535,21 @@
     //
     // override the param() method, so it can show our desired attributes
     Game_BattlerBase.prototype.param = function(paramId) {
-        if (paramId < attributeNum) {
+        if (paramId < 8) {
             var value = this.paramBase(paramId) + this.paramPlus(paramId);
             value *= this.paramRate(paramId) * this.paramBuffRate(paramId);
             var maxValue = this.paramMax(paramId);
             var minValue = this.paramMin(paramId);
             return Math.round(value.clamp(minValue, maxValue));
         } else {
-            return this.xparam(paramId - attributeNum) * 100;
+            return this.xparam(paramId - 8) * 100;
         }
+    };
+    
+    // add properties to Player/Mobs
+    Game_BattlerBase.prototype.initialize = function() {
+        this.initMembers();
+        this.lastTimeMoved = ($gameVariables[0] && $gameVariables[0].gameTime) ? $gameVariables[0].gameTime : 0;
     };
     
     //-----------------------------------------------------------------------------------
@@ -2552,5 +2634,20 @@
         this._commandWindow.activate();
         SceneManager.goto(Scene_Map);
         setTimeout('TimeUtils.afterPlayerMoved();', 100);
+    };
+    
+    //-----------------------------------------------------------------------------------
+    // Window_SkillList
+    //
+    // override this to show player skill lv
+    Window_SkillList.prototype.drawItemName = function(item, x, y, width) {
+        width = width || 312;
+        if (item) {
+            var skillLv = ($gameVariables[0].playerSkillExp[item.id]) ? $gameVariables[0].playerSkillExp[item.id].lv : 1;
+            var iconBoxWidth = Window_Base._iconWidth + 4;
+            this.resetTextColor();
+            this.drawIcon(item.iconIndex, x + 2, y + 2);
+            this.drawText(item.name+'Lv'+skillLv, x + iconBoxWidth, y, width - iconBoxWidth);
+        }
     };
 })();
