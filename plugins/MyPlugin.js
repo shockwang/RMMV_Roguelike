@@ -39,6 +39,7 @@
         this.items = {};
         this.weapons = {};
         this.armors = {};
+        this.objectStack = [];
     }
 
     MapVariable = function(mapData, rmDataMap) {
@@ -79,6 +80,19 @@
 
     // item figures
     var bagIcon = 864;
+    var potionIcon = 867;
+    var scrollIcon = 851;
+    var shieldIcon = 906;
+    var bookIcon = 824;
+    var accessoryIcon = 892;
+    var helmetIcon = 920;
+    var armorIcon = 928;
+    var shirtIcon = 908;
+    var hatIcon = 923;
+    var foodIcon = 905;
+    
+    // weapon figures
+    var swordIcon = 896;
 
     // door figures
     var doorClosedIcon = 512;
@@ -144,8 +158,11 @@
         // define game time (counts * gameTimeAmp for possible future extends)
         $gameVariables[0].gameTime = 0;
         $gameVariables[0].gameTimeAmp = 100;
-        // define player skills exp
-        $gameVariables[0].playerSkillExp = {};
+        // define player attributes
+        $gameVariables[0].player = {};
+        $gameVariables[0].player.skillExp = {};
+        $gameVariables[0].player.nutrition = 900;
+        // initialize template events
         $gameVariables[0].templateEvents = [];
         // monster template
         $gameVariables[0].templateEvents.push($dataMap.events[3]);
@@ -500,7 +517,25 @@
             var itemPile = $gameVariables[$gameMap.mapId()].itemPileList[i];
             if (mapData[itemPile.x][itemPile.y].isVisible) {
                 var index = itemOffset + itemPile.y * mapData.length + itemPile.x;
-                mapArray[index] = bagIcon;
+                var icon;
+                var prop = JSON.parse(itemPile.objectStack[itemPile.objectStack.length - 1].note);
+                switch (prop.type) {
+                    // icon for items
+                    case 'POTION': icon = potionIcon; break;
+                    case 'SCROLL': icon = scrollIcon; break;
+                    case 'SHIELD': icon = shieldIcon; break;
+                    case 'BOOK': icon = bookIcon; break;
+                    case 'ACCESSORY': icon = accessoryIcon; break;
+                    case 'HELMET': icon = helmetIcon; break;
+                    case 'ARMOR': icon = armorIcon; break;
+                    case 'SHIRT': icon = shirtIcon; break;
+                    case 'HAT': icon = hatIcon; break;
+                    case 'FOOD': icon = foodIcon; break;
+                    // icon for weapons
+                    case 'WEAPON_SWORD': icon = swordIcon; break;
+                    default: icon = bagIcon; break;
+                }
+                mapArray[index] = icon;
             }
         }
 
@@ -583,9 +618,6 @@
                 MapUtils.transferNearbyMobs($gameMap.mapId(), stair.toMapId, stair.x, stair.y, stair.toX, stair.toY);
                 $gamePlayer.reserveTransfer(stair.toMapId, stair.toX, stair.toY, 0, 2);
             }
-            
-            // transfer nearby mobs
-            
         }
     }
     
@@ -607,6 +639,10 @@
             if (exists[i].type == 'MOB' || (exists[i].type == 'DOOR' && exists[i].status != 2)) {
                 occupied = true;
             }
+        }
+        // check if player occupied
+        if (mapId == $gameMap.mapId() && $gamePlayer._x == x && $gamePlayer._y == y) {
+            occupied = true;
         }
         var tileAvailable = false;
         if (MapUtils.isTilePassable($gameVariables[mapId].mapData[x][y].originalTile)) {
@@ -1304,7 +1340,9 @@
         for (var id in floors) {
             if (Math.random() <= 0.02) {
                 var floor = floors[id];
-                new Game_Mob(floor.x, floor.y, 1);
+                if (MapUtils.isTileAvailableForMob(mapId, floor.x, floor.y)) {
+                    new Game_Mob(floor.x, floor.y, 1);
+                }
             }
         }
     }
@@ -2221,7 +2259,6 @@
                 realSrc.gainTp(-5);
             }
         }
-        // TODO: need to implement attack damage formula
         // calculate the damage
         var skillBonus = 0;
         if (realSrc._equips && realSrc._equips[0].itemId() != 0 && realSrc._skills) {
@@ -2232,35 +2269,36 @@
                     var skillId = realSrc._skills[id];
                     if ($dataSkills[skillId].name == "劍術") {
                         var prop = JSON.parse($dataSkills[skillId].note);
-                        if (!$gameVariables[0].playerSkillExp[skillId]) {
-                            $gameVariables[0].playerSkillExp[skillId] = {};
-                            $gameVariables[0].playerSkillExp[skillId].lv = 1;
-                            $gameVariables[0].playerSkillExp[skillId].exp = 1;
+                        if (!$gameVariables[0].player.skillExp[skillId]) {
+                            $gameVariables[0].player.skillExp[skillId] = {};
+                            $gameVariables[0].player.skillExp[skillId].lv = 1;
+                            $gameVariables[0].player.skillExp[skillId].exp = 1;
                         }
-                        var index = $gameVariables[0].playerSkillExp[skillId].lv - 1;
+                        var index = $gameVariables[0].player.skillExp[skillId].lv - 1;
                         skillBonus = prop[index].atk;
-                        $gameVariables[0].playerSkillExp[skillId].exp++;
-                        if (prop[index].levelUp != -1 && $gameVariables[0].playerSkillExp[skillId].exp >= prop[index].levelUp) {
+                        $gameVariables[0].player.skillExp[skillId].exp++;
+                        if (prop[index].levelUp != -1 && $gameVariables[0].player.skillExp[skillId].exp >= prop[index].levelUp) {
                             $gameMessage.add('你的' + $dataSkills[skillId].name + '更加熟練了!');
-                            $gameVariables[0].playerSkillExp[skillId].lv++;
-                            $gameVariables[0].playerSkillExp[skillId].exp = 0;
+                            $gameVariables[0].player.skillExp[skillId].lv++;
+                            $gameVariables[0].player.skillExp[skillId].exp = 0;
                         }
                     }
                 }
                 break;
             }
         }
-        var value = Math.round(realSrc.param(2) + realSrc.param(10) - realTarget.param(8));
-        value = (value > 0) ? value : 1;
-        value = getRandomIntRange(1, value);
-        $gameSystem.createPopup(0, "", "\\c[02]  -" + value, target);
+        var max = Math.round(realSrc.param(2) + realSrc.param(10) - realTarget.param(8));
+        max = (max > 0) ? max : 1;
+        var min = Math.round(max / 3);
+        min = (min > 0) ? min : 1;
+        var value = getRandomIntRange(min, max);
+        $gameSystem.createPopup(0, "", "\\c[18]  -" + value, target);
         realTarget._hp -= value;
         // hit animation
         target.requestAnimation(16);
         if (realTarget._hp <= 0) {
             if (target == $gamePlayer) {
-                // TODO: implement player dead mechanism
-                SceneManager.goto(Scene_Gameover);
+                BattleUtils.playerDied('你被' + realSrc.name() + '殺死了...');
             } else {
                 realSrc.gainExp(realTarget.exp());
                 // remove target event from $dataMap.events
@@ -2278,6 +2316,19 @@
             playerAttacked = true;
             TimeUtils.afterPlayerMoved();
         }
+    }
+    
+    BattleUtils.playerDied = function(msg) {
+        // TODO: implement statistics data/log
+        $gameMessage.add(msg);
+        var waitFunction = function() {
+            if ($gameMessage.isBusy()) {
+                setTimeout(waitFunction, 100);
+            } else {
+                SceneManager.goto(Scene_Gameover);
+            }
+        }
+        setTimeout(waitFunction, 100);
     }
 
     //-----------------------------------------------------------------------------------
@@ -2445,6 +2496,14 @@
             this.moved = true;
             // remove item from the ground
             $gameParty.loseItem(this.item(), 1);
+            // setup item stacks
+            var itemPile = ItemUtils.findMapItemPile($gamePlayer._x, $gamePlayer._y);
+            for (var i in itemPile.objectStack) {
+                if (itemPile.objectStack[i] == this.item()) {
+                    itemPile.objectStack.splice(i, 1);
+                    break;
+                }
+            }
             // setup item to 'temp', which means real $gameParty
             ItemUtils.addItemToSet(this.item(), this.tempItems, this.tempWeapons, this.tempArmors);
             // check if itemPile is empty
@@ -2508,6 +2567,9 @@
             $gameParty.loseItem(this.item(), 1);
             // setup item to itemPile on the ground
             ItemUtils.addItemToItemPile($gamePlayer._x, $gamePlayer._y, this.item());
+            // setup object stack
+            var itemPile = ItemUtils.findMapItemPile($gamePlayer._x, $gamePlayer._y);
+            itemPile.objectStack.push(this.item());
         }
         this._itemWindow.refresh();
         this._itemWindow.activate();
@@ -2643,7 +2705,7 @@
     Window_SkillList.prototype.drawItemName = function(item, x, y, width) {
         width = width || 312;
         if (item) {
-            var skillLv = ($gameVariables[0].playerSkillExp[item.id]) ? $gameVariables[0].playerSkillExp[item.id].lv : 1;
+            var skillLv = ($gameVariables[0].player.skillExp[item.id]) ? $gameVariables[0].player.skillExp[item.id].lv : 1;
             var iconBoxWidth = Window_Base._iconWidth + 4;
             this.resetTextColor();
             this.drawIcon(item.iconIndex, x + 2, y + 2);

@@ -59,6 +59,31 @@
         this.resetTextColor();
         this.drawText(actor.level, x + 20, y, 36, 'right');
     };
+    
+    // draw player status
+    Window_Base.prototype.drawActorStatus = function(actor, x, y) {
+        if (!$gameVariables[0]) {
+            return;
+        }
+        var status = '';
+        // deal with nutrition system
+        if ($gameVariables[0].player.nutrition > 1000) {
+            this.changeTextColor('#4169E1'); // royal blue
+            status += '過飽 ';
+        } else if ($gameVariables[0].player.nutrition < 150 && $gameVariables[0].player.nutrition >= 50) {
+            this.changeTextColor('#FFFF00'); // yellow
+            status += '飢餓 ';
+        } else if ($gameVariables[0].player.nutrition < 50 && $gameVariables[0].player.nutrition >= 0) {
+            this.changeTextColor('#FF8C00'); // dark orange
+            status += '虛弱 ';
+        } else if ($gameVariables[0].player.nutrition < 0 && $gameVariables[0].player.nutrition >= -200) {
+            this.changeTextColor('#FF0000'); // red
+            status += '昏厥 ';
+        }
+        var width = this.textWidth(status);
+        this.drawText(status, x, y, width);
+        var offset = x + width;
+    }
 
     My_Window.prototype.refresh = function(){
         this.contents.clear();
@@ -67,7 +92,7 @@
         var width = this.textWidth(actor.name());
         this.drawActorName(actor, offset, 0, width);
         offset += width + 5;
-        this.drawActorLevel(actor, offset, 0, 60);
+        this.drawActorLevel(actor, offset, 0);
         offset += 60;
         this.drawActorHp(actor, offset, 0, 155);
         offset += 160;
@@ -75,13 +100,14 @@
         offset += 160;
         this.drawActorTp(actor, offset, 0, 155);
         offset += 160;
-        
         if ($gameVariables[0]) {
             var value = "T:" + Math.round($gameVariables[0].gameTime / $gameVariables[0].gameTimeAmp);
             width = this.textWidth(value);
             this.drawGameTime(offset, 0);
             offset += width + 10;
         }
+        this.drawActorStatus(actor, offset, 0);
+        offset += 200;
         //this.drawActorIcons(actor, offset, 0, 300);
     };
 
