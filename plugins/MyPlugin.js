@@ -36,9 +36,9 @@
     ItemPile = function(x, y) {
         this.x = x;
         this.y = y;
-        this.items = {};
-        this.weapons = {};
-        this.armors = {};
+        this.items = [];
+        this.weapons = [];
+        this.armors = [];
         this.objectStack = [];
     }
 
@@ -104,6 +104,9 @@
     // room parameters
     var roomNum = 3, minRoomSize = 4, maxRoomSize = 16;
     var roomPercentage = 0.6;
+    
+    // word attached
+    var groundWord = '(地上)';
 
     // ----------end of map constants----------
     
@@ -157,7 +160,7 @@
         $gameVariables[0].messageWindow = null;
         // define game time (counts * gameTimeAmp for possible future extends)
         $gameVariables[0].gameTime = 0;
-        $gameVariables[0].gameTimeAmp = 100;
+        $gameVariables[0].gameTimeAmp = 10;
         // define player attributes
         $gameVariables[0].player = {};
         $gameVariables[0].player.skillExp = {};
@@ -692,6 +695,23 @@
                     }
                 }
             }
+        }
+    }
+    
+    MapUtils.refreshMap = function() {
+        if ($gameVariables[$gameMap.mapId()].generateRandom) {
+            // only update maps in random layer
+            MapUtils.drawMap($gameVariables[$gameMap.mapId()].mapData, $dataMap.data);
+            MapUtils.drawEvents($gameVariables[$gameMap.mapId()].mapData);
+            //setTimeout('SceneManager.goto(Scene_Map)', 250);
+            // try to use the following code, which make screen update not lag so much
+            var scene = SceneManager._scene;
+            scene.removeChild(scene._fadeSprite);
+            scene.removeChild(scene._mapNameWindow);
+            scene.removeChild(scene._windowLayer);
+            scene.removeChild(scene._spriteset);
+            scene.createDisplayObjects();
+            scene.setupStatus();
         }
     }
 
@@ -1825,6 +1845,25 @@
     Game_Mob.prototype.isCollidedWithEvents = function(x, y) {
         return Game_CharacterBase.prototype.isCollidedWithEvents.call(this, x, y);
     };
+    
+    
+    
+    // TODO: handle monster looting
+    Game_Mob.prototype.looting = function() {
+        var lootings = [];
+        switch (this.mob._enemyId) {
+        case 1: // Bat
+        }
+        // corpse left
+        var corpse = cloneObject($dataItems[11]);
+        corpse.name = this.mob.name() + "的" + corpse.name;
+        corpse.nutrition = 100;
+        lootings.push(corpse);
+        
+        for (var id in lootings) {
+            ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+        }
+    }
 
     //-----------------------------------------------------------------------------------
     // Game_Door
@@ -2059,7 +2098,7 @@
                 return;
             }
             switch (event.key) {
-            case '.': case '5': // wait action
+            case '.': case '5': case 'Clear': // wait action
                 TimeUtils.afterPlayerMoved();
                 break;
             case '>': // try to go down
@@ -2129,6 +2168,10 @@
                 break;
             case 'W': case 'w': // open equipment window
                 SceneManager.push(Scene_Equip);
+                break;
+            case 'e': // eat food
+                SceneManager.push(Scene_EatFood);
+                break;
             }
         }
         if (this._shouldPreventDefault(event.keyCode)) {
@@ -2176,67 +2219,56 @@
 
     TimeUtils.afterPlayerMoved = function(timeSpent) {
         var player = $gameActors._data[1];
-        player.lastTimeMoved += timeSpent;
         if (!timeSpent) {
             timeSpent = $gameVariables[0].gameTimeAmp;
         }
-        $gameVariables[0].gameTime += timeSpent;
-        // TODO: implement mob/player status generating mechanism
-        if ($gameVariables[0].gameTime / $gameVariables[0].gameTimeAmp % 20 == 0) {
-            // regenerate HP
-            var regenValue = Math.round(1 + player.param(3) / 3);
-            regenValue = getRandomIntRange(1, regenValue);
-            player.gainHp(regenValue);
-            
-            // regenerate MP
-            regenValue = Math.round(1 + player.param(5) / 3);
-            regenValue = getRandomIntRange(1, regenValue);
-            player.gainMp(regenValue);
-        }
-        // update all mobs & items
-        for (var i = 0; i < $gameMap._events.length; i++) {
-            if (player._hp <= 0) {
-                // player died, stop mob action
-                break;
+        player.lastTimeMoved += timeSpent;
+        while (timeSpent > 0) {
+            var updateTime = (timeSpent - $gameVariables[0].gameTimeAmp >= 0) ? $gameVariables[0].gameTimeAmp : timeSpent;
+            timeSpent -= $gameVariables[0].gameTimeAmp;
+            $gameVariables[0].gameTime += updateTime;
+            var gameTurn = Math.floor($gameVariables[0].gameTime / $gameVariables[0].gameTimeAmp);
+            if (gameTurn % 20 == 0) {
+                // regenerate HP
+                var regenValue = Math.round(1 + player.param(3) / 3);
+                regenValue = getRandomIntRange(1, regenValue);
+                player.gainHp(regenValue);
+                
+                // regenerate MP
+                regenValue = Math.round(1 + player.param(5) / 3);
+                regenValue = getRandomIntRange(1, regenValue);
+                player.gainMp(regenValue);
             }
-            var event = $gameMap._events[i];
-            if (!event || event._erased) {
-                continue;
-            }
-            if (event.type == 'MOB') {
-                // TODO: implement mob action speed
-                while (event.mob.lastTimeMoved + $gameVariables[0].gameTimeAmp <= $gameVariables[0].gameTime) {
+            // update all mobs & items
+            for (var i = 0; i < $gameMap._events.length; i++) {
+                if (player._hp <= 0) {
+                    // player died, stop mob action
+                    break;
+                }
+                var event = $gameMap._events[i];
+                if (!event || event._erased) {
+                    continue;
+                }
+                if (event.type == 'MOB' && $gameVariables[0].gameTime - event.mob.lastTimeMoved >= $gameVariables[0].gameTimeAmp) {
+                    // TODO: implement mob action speed
                     event.mob.lastTimeMoved += $gameVariables[0].gameTimeAmp;
                     event.action();
                 }
             }
-        }
-        // deal with energy calculation
-        if (playerDashed || playerAttacked) {
-            // huge movement, do nothing
-        } else if (playerMoved) {
-            player.gainTp(3);
-        } else {
-            // player rest
-            player.gainTp(6);
-        }
-        playerAttacked = false;
-        playerMoved = false;
-        playerDashed = false;
-
-        if ($gameVariables[$gameMap.mapId()].generateRandom) {
-            // only update maps in random layer
-            MapUtils.drawMap($gameVariables[$gameMap.mapId()].mapData, $dataMap.data);
-            MapUtils.drawEvents($gameVariables[$gameMap.mapId()].mapData);
-            //setTimeout('SceneManager.goto(Scene_Map)', 250);
-            // try to use the following code, which make screen update not lag so much
-            var scene = SceneManager._scene;
-            scene.removeChild(scene._fadeSprite);
-            scene.removeChild(scene._mapNameWindow);
-            scene.removeChild(scene._windowLayer);
-            scene.removeChild(scene._spriteset);
-            scene.createDisplayObjects();
-            scene.setupStatus();
+            // deal with energy calculation
+            if (playerDashed || playerAttacked) {
+                // huge movement, do nothing
+            } else if (playerMoved) {
+                player.gainTp(3);
+            } else {
+                // player rest
+                player.gainTp(6);
+            }
+            playerAttacked = false;
+            playerMoved = false;
+            playerDashed = false;
+            
+            MapUtils.refreshMap();
         }
     }
 
@@ -2300,6 +2332,7 @@
             if (target == $gamePlayer) {
                 BattleUtils.playerDied('你被' + realSrc.name() + '殺死了...');
             } else {
+                target.looting();
                 realSrc.gainExp(realTarget.exp());
                 // remove target event from $dataMap.events
                 // NOTE: Do not remove it from $gameMap._events! will cause crash
@@ -2358,13 +2391,13 @@
         }
         switch (itemType) {
             case 0:
-                itemPile.items[id] = (itemPile.items[id]) ? itemPile.items[id] + 1 : 1;
+                itemPile.items.push(cloneObject($dataItems[id]));
                 break;
             case 1:
-                itemPile.weapons[id] = (itemPile.weapons[id]) ? itemPile.weapons[id] + 1 : 1;
+                itemPile.weapons.push(cloneObject($dataWeapons[id]));
                 break;
             case 2:
-                itemPile.armors[id] = (itemPile.armors[id]) ? itemPile.armors[id] + 1 : 1;
+                itemPile.armors.push(cloneObject($dataArmors[id]));
                 break;
             default:
                 console.log("ItemUtils.addItemToMap ERROR: should not contain this type: %d", itemType);
@@ -2372,13 +2405,12 @@
     }
 
     ItemUtils.addItemToSet = function(toAdd, itemSet, weaponSet, armorSet) {
-        var id = toAdd.id;
         if (DataManager.isItem(toAdd)) {
-            itemSet[id] = (itemSet[id]) ? itemSet[id] + 1 : 1;
+            itemSet.push(toAdd);
         } else if (DataManager.isWeapon(toAdd)) {
-            weaponSet[id] = (weaponSet[id]) ? weaponSet[id] + 1 : 1;
+            weaponSet.push(toAdd)
         } else if (DataManager.isArmor(toAdd)) {
-            armorSet[id] = (armorSet[id]) ? armorSet[id] + 1 : 1;
+            armorSet.push(toAdd);
         }
     }
 
@@ -2402,6 +2434,34 @@
             $gameVariables[$gameMap.mapId()].itemPileList.push(itemPile);
         }
         ItemUtils.addItemToSet(item, itemPile.items, itemPile.weapons, itemPile.armors);
+        // setup object stack
+        itemPile.objectStack.push(item);
+    }
+    
+    ItemUtils.removeItemFromItemPile = function(x, y, item) {
+        var itemPile = ItemUtils.findMapItemPile(x, y);
+        var listToCheck;
+        if (DataManager.isItem(item)) {
+            listToCheck = itemPile.items;
+        } else if (DataManager.isWeapon(item)) {
+            listToCheck = itemPile.weapons;
+        } else if (DataManager.isArmor(item)) {
+            listToCheck = itemPile.armors;
+        }
+        // remove object from list
+        for (var id in listToCheck) {
+            if (listToCheck[id].name == item.name) {
+                listToCheck.splice(id, 1);
+                break;
+            }
+        }
+        for (var id in itemPile.objectStack) {
+            if (itemPile.objectStack[id].name == item.name) {
+                itemPile.objectStack.splice(id, 1);
+                break;
+            }
+        }
+        ItemUtils.checkAndRemoveEmptyItemPile();
     }
 
     //-----------------------------------------------------------------------------------
@@ -2567,9 +2627,6 @@
             $gameParty.loseItem(this.item(), 1);
             // setup item to itemPile on the ground
             ItemUtils.addItemToItemPile($gamePlayer._x, $gamePlayer._y, this.item());
-            // setup object stack
-            var itemPile = ItemUtils.findMapItemPile($gamePlayer._x, $gamePlayer._y);
-            itemPile.objectStack.push(this.item());
         }
         this._itemWindow.refresh();
         this._itemWindow.activate();
@@ -2712,4 +2769,222 @@
             this.drawText(item.name+'Lv'+skillLv, x + iconBoxWidth, y, width - iconBoxWidth);
         }
     };
+    
+    //-----------------------------------------------------------------------------------
+    // Game_Party
+    //
+    // override this to implement item instances
+    Game_Party.prototype.initAllItems = function() {
+        this._items = [];
+        this._weapons = [];
+        this._armors = [];
+    };
+
+    Game_Party.prototype.items = function() {
+        return this._items;
+    };
+
+    Game_Party.prototype.weapons = function() {
+        return this._weapons;
+    };
+
+    Game_Party.prototype.armors = function() {
+        return this._armors;
+    };
+    
+    Game_Party.prototype.numItems = function(item) {
+        var container = this.itemContainer(item);
+        if (container) {
+            var num = 0;
+            for (var i in container) {
+                if (item.name == container[i].name) {
+                    num++;
+                }
+            }
+            return num;
+        }
+        return 0;
+    };
+    
+    Game_Party.prototype.gainItem = function(item, amount, includeEquip) {
+        var container = this.itemContainer(item);
+        if (container) {
+            if (amount > 0) {
+                for (var i = 0; i < amount; i++) {
+                    var toAdd = cloneObject(item);
+                    container.push(toAdd);
+                }
+            } else if (amount == -1) {
+                // now only handle -1 case
+                for (var id in container) {
+                    if (item.name == container[id].name) {
+                        container.splice(id, 1);
+                        break;
+                    }
+                }
+            }
+            $gameMap.requestRefresh();
+        }
+    };
+    
+    //-----------------------------------------------------------------------------------
+    // DataManager
+    //
+    // override this to implement item instances
+    DataManager.isItem = function(item) {
+        return item && item.itypeId && item.itypeId == 1;
+    };
+
+    DataManager.isWeapon = function(item) {
+        return item && item.etypeId && item.etypeId == 1;
+    };
+
+    DataManager.isArmor = function(item) {
+        return item && item.etypeId && item.etypeId != 1;
+    };
+    
+    //-----------------------------------------------------------------------------------
+    // Window_ItemList
+    //
+    // override this to show item instances
+    Window_ItemList.prototype.makeItemList = function() {
+        var objList = $gameParty.allItems().filter(function(item) {
+            return this.includes(item);
+        }, this);
+        this._data = [];
+        for (var i in objList) {
+            var added = false;
+            for (var j in this._data) {
+                if (this._data[j].name == objList[i].name) {
+                    added = true;
+                    break;
+                }
+            }
+            if (!added) {
+                this._data.push(objList[i]);
+            }
+        }
+        if (this.includes(null)) {
+            this._data.push(null);
+        }
+    };
+    
+    //-----------------------------------------------------------------------------------
+    // Window_FoodList
+    //
+    // class for items on the map, inherit from Window_ItemList
+    function Window_FoodList() {
+        this.initialize.apply(this, arguments);
+    }
+
+    Window_FoodList.prototype = Object.create(Window_ItemList.prototype);
+    Window_FoodList.prototype.constructor = Window_FoodList;
+
+    Window_FoodList.prototype.initialize = function(x, y, width, height) {
+        Window_ItemList.prototype.initialize.call(this, x, y, width, height);
+    };
+    
+    Window_FoodList.prototype.includes = function(item) {
+        try {
+            var prop = JSON.parse(item.note);
+            return prop.type && prop.type == "FOOD";
+        } catch (e) {
+            // do nothing
+        }
+        return false;
+    }
+    
+    //-----------------------------------------------------------------------------------
+    // Scene_EatFood
+    //
+    // handle the action when trying to drop items from player inventory
+    Scene_EatFood = function() {
+        this.initialize.apply(this, arguments);
+    }
+
+    Scene_EatFood.prototype = Object.create(Scene_Item.prototype);
+    Scene_EatFood.prototype.constructor = Scene_EatFood;
+
+    Scene_EatFood.prototype.initialize = function() {
+        Scene_Item.prototype.initialize.call(this);
+        // move food on the ground to player inventory temporarily
+        var itemPile = ItemUtils.findMapItemPile($gamePlayer._x, $gamePlayer._y);
+        if (itemPile) {
+            for (var id in itemPile.items) {
+                var item = itemPile.items[id];
+                if (Window_FoodList.prototype.includes(item)) {
+                    // add to inventory temporarily
+                    item.name += groundWord;
+                    $gameParty._items.push(item);
+                }
+            }
+        }
+    };
+
+    // override this function so it creates Window_GetDropItemList window
+    Scene_EatFood.prototype.createItemWindow = function() {
+        var wy = this._categoryWindow.y + this._categoryWindow.height;
+        var wh = Graphics.boxHeight - wy;
+        this._itemWindow = new Window_FoodList(0, wy, Graphics.boxWidth, wh);
+        this._itemWindow.setHelpWindow(this._helpWindow);
+        this._itemWindow.setHandler('ok',     this.onItemOk.bind(this));
+        this._itemWindow.setHandler('cancel', this.onItemCancel.bind(this));
+        this.addWindow(this._itemWindow);
+        this._categoryWindow.setItemWindow(this._itemWindow);
+    };
+
+    // override this to show hint message
+    Scene_EatFood.prototype.createCategoryWindow = function() {
+        this._categoryWindow = new Window_ItemCategory();
+        this._categoryWindow.setHelpWindow(this._helpWindow);
+        this._helpWindow.drawTextEx('你想吃什麼?', 0, 0);
+        this._categoryWindow.y = this._helpWindow.height;
+        this._categoryWindow.setHandler('ok',     this.onCategoryOk.bind(this));
+        this._categoryWindow.setHandler('cancel', this.popScene.bind(this));
+        this.addWindow(this._categoryWindow);
+    };
+
+    // override this to show hint message
+    Scene_EatFood.prototype.onItemCancel = function() {
+        Scene_Item.prototype.onItemCancel.call(this);
+        this._helpWindow.drawTextEx('你想吃什麼?', 0, 0);
+    }
+
+    Scene_EatFood.prototype.onItemOk = function() {
+        $gameParty.setLastItem(this.item());
+        if (this.item()) {
+            // remove item from player inventory
+            $gameParty.loseItem(this.item(), 1);
+            if (this.item().name.includes(groundWord)) {
+                ItemUtils.removeItemFromItemPile($gamePlayer._x, $gamePlayer._y, this.item());
+            }
+            this.popScene();
+            var func = function(item) {
+                TimeUtils.afterPlayerMoved(3 * $gameVariables[0].gameTimeAmp);
+                $gameMessage.add("你吃完了" + item.name + ".");
+                // TODO: implement eating effect
+            }
+            setTimeout(func.bind(null, this.item()), 100);
+        }
+        this._itemWindow.refresh();
+        this._itemWindow.activate();
+    };
+    
+    // move food on the ground back
+    Scene_EatFood.prototype.popScene = function() {
+        Scene_Item.prototype.popScene.call(this);
+        var allDone = false;
+        while (!allDone) {
+            allDone = true;
+            for (var id in $gameParty._items) {
+                var item = $gameParty._items[id];
+                if (item.name.includes(groundWord)) {
+                    $gameParty.loseItem(item, 1);
+                    item.name = item.name.substring(0, item.name.length - 4);
+                    allDone = false;
+                    break;
+                }
+            }
+        }
+    }
 })();
