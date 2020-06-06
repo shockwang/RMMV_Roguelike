@@ -1,2 +1,2 @@
-# RMMV_rougelike
-Try to develop a rougelike game using RMMV.
+# RMMV_roguelike
+Try to develop a roguelike game using RMMV.
