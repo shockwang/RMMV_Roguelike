@@ -1,7 +1,7 @@
 // my plugin
 
 (function () {
-  MapData = function (floorId, original, x, y) {
+  var MapData = function(floorId, original, x, y) {
     this.base = floorId;
     this.bush = 0;
     this.decorate1 = 0;
@@ -33,7 +33,7 @@
   }
 
   // data type for item piles
-  ItemPile = function (x, y) {
+  var ItemPile = function (x, y) {
     this.x = x;
     this.y = y;
     this.items = [];
@@ -42,7 +42,7 @@
     this.objectStack = [];
   }
 
-  MapVariable = function (mapData, rmDataMap) {
+  var MapVariable = function (mapData, rmDataMap) {
     this.mapData = mapData;
     this.rmDataMap = rmDataMap;
 
@@ -53,13 +53,13 @@
     this.itemPileList = [];
   }
 
-  Coordinate = function (x, y) {
+  var Coordinate = function (x, y) {
     this.x = x;
     this.y = y;
   }
 
   // class defined for player transfer
-  TransferInfo = function (toMapId, x, y) {
+  var TransferInfo = function (toMapId, x, y) {
     this.toMapId = toMapId;
     this.nowX = x;
     this.nowY = y;
@@ -157,7 +157,19 @@
     $gameVariables[0].directionalAction = null;
     $gameVariables[0].directionalFlag = false;
     $gameVariables[0].messageFlag = false;
-    $gameVariables[0].messageWindow = null;
+    // setup normal message window
+    var width = Graphics.boxWidth;
+    var height = Graphics.boxHeight / 4;
+    var y = Graphics.boxHeight - height;
+    var messageWindow = new Window_Base(0, y, width, height);
+    $gameVariables[0].messageWindow = messageWindow;
+    // setup non-blocking message window
+    var width = Graphics.boxWidth;
+    var height = Graphics.boxHeight / 4;
+    var y = Graphics.boxHeight - height;
+    var messageWindow2 = new Window_Base(0, y, width, height);
+    messageWindow2.opacity = 0
+    $gameVariables[0].messageWindowNonBlocking = messageWindow2;
     // define game time (counts * gameTimeAmp for possible future extends)
     $gameVariables[0].gameTime = 0;
     $gameVariables[0].gameTimeAmp = 10;
@@ -175,17 +187,15 @@
 
   MapUtils.displayMessage = function (msg) {
     $gameVariables[0].messageFlag = true;
-    if (!$gameVariables[0].messageWindow) {
-      var width = Graphics.boxWidth;
-      var height = Graphics.boxHeight / 4;
-      var y = Graphics.boxHeight - height;
-      var messageWindow = new Window_Base(0, y, width, height);
-      $gameVariables[0].messageWindow = messageWindow;
-    } else {
-      $gameVariables[0].messageWindow.contents.clear();
-    }
+    $gameVariables[0].messageWindow.contents.clear();
     $gameVariables[0].messageWindow.drawTextEx(msg, 0, 0);
     SceneManager._scene.addChild($gameVariables[0].messageWindow);
+  }
+
+  MapUtils.displayMessageNonBlocking = function (msg) {
+    $gameVariables[0].messageWindowNonBlocking.contents.clear();
+    $gameVariables[0].messageWindowNonBlocking.drawTextEx(msg, 0, 0);
+    SceneManager._scene.addChild($gameVariables[0].messageWindowNonBlocking);
   }
 
   // used when message console already exists on map
@@ -2264,11 +2274,16 @@
         // player rest
         player.gainTp(6);
       }
+      MapUtils.refreshMap();
+
+      // check non-blocking message
+      if (playerMoved && ItemUtils.findMapItemPile($gamePlayer._x, $gamePlayer._y)) {
+        MapUtils.displayMessageNonBlocking('item on ground');
+      }
+
       playerAttacked = false;
       playerMoved = false;
       playerDashed = false;
-
-      MapUtils.refreshMap();
     }
   }
 
