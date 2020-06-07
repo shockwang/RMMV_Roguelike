@@ -129,6 +129,50 @@
   var playerMoved = false;
   var playerDashed = false;
 
+  // add format function to String
+  String.format = function() {
+    var s = arguments[0];
+    if (s == null) return "";
+    for (var i = 0; i < arguments.length - 1; i++) {
+      var reg = getStringFormatPlaceHolderRegEx(i);
+      s = s.replace(reg, (arguments[i + 1] == null ? "" : arguments[i + 1]));
+    }
+    return cleanStringFormatResult(s);
+  }
+
+  function getStringFormatPlaceHolderRegEx(placeHolderIndex) {
+    return new RegExp('({)?\\{' + placeHolderIndex + '\\}(?!})', 'gm')
+  }
+
+  function cleanStringFormatResult(txt) {
+    if (txt == null) return "";
+    return txt.replace(getStringFormatPlaceHolderRegEx("\\d+"), "");
+  }
+
+  // Language related data
+  var Message = {
+    language: 'chinese',
+    chinese: {
+      meleeAttack: '{0}對{1}造成了{2}點傷害.',
+      targetKilled: '{0}被{1}殺死了!',
+      openDoor: '你打開了一扇門.',
+      closeDoor: '你關上了一扇門.',
+      goUpstair: '你往上走了一層.',
+      goDownstair: '你往下走了一層.',
+      getItems: '你撿起了{0}.',
+      dropItems: '你丟下了{0}.'
+    },
+    display: function(msgName) {
+      switch (Message.language) {
+        case 'chinese':
+          return Message.chinese[msgName];
+        default:
+          console.log('ERROR: No such language!');
+          break;
+      }
+    }
+  }
+
   //-----------------------------------------------------------------------------------
   // MapUtils
   //
@@ -163,12 +207,15 @@
     var y = Graphics.boxHeight - height;
     var messageWindow = new Window_Base(0, y, width, height);
     $gameVariables[0].messageWindow = messageWindow;
+    // setup log window
+    $gameVariables[0].logList = []; // only 18 lines can be displayed
+    $gameVariables[0].logWindow = new Window_Base(0, 100, Graphics.boxWidth, Graphics.boxHeight - 100);
     // setup non-blocking message window
     var width = Graphics.boxWidth;
     var height = Graphics.boxHeight / 4;
     var y = Graphics.boxHeight - height;
     var messageWindow2 = new Window_Base(0, y, width, height);
-    messageWindow2.opacity = 0
+    messageWindow2.opacity = 0;
     $gameVariables[0].messageWindowNonBlocking = messageWindow2;
     // define game time (counts * gameTimeAmp for possible future extends)
     $gameVariables[0].gameTime = 0;
@@ -184,6 +231,34 @@
     // door template
     $gameVariables[0].templateEvents.push($dataMap.events[4]);
   }
+  // log related
+  var LogUtils = {
+    lineLimit: 18,
+    displayLogWindow: function() {
+      $gameVariables[0].messageFlag = true;
+      let result = '';
+      for (var id in $gameVariables[0].logList) {
+        result += $gameVariables[0].logList[id] + '\n';
+      }
+      $gameVariables[0].logWindow.contents.clear();
+      $gameVariables[0].logWindow.drawTextEx(result, 0, 0);
+      SceneManager._scene.addChild($gameVariables[0].logWindow);
+    },
+    addLog: function(msg) {
+      $gameVariables[0].logList.push(msg);
+      if ($gameVariables[0].logList.length > LogUtils.lineLimit) {
+        $gameVariables[0].logList.splice(0, 1);
+      }
+    },
+    getCharName: function(name) {
+      if (name == $gameActors._data[1].name()) {
+        return '你';
+      } else {
+        return name;
+      }
+    }
+  };
+  MapUtils.logUtils = LogUtils; // for browser debugging
 
   MapUtils.displayMessage = function (msg) {
     $gameVariables[0].messageFlag = true;
@@ -393,6 +468,14 @@
       }
     }
     return result;
+  }
+
+  var showObjsOnMap = function() {
+    // check non-blocking message
+    let objs = ItemUtils.findMapItemPile($gamePlayer._x, $gamePlayer._y);
+    if (objs) {
+      MapUtils.displayMessageNonBlocking(ItemUtils.displayObjStack(objs.objectStack));
+    }
   }
 
   MapUtils.translateMap = function (rawData) {
@@ -1964,6 +2047,7 @@
     door.updateDataMap();
     $gameVariables[0].messageFlag = false;
     SceneManager._scene.removeChild($gameVariables[0].messageWindow);
+    LogUtils.addLog(Message.display('openDoor'));
     return true;
   }
 
@@ -2002,6 +2086,7 @@
     door.updateDataMap();
     $gameVariables[0].messageFlag = false;
     SceneManager._scene.removeChild($gameVariables[0].messageWindow);
+    LogUtils.addLog(Message.display('closeDoor'));
     return true;
   }
 
@@ -2105,9 +2190,30 @@
         // just wait for next input to make the window disappear
         $gameVariables[0].messageFlag = false;
         SceneManager._scene.removeChild($gameVariables[0].messageWindow);
+        SceneManager._scene.removeChild($gameVariables[0].logWindow);
         return;
       }
       switch (event.key) {
+        case 'Enter': // quick action
+          // check stairs
+          var stair = null;
+          for (var i in $gameVariables[$gameMap.mapId()].stairList) {
+            var candidate = $gameVariables[$gameMap.mapId()].stairList[i];
+            if (candidate.x == $gamePlayer._x && candidate.y == $gamePlayer._y) {
+              stair = candidate;
+              break;
+            }
+          }
+          if (stair) {
+            MapUtils.transferCharacter($gamePlayer);
+            if (1 == stair.type) {
+              LogUtils.addLog(Message.display('goDownstair'));
+            } else {
+              LogUtils.addLog(Message.display('goUpstair'));
+            }
+            playerMoved = true;
+          }
+          break;
         case '.': case '5': case 'Clear': // wait action
           TimeUtils.afterPlayerMoved();
           break;
@@ -2122,6 +2228,7 @@
           }
           if (stair) {
             MapUtils.transferCharacter($gamePlayer);
+            LogUtils.addLog(Message.display('goDownstair'));
             playerMoved = true;
           } else {
             MapUtils.displayMessage("這裡沒有往下的樓梯.");
@@ -2138,6 +2245,7 @@
           }
           if (stair) {
             MapUtils.transferCharacter($gamePlayer);
+            LogUtils.addLog(Message.display('goUpstair'));
             playerMoved = true;
           } else {
             MapUtils.displayMessage("這裡沒有往上的樓梯.");
@@ -2181,6 +2289,9 @@
           break;
         case 'e': // eat food
           SceneManager.push(Scene_EatFood);
+          break;
+        case '/': // display log
+          LogUtils.displayLogWindow();
           break;
       }
     }
@@ -2275,11 +2386,8 @@
         player.gainTp(6);
       }
       MapUtils.refreshMap();
-
-      // check non-blocking message
-      if (playerMoved && ItemUtils.findMapItemPile($gamePlayer._x, $gamePlayer._y)) {
-        MapUtils.displayMessageNonBlocking('item on ground');
-      }
+      // show on map objs
+      showObjsOnMap();
 
       playerAttacked = false;
       playerMoved = false;
@@ -2340,10 +2448,14 @@
     min = (min > 0) ? min : 1;
     var value = getRandomIntRange(min, max);
     $gameSystem.createPopup(0, "", "\\c[18]  -" + value, target);
+    LogUtils.addLog(String.format(Message.display('meleeAttack'), LogUtils.getCharName(realSrc.name())
+      , LogUtils.getCharName(realTarget.name()), value));
     realTarget._hp -= value;
     // hit animation
     target.requestAnimation(16);
     if (realTarget._hp <= 0) {
+      LogUtils.addLog(String.format(Message.display('targetKilled'), LogUtils.getCharName(realTarget.name())
+        , LogUtils.getCharName(realSrc.name())));
       if (target == $gamePlayer) {
         BattleUtils.playerDied('你被' + realSrc.name() + '殺死了...');
       } else {
@@ -2385,6 +2497,29 @@
   // deal with item related methods
   ItemUtils = function () {
     throw new Error('This is a static class');
+  }
+
+  ItemUtils.tempObjStack = []; // for get/drop items log
+  ItemUtils.displayObjStack = function(stack) {
+    let items = {};
+    for (var id in stack) {
+      let obj = stack[id];
+      if (items[obj.name]) {
+        items[obj.name]++;
+      } else {
+        items[obj.name] = 1;
+      }
+    }
+    let msg = '';
+    for (var id in items) {
+      if (1 == items[id]) {
+        msg += id;
+      } else {
+        msg += id + 'x' + items[id];
+      }
+      msg += ', ';
+    }
+    return msg.substring(0, msg.length - 2);
   }
 
   ItemUtils.findMapItemPile = function (x, y) {
@@ -2523,6 +2658,8 @@
     $gameParty._items = itemPile.items;
     $gameParty._weapons = itemPile.weapons;
     $gameParty._armors = itemPile.armors;
+
+    ItemUtils.tempObjStack.length = 0;
   };
 
   // override this function so it creates Window_GetDropItemList window
@@ -2561,6 +2698,8 @@
     $gameParty._armors = this.tempArmors;
     SceneManager.pop();
     if (this.moved) {
+      LogUtils.addLog(String.format(Message.display('getItems'), ItemUtils.displayObjStack(ItemUtils.tempObjStack)));
+      ItemUtils.tempObjStack.length = 0;
       setTimeout('TimeUtils.afterPlayerMoved();', 100);
     }
   }
@@ -2583,6 +2722,7 @@
       ItemUtils.addItemToSet(this.item(), this.tempItems, this.tempWeapons, this.tempArmors);
       // check if itemPile is empty
       ItemUtils.checkAndRemoveEmptyItemPile();
+      ItemUtils.tempObjStack.push(this.item());
     }
     this._itemWindow.refresh();
     this._itemWindow.activate();
@@ -2603,6 +2743,7 @@
     Scene_Item.prototype.initialize.call(this);
     // indicates if player really moved
     this.moved = false;
+    ItemUtils.tempObjStack.length = 0;
   };
 
   // override this function so it creates Window_GetDropItemList window
@@ -2642,6 +2783,7 @@
       $gameParty.loseItem(this.item(), 1);
       // setup item to itemPile on the ground
       ItemUtils.addItemToItemPile($gamePlayer._x, $gamePlayer._y, this.item());
+      ItemUtils.tempObjStack.push(this.item());
     }
     this._itemWindow.refresh();
     this._itemWindow.activate();
@@ -2650,6 +2792,8 @@
   Scene_DropItem.prototype.popScene = function () {
     Scene_Item.prototype.popScene.call(this);
     if (this.moved) {
+      LogUtils.addLog(String.format(Message.display('dropItems'), ItemUtils.displayObjStack(ItemUtils.tempObjStack)));
+      ItemUtils.tempObjStack.length = 0;
       setTimeout('TimeUtils.afterPlayerMoved();', 100);
     }
   }
