@@ -154,6 +154,7 @@
     language: 'chinese',
     chinese: {
       meleeAttack: '{0}對{1}造成了{2}點傷害.',
+      projectileAttack: '{0}的{1}對{2}造成了{3}點傷害.',
       targetKilled: '{0}被{1}殺死了!',
       openDoor: '你打開了一扇門.',
       closeDoor: '你關上了一扇門.',
@@ -201,6 +202,7 @@
     $gameVariables[0].directionalAction = null;
     $gameVariables[0].directionalFlag = false;
     $gameVariables[0].messageFlag = false;
+    $gameVariables[0].projectileMoving = false;
     // setup normal message window
     var width = Graphics.boxWidth;
     var height = Graphics.boxHeight / 4;
@@ -225,11 +227,11 @@
     $gameVariables[0].player.skillExp = {};
     $gameVariables[0].player.nutrition = 900;
     // initialize template events
-    $gameVariables[0].templateEvents = [];
-    // monster template
-    $gameVariables[0].templateEvents.push($dataMap.events[3]);
-    // door template
-    $gameVariables[0].templateEvents.push($dataMap.events[4]);
+    $gameVariables[0].templateEvents = {
+      monster: $dataMap.events[3],
+      door: $dataMap.events[4],
+      projectile: $dataMap.events[5]
+    }
   }
   // log related
   var LogUtils = {
@@ -1688,6 +1690,9 @@
 
   // modify canPassDiagonally(), so character can move as long as target tile is empty
   Game_CharacterBase.prototype.canPassDiagonally = function (x, y, horz, vert) {
+    if (this.isThrough() || this.isDebugThrough()) {
+      return true;
+    }
     var x2 = $gameMap.roundXWithDirection(x, horz);
     var y2 = $gameMap.roundYWithDirection(y, vert);
     if ($gameVariables[$gameMap.mapId()].mapData) { // map generated
@@ -1767,12 +1772,6 @@
     this.refreshTileEvents();
   };
 
-  //-----------------------------------------------------------------------------------
-  // Game_Mob
-  //
-  // The game object class for a mob (aggressive/passive), define mob status in
-  // it. (HP/MP/attribute, etc)
-
   function cloneObject(obj) {
     return JSON.parse(JSON.stringify(obj));
   }
@@ -1784,6 +1783,12 @@
     newObj.y = y;
     return newObj;
   }
+
+  //-----------------------------------------------------------------------------------
+  // Game_Mob
+  //
+  // The game object class for a mob (aggressive/passive), define mob status in
+  // it. (HP/MP/attribute, etc)
 
   Game_Mob = function () {
     this.initialize.apply(this, arguments);
@@ -1831,7 +1836,7 @@
       this.mob = new Game_Enemy(mobId, x, y);
       // find empty space for new event
       var eventId = MapUtils.findEmptyFromList($dataMap.events);
-      $dataMap.events[eventId] = newDataMapEvent($gameVariables[0].templateEvents[0], eventId, x, y);
+      $dataMap.events[eventId] = newDataMapEvent($gameVariables[0].templateEvents.monster, eventId, x, y);
       this.initStatus($dataMap.events[eventId], mobId);
       this.initStatus(this, mobId);
     }
@@ -2004,7 +2009,7 @@
     } else {
       // add new event at the bottom of list
       eventId = $dataMap.events.length;
-      $dataMap.events.push(newDataMapEvent($gameVariables[0].templateEvents[1], eventId, x, y));
+      $dataMap.events.push(newDataMapEvent($gameVariables[0].templateEvents.door, eventId, x, y));
       Game_Door.prototype.initStatus($dataMap.events[$dataMap.events.length - 1]);
       this.initStatus(this);
     }
@@ -2091,6 +2096,170 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Game_Projectile
+  //
+  // Prototype of projectiles, ammo, arrow, magic...etc
+
+  Game_Projectile = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Game_Projectile.prototype = Object.create(Game_Event.prototype);
+  Game_Projectile.prototype.constructor = Game_Projectile;
+
+  Game_Projectile.prototype.fromEvent = function (src, target) {
+    target.projectileId = src.projectileId;
+    target.type = src.type;
+    target.x = src.x;
+    target.y = src.y;
+  }
+
+  Game_Projectile.prototype.initStatus = function (event, projectileId) {
+    event.type = 'Projectile';
+    event.projectileId = projectileId;
+  }
+
+  Game_Projectile.prototype.initialize = function (x, y, projectileId, fromData) {
+    var eventId = -1;
+    if (fromData) {
+      for (var i = 1; i < $dataMap.events.length; i++) {
+        if ($dataMap.events[i] && $dataMap.events[i] == fromData) {
+          eventId = i;
+          Game_Projectile.prototype.fromEvent($dataMap.events[i], this);
+          break;
+        }
+      }
+    } else {
+      // find empty space for new event
+      var eventId = MapUtils.findEmptyFromList($dataMap.events);
+      $dataMap.events[eventId] = newDataMapEvent($gameVariables[0].templateEvents.projectile, eventId, x, y);
+      this.initStatus($dataMap.events[eventId], projectileId);
+      this.initStatus(this, projectileId);
+    }
+    // store new events back to map variable
+    $gameVariables[$gameMap.mapId()].rmDataMap = $dataMap;
+    Game_Event.prototype.initialize.call(this, $gameMap.mapId(), eventId);
+    // setup images
+    switch (projectileId) {
+      case 1: // FireBall
+        this.setImage('!Flame', 4);
+        this.skillName = '火球術';
+        break;
+    }
+    $gameMap._events[eventId] = this;
+  };
+
+  Game_Projectile.prototype.createProjectile = function(src, x, y) {
+    let projectile = new Game_Projectile(src._x, src._y, 1);
+    projectile.src = src; // recognize for log purpose
+    projectile.moveFunc = projectile.moveStraight;
+    projectile.param1 = 6;
+    if (src._x == x) {
+      projectile.moveFunc = projectile.moveStraight;
+      if (y - 1 == src._y) {
+        projectile.param1 = 2;
+      } else {
+        projectile.param1 = 8;
+      }
+    } else if (src._y == y) {
+      projectile.moveFunc = projectile.moveStraight;
+      if (x - 1 == src._x) {
+        projectile.param1 = 6;
+      } else {
+        projectile.param1 = 4;
+      }
+    } else {
+      projectile.moveFunc = projectile.moveDiagonally;
+      if (x - 1 == src._x) {
+        if (y - 1 == src._y) {
+          projectile.param1 = 6;
+          projectile.param2 = 2;
+        } else {
+          projectile.param1 = 6;
+          projectile.param2 = 8;
+        }
+      } else {
+        if (y - 1 == src._y) {
+          projectile.param1 = 4;
+          projectile.param2 = 2;
+        } else {
+          projectile.param1 = 4;
+          projectile.param2 = 8;
+        }
+      }
+    }
+    MapUtils.refreshMap();
+    // show on map objs
+    showObjsOnMap();
+
+    projectile.action();
+    $gameVariables[0].messageFlag = false;
+    return true;
+  }
+
+  Game_Projectile.prototype.action = function () {
+    $gameVariables[0].projectileMoving = true;
+    let distance = 1;
+    switch (this.projectileId) {
+      case 1: // FireBall
+        distance = 5;
+        break;
+    }
+
+    this.distanceCount = 0;
+    let vm = this;
+    let f = function(vm) {
+      vm.moveFunc(vm.param1, vm.param2);
+      // check if hit events
+      let events = $gameMap.eventsXy(vm._x, vm._y);
+      for (let id in events) {
+        let evt = events[id];
+        if (evt.type == 'MOB' || evt == $gamePlayer) { // hit character
+          Game_Projectile.prototype.hitCharacter(vm, evt);
+        } else if (evt.type == 'DOOR' && evt.status != 2) { // hit closed door
+          Game_Projectile.prototype.hitDoor(vm);
+        }
+      }
+      // hit wall
+      if ($gameVariables[$gameMap._mapId].mapData[vm._x][vm._y].originalTile == WALL
+        || $gameVariables[$gameMap._mapId].mapData[vm._x][vm._y].originalTile == CEILING) {
+        Game_Projectile.prototype.hitWall(vm);
+      }
+      if (vm.distanceCount < distance) {
+        vm.distanceCount++;
+        setTimeout(f, 50, vm);
+      } else {
+        vm.setPosition(-10, -10);
+        $gameMap._events[vm._eventId] = null;
+        $dataMap.events[vm._eventId] = null;
+        $gameVariables[0].projectileMoving = false;
+      }
+    }
+    f(vm);
+  }
+
+  Game_Projectile.prototype.hitCharacter = function(vm, evt) {
+    let realSrc = BattleUtils.getRealTarget(vm.src);
+    let realTarget = BattleUtils.getRealTarget(evt);
+    let value = 30;
+    realTarget._hp -= value;
+    $gameSystem.createPopup(0, "", "\\c[18]  -" + value, evt);
+    evt.requestAnimation(67);
+    LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc.name())
+      ,vm.skillName, LogUtils.getCharName(realTarget.name()), value));
+    BattleUtils.checkTargetAlive(realSrc, realTarget, evt);
+    vm.distanceCount = 99;
+  }
+
+  Game_Projectile.prototype.hitDoor = function(vm) {
+    vm.distanceCount = 99;
+  }
+
+  Game_Projectile.prototype.hitWall = function(vm) {
+    vm.distanceCount = 99;
+  }
+
+  //-----------------------------------------------------------------------------------
   // Input
   //
   // try to add key defined by Input class
@@ -2139,7 +2308,7 @@
 
   // override this function for user-defined key detected (only on Scene_Map)
   Input._onKeyDown = function (event) {
-    if (SceneManager._scene instanceof Scene_Map && !$gameMessage.isBusy()) {
+    if (SceneManager._scene instanceof Scene_Map && !$gameMessage.isBusy() && $gamePlayer.canMove()) {
       if ($gameVariables[0].directionalFlag) {
         // choose direction mode
         var x = $gamePlayer._x, y = $gamePlayer._y;
@@ -2293,6 +2462,11 @@
         case '/': // display log
           LogUtils.displayLogWindow();
           break;
+        case 'f': // fire projectile
+          $gameVariables[0].directionalAction = Game_Projectile.prototype.createProjectile;
+          $gameVariables[0].directionalFlag = true;
+          MapUtils.displayMessage('往哪個方向發射?');
+          break;
       }
     }
     if (this._shouldPreventDefault(event.keyCode)) {
@@ -2319,6 +2493,10 @@
   }
 
   InputUtils.checkKeyPressed = function () {
+    // check if player can move
+    if (!$gamePlayer.canMove()) {
+      return;
+    }
     if (Input.isTriggered('Numpad7')) {
       $gamePlayer.moveDiagonally(4, 8);
     } else if (Input.isTriggered('Numpad9')) {
@@ -2338,62 +2516,162 @@
     throw new Error('This is a static class');
   }
 
-  TimeUtils.afterPlayerMoved = function (timeSpent) {
-    var player = $gameActors._data[1];
-    if (!timeSpent) {
-      timeSpent = $gameVariables[0].gameTimeAmp;
-    }
-    player.lastTimeMoved += timeSpent;
-    while (timeSpent > 0) {
-      var updateTime = (timeSpent - $gameVariables[0].gameTimeAmp >= 0) ? $gameVariables[0].gameTimeAmp : timeSpent;
-      timeSpent -= $gameVariables[0].gameTimeAmp;
-      $gameVariables[0].gameTime += updateTime;
-      var gameTurn = Math.floor($gameVariables[0].gameTime / $gameVariables[0].gameTimeAmp);
-      if (gameTurn % 20 == 0) {
-        // regenerate HP
-        var regenValue = Math.round(1 + player.param(3) / 3);
-        regenValue = getRandomIntRange(1, regenValue);
-        player.gainHp(regenValue);
+  TimeUtils.afterPlayerMovedState = 0;
+  TimeUtils.timeSpent = 0;
+  TimeUtils.player = null;
+  TimeUtils.eventIndicator = 0;
 
-        // regenerate MP
-        regenValue = Math.round(1 + player.param(5) / 3);
-        regenValue = getRandomIntRange(1, regenValue);
-        player.gainMp(regenValue);
-      }
-      // update all mobs & items
-      for (var i = 0; i < $gameMap._events.length; i++) {
-        if (player._hp <= 0) {
-          // player died, stop mob action
+  TimeUtils.afterPlayerMoved = function(timeSpent) {
+    // block player from moving
+    $gamePlayer._vehicleGettingOn = true;
+    let func = TimeUtils.afterPlayerMoved, waiting = 0;
+    if (!$gameVariables[0].projectileMoving) {
+      switch (TimeUtils.afterPlayerMovedState) {
+        case 0: // initialize
+          TimeUtils.player = $gameActors._data[1];
+          if (!timeSpent) {
+            timeSpent = $gameVariables[0].gameTimeAmp;
+          }
+          TimeUtils.player.lastTimeMoved += timeSpent;
+          TimeUtils.timeSpent = timeSpent;
+          TimeUtils.afterPlayerMovedState = 1;
+        case 1: // while TimeUtils.timeSpent > 0
+          if (TimeUtils.timeSpent > 0) {
+            var updateTime = (TimeUtils.timeSpent - $gameVariables[0].gameTimeAmp >= 0) ? $gameVariables[0].gameTimeAmp : TimeUtils.timeSpent;
+            // TimeUtils.timeSpent -= $gameVariables[0].gameTimeAmp;
+            TimeUtils.timeSpent -= updateTime;
+            $gameVariables[0].gameTime += updateTime;
+            var gameTurn = Math.floor($gameVariables[0].gameTime / $gameVariables[0].gameTimeAmp);
+            if (gameTurn % 20 == 0) {
+              // regenerate HP
+              var regenValue = Math.round(1 + TimeUtils.player.param(3) / 3);
+              regenValue = getRandomIntRange(1, regenValue);
+              TimeUtils.player.gainHp(regenValue);
+
+              // regenerate MP
+              regenValue = Math.round(1 + TimeUtils.player.param(5) / 3);
+              regenValue = getRandomIntRange(1, regenValue);
+              TimeUtils.player.gainMp(regenValue);
+            }
+            TimeUtils.afterPlayerMovedState = 2;
+          } else { // clean up
+            TimeUtils.afterPlayerMovedState = 0;
+            // player moveable again
+            $gamePlayer._vehicleGettingOn = false;
+            return;
+          }
           break;
-        }
-        var event = $gameMap._events[i];
-        if (!event || event._erased) {
-          continue;
-        }
-        if (event.type == 'MOB' && $gameVariables[0].gameTime - event.mob.lastTimeMoved >= $gameVariables[0].gameTimeAmp) {
-          // TODO: implement mob action speed
-          event.mob.lastTimeMoved += $gameVariables[0].gameTimeAmp;
-          event.action();
-        }
-      }
-      // deal with energy calculation
-      if (playerDashed || playerAttacked) {
-        // huge movement, do nothing
-      } else if (playerMoved) {
-        player.gainTp(3);
-      } else {
-        // player rest
-        player.gainTp(6);
-      }
-      MapUtils.refreshMap();
-      // show on map objs
-      showObjsOnMap();
+        case 2: // update all mobs & items
+          if (TimeUtils.eventIndicator < $gameMap._events.length) {
+            if (TimeUtils.player._hp <= 0) {
+              // TODO: implement player dead mechanism
+              // player died, stop mob action
+              return;
+            }
+            var event = $gameMap._events[TimeUtils.eventIndicator];
+            if (!event || event._erased) {
+              TimeUtils.eventIndicator++;
+              break;
+            }
+            if (event.type == 'MOB' && $gameVariables[0].gameTime - event.mob.lastTimeMoved >= $gameVariables[0].gameTimeAmp) {
+              // TODO: implement mob action speed
+              event.mob.lastTimeMoved += $gameVariables[0].gameTimeAmp;
+              event.action();
+            }
+            TimeUtils.eventIndicator++;
+          } else {
+            TimeUtils.eventIndicator = 0;
+            TimeUtils.afterPlayerMovedState = 3;
+          }
+          break;
+        case 3: // check player status & refresh map
+          // deal with energy calculation
+          if (playerDashed || playerAttacked) {
+            // huge movement, do nothing
+          } else if (playerMoved) {
+            TimeUtils.player.gainTp(3);
+          } else {
+            // player rest
+            TimeUtils.player.gainTp(6);
+          }
+          MapUtils.refreshMap();
+          // show on map objs
+          showObjsOnMap();
 
-      playerAttacked = false;
-      playerMoved = false;
-      playerDashed = false;
+          playerAttacked = false;
+          playerMoved = false;
+          playerDashed = false;
+
+          TimeUtils.afterPlayerMovedState = 1;
+          break;
+      }
+    } else {
+      waiting = 10;
     }
+    setTimeout(func, waiting);
   }
+
+  // NOTE: keep this logic, since it is the original function, and without anime incomplete bug
+  // TimeUtils.afterPlayerMoved = function (timeSpent) {
+  //   // block player from moving
+  //   $gamePlayer._vehicleGettingOn = true;
+  //   var player = $gameActors._data[1];
+  //   if (!timeSpent) {
+  //     timeSpent = $gameVariables[0].gameTimeAmp;
+  //   }
+  //   player.lastTimeMoved += timeSpent;
+  //   while (timeSpent > 0) {
+  //     var updateTime = (timeSpent - $gameVariables[0].gameTimeAmp >= 0) ? $gameVariables[0].gameTimeAmp : timeSpent;
+  //     timeSpent -= $gameVariables[0].gameTimeAmp;
+  //     $gameVariables[0].gameTime += updateTime;
+  //     var gameTurn = Math.floor($gameVariables[0].gameTime / $gameVariables[0].gameTimeAmp);
+  //     if (gameTurn % 20 == 0) {
+  //       // regenerate HP
+  //       var regenValue = Math.round(1 + player.param(3) / 3);
+  //       regenValue = getRandomIntRange(1, regenValue);
+  //       player.gainHp(regenValue);
+
+  //       // regenerate MP
+  //       regenValue = Math.round(1 + player.param(5) / 3);
+  //       regenValue = getRandomIntRange(1, regenValue);
+  //       player.gainMp(regenValue);
+  //     }
+  //     // update all mobs & items
+  //     for (var i = 0; i < $gameMap._events.length; i++) {
+  //       if (player._hp <= 0) {
+  //         // player died, stop mob action
+  //         break;
+  //       }
+  //       var event = $gameMap._events[i];
+  //       if (!event || event._erased) {
+  //         continue;
+  //       }
+  //       if (event.type == 'MOB' && $gameVariables[0].gameTime - event.mob.lastTimeMoved >= $gameVariables[0].gameTimeAmp) {
+  //         // TODO: implement mob action speed
+  //         event.mob.lastTimeMoved += $gameVariables[0].gameTimeAmp;
+  //         event.action();
+  //       }
+  //     }
+  //     // deal with energy calculation
+  //     if (playerDashed || playerAttacked) {
+  //       // huge movement, do nothing
+  //     } else if (playerMoved) {
+  //       player.gainTp(3);
+  //     } else {
+  //       // player rest
+  //       player.gainTp(6);
+  //     }
+  //     MapUtils.refreshMap();
+  //     // show on map objs
+  //     showObjsOnMap();
+
+  //     playerAttacked = false;
+  //     playerMoved = false;
+  //     playerDashed = false;
+  //   }
+  //   // player moveable again
+  //   $gamePlayer._vehicleGettingOn = false;
+  // }
 
   //-----------------------------------------------------------------------------------
   // BattleUtils
@@ -2403,9 +2681,35 @@
     throw new Error('This is a static class');
   }
 
+  BattleUtils.getRealTarget = function(src) {
+    return (src == $gamePlayer) ? $gameActors._data[1] : src.mob;
+  }
+
+  BattleUtils.checkTargetAlive = function(realSrc, realTarget, target) {
+    if (realTarget._hp <= 0) {
+      LogUtils.addLog(String.format(Message.display('targetKilled'), LogUtils.getCharName(realTarget.name())
+        , LogUtils.getCharName(realSrc.name())));
+      if (target == $gamePlayer) {
+        BattleUtils.playerDied('你被' + realSrc.name() + '殺死了...');
+      } else {
+        target.looting();
+        realSrc.gainExp(realTarget.exp());
+        // remove target event from $dataMap.events
+        // NOTE: Do not remove it from $gameMap._events! will cause crash
+        $gameMap.eraseEvent(target._eventId);
+        // move dead mobs so it won't block the door
+        let moveMob = function (target) {
+          target.setPosition(-10, -10);
+        }
+        setTimeout(moveMob.bind(null, target), 100);
+        $dataMap.events[target._eventId] = null;
+      }
+    }
+  }
+
   BattleUtils.meleeAttack = function (src, target) {
-    var realSrc = (src == $gamePlayer) ? $gameActors._data[1] : src.mob;
-    var realTarget = (target == $gamePlayer) ? $gameActors._data[1] : target.mob;
+    var realSrc = BattleUtils.getRealTarget(src);
+    var realTarget = BattleUtils.getRealTarget(target);
     if (src == $gamePlayer) {
       if (realSrc._tp < 5) {
         MapUtils.displayMessage('你氣喘吁吁, 沒有足夠的體力攻擊!');
@@ -2453,29 +2757,15 @@
     realTarget._hp -= value;
     // hit animation
     target.requestAnimation(16);
-    if (realTarget._hp <= 0) {
-      LogUtils.addLog(String.format(Message.display('targetKilled'), LogUtils.getCharName(realTarget.name())
-        , LogUtils.getCharName(realSrc.name())));
-      if (target == $gamePlayer) {
-        BattleUtils.playerDied('你被' + realSrc.name() + '殺死了...');
-      } else {
-        target.looting();
-        realSrc.gainExp(realTarget.exp());
-        // remove target event from $dataMap.events
-        // NOTE: Do not remove it from $gameMap._events! will cause crash
-        $gameMap.eraseEvent(target._eventId);
-        // move dead mobs so it won't block the door
-        var moveMob = function (target) {
-          target.setPosition(-10, -10);
-        }
-        setTimeout(moveMob.bind(null, target), 100);
-        $dataMap.events[target._eventId] = null;
-      }
-    }
+    BattleUtils.checkTargetAlive(realSrc, realTarget, target);
     if (src == $gamePlayer) {
       playerAttacked = true;
       TimeUtils.afterPlayerMoved();
     }
+  }
+
+  BattleUtils.fire = function(src, distance) {
+
   }
 
   BattleUtils.playerDied = function (msg) {
