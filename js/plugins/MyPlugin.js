@@ -1575,7 +1575,7 @@
               }
             }
             setTimeout(setupEvents.bind(null, nowMapId, targetMapId, nowStair), 100);
-          } else if ($gameVariables[targetMapId].mapData) {
+          } else {
             // assign map data here
             console.log("assign map data.");
             $dataMap = $gameVariables[targetMapId].rmDataMap;
@@ -1758,7 +1758,12 @@
     for (var i = 0; i < $dataMap.events.length; i++) {
       if ($dataMap.events[i]) {
         if ($dataMap.events[i].type == 'MOB') {
-          this._events[i] = new Game_Mob($dataMap.events[i].x, $dataMap.events[i].y, $dataMap.events[i].mob._enemyId, $dataMap.events[i]);
+          this._events[i] = new Game_Mob($dataMap.events[i].x, $dataMap.events[i].y
+            , $dataMap.events[i].mob._enemyId, $dataMap.events[i]);
+          if (!$gameVariables[this._mapId].mapData[this._events[i]._x][this._events[i]._y].isVisible){
+            // player can't see
+            this._events[i].setOpacity(0);
+          }
         } else if ($dataMap.events[i].type == 'DOOR') {
           this._events[i] = new Game_Door($dataMap.events[i].x, $dataMap.events[i].y, $dataMap.events[i]);
         } else {
