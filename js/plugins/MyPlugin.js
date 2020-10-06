@@ -2480,6 +2480,9 @@
           $gameVariables[0].directionalFlag = true;
           MapUtils.displayMessage('往哪個方向發射?');
           break;
+        case 'q': // quaff potion
+          SceneManager.push(Scene_QuaffPotion);
+          break;
       }
     }
     if (this._shouldPreventDefault(event.keyCode)) {
@@ -3340,14 +3343,6 @@
     }
   };
 
-  Game_Party.prototype.consumeItem = function(item) {
-    if (DataManager.isItem(item) && item.consumable) {
-      let prop = JSON.parse(item.note);
-      $gameVariables[0].identifedObjects.add(prop.type + '_' + item.id);
-      this.loseItem(item, 1);
-    }
-  };
-
   //-----------------------------------------------------------------------------------
   // DataManager
   //
@@ -3448,10 +3443,14 @@
     return false;
   }
 
+  Window_FoodList.prototype.isEnabled = function(item) {
+    return true;
+  };
+
   //-----------------------------------------------------------------------------------
   // Scene_EatFood
   //
-  // handle the action when trying to drop items from player inventory
+  // handle the action when eating
   Scene_EatFood = function () {
     this.initialize.apply(this, arguments);
   }
@@ -3540,5 +3539,103 @@
         }
       }
     }
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Window_PotionList
+  //
+  // class for items on the map, inherit from Window_ItemList
+  function Window_PotionList() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_PotionList.prototype = Object.create(Window_ItemList.prototype);
+  Window_PotionList.prototype.constructor = Window_PotionList;
+
+  Window_PotionList.prototype.initialize = function (x, y, width, height) {
+    Window_ItemList.prototype.initialize.call(this, x, y, width, height);
+  };
+
+  Window_PotionList.prototype.includes = function (item) {
+    try {
+      var prop = JSON.parse(item.note);
+      return prop.type && prop.type == "POTION";
+    } catch (e) {
+      // do nothing
+    }
+    return false;
+  }
+
+  Window_PotionList.prototype.isEnabled = function(item) {
+    return true;
+  };
+
+  //-----------------------------------------------------------------------------------
+  // Scene_QuaffPotion
+  //
+  // handle the action when quaffing
+  Scene_QuaffPotion = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Scene_QuaffPotion.prototype = Object.create(Scene_Item.prototype);
+  Scene_QuaffPotion.prototype.constructor = Scene_QuaffPotion;
+
+  Scene_QuaffPotion.prototype.initialize = function () {
+    Scene_Item.prototype.initialize.call(this);
+  };
+
+  // override this function so it creates Window_GetDropItemList window
+  Scene_QuaffPotion.prototype.createItemWindow = function () {
+    var wy = this._categoryWindow.y + this._categoryWindow.height;
+    var wh = Graphics.boxHeight - wy;
+    this._itemWindow = new Window_PotionList(0, wy, Graphics.boxWidth, wh);
+    this._itemWindow.setHelpWindow(this._helpWindow);
+    this._itemWindow.setHandler('ok', this.onItemOk.bind(this));
+    this._itemWindow.setHandler('cancel', this.onItemCancel.bind(this));
+    this.addWindow(this._itemWindow);
+    this._categoryWindow.setItemWindow(this._itemWindow);
+  };
+
+  // override this to show hint message
+  Scene_QuaffPotion.prototype.createCategoryWindow = function () {
+    this._categoryWindow = new Window_ItemCategory();
+    this._categoryWindow.setHelpWindow(this._helpWindow);
+    this._helpWindow.drawTextEx('你想喝什麼?', 0, 0);
+    this._categoryWindow.y = this._helpWindow.height;
+    this._categoryWindow.setHandler('ok', this.onCategoryOk.bind(this));
+    this._categoryWindow.setHandler('cancel', this.popScene.bind(this));
+    this.addWindow(this._categoryWindow);
+  };
+
+  // override this to show hint message
+  Scene_QuaffPotion.prototype.onItemCancel = function () {
+    Scene_Item.prototype.onItemCancel.call(this);
+    this._helpWindow.drawTextEx('你想喝什麼?', 0, 0);
+  }
+
+  Scene_QuaffPotion.prototype.onItemOk = function () {
+    $gameParty.setLastItem(this.item());
+    if (this.item()) {
+      // remove item from player inventory
+      $gameParty.loseItem(this.item(), 1);
+      if (this.item().name.includes(groundWord)) {
+        ItemUtils.removeItemFromItemPile($gamePlayer._x, $gamePlayer._y, this.item());
+      }
+      this.popScene();
+      var func = function (item) {
+        $gameVariables[0].identifedObjects.add('POTION_' + item.id);
+        TimeUtils.afterPlayerMoved();
+        // TODO: implement quaffing effect
+      }
+      setTimeout(func.bind(null, this.item()), 100);
+    }
+    this._itemWindow.refresh();
+    this._itemWindow.activate();
+  };
+
+  // move food on the ground back
+  Scene_QuaffPotion.prototype.popScene = function () {
+    Scene_Item.prototype.popScene.call(this);
   }
 })();
