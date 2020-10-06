@@ -161,7 +161,13 @@
       goUpstair: '你往上走了一層.',
       goDownstair: '你往下走了一層.',
       getItems: '你撿起了{0}.',
-      dropItems: '你丟下了{0}.'
+      dropItems: '你丟下了{0}.',
+      unIdentified: '未鑑定的物品.',
+      potionBase: '藥水',
+      scrollBase: '卷軸',
+      bookBase: '魔法書',
+      weaponSwordBase: '長劍',
+      shieldBase: '盾牌'
     },
     display: function(msgName) {
       switch (Message.language) {
@@ -232,6 +238,8 @@
       door: $dataMap.events[4],
       projectile: $dataMap.events[5]
     }
+    // define identified data pool
+    $gameVariables[0].identifedObjects = new Set();
   }
   // log related
   var LogUtils = {
@@ -2104,6 +2112,7 @@
   // Game_Projectile
   //
   // Prototype of projectiles, ammo, arrow, magic...etc
+  // will not save to dataMap, therefore do not need 'fromData'
 
   Game_Projectile = function () {
     this.initialize.apply(this, arguments);
@@ -2112,91 +2121,67 @@
   Game_Projectile.prototype = Object.create(Game_Event.prototype);
   Game_Projectile.prototype.constructor = Game_Projectile;
 
-  Game_Projectile.prototype.fromEvent = function (src, target) {
-    target.projectileId = src.projectileId;
-    target.type = src.type;
-    target.x = src.x;
-    target.y = src.y;
-  }
-
-  Game_Projectile.prototype.initStatus = function (event, projectileId) {
+  Game_Projectile.prototype.initStatus = function (event) {
     event.type = 'Projectile';
-    event.projectileId = projectileId;
   }
 
-  Game_Projectile.prototype.initialize = function (x, y, projectileId, fromData) {
+  Game_Projectile.prototype.initialize = function (src, x, y) {
     var eventId = -1;
-    if (fromData) {
-      for (var i = 1; i < $dataMap.events.length; i++) {
-        if ($dataMap.events[i] && $dataMap.events[i] == fromData) {
-          eventId = i;
-          Game_Projectile.prototype.fromEvent($dataMap.events[i], this);
-          break;
-        }
-      }
-    } else {
-      // find empty space for new event
-      var eventId = MapUtils.findEmptyFromList($dataMap.events);
-      $dataMap.events[eventId] = newDataMapEvent($gameVariables[0].templateEvents.projectile, eventId, x, y);
-      this.initStatus($dataMap.events[eventId], projectileId);
-      this.initStatus(this, projectileId);
-    }
+    // find empty space for new event
+    var eventId = MapUtils.findEmptyFromList($dataMap.events);
+    $dataMap.events[eventId] = newDataMapEvent($gameVariables[0].templateEvents.projectile, eventId, src._x, src._y);
+    this.initStatus($dataMap.events[eventId]);
+    this.initStatus(this);
     // store new events back to map variable
     $gameVariables[$gameMap.mapId()].rmDataMap = $dataMap;
     Game_Event.prototype.initialize.call(this, $gameMap.mapId(), eventId);
-    // setup images
-    switch (projectileId) {
-      case 1: // FireBall
-        this.setImage('!Flame', 4);
-        this.skillName = '火球術';
-        break;
-    }
     $gameMap._events[eventId] = this;
-  };
 
-  Game_Projectile.prototype.createProjectile = function(src, x, y) {
-    let projectile = new Game_Projectile(src._x, src._y, 1);
-    projectile.src = src; // recognize for log purpose
-    projectile.moveFunc = projectile.moveStraight;
-    projectile.param1 = 6;
+    // setup projectile movement
+    this.src = src; // recognize for log purpose
+    this.moveFunc = this.moveStraight;
+    this.param1 = 6;
     if (src._x == x) {
-      projectile.moveFunc = projectile.moveStraight;
+      this.moveFunc = this.moveStraight;
       if (y - 1 == src._y) {
-        projectile.param1 = 2;
+        this.param1 = 2;
       } else {
-        projectile.param1 = 8;
+        this.param1 = 8;
       }
     } else if (src._y == y) {
-      projectile.moveFunc = projectile.moveStraight;
+      this.moveFunc = this.moveStraight;
       if (x - 1 == src._x) {
-        projectile.param1 = 6;
+        this.param1 = 6;
       } else {
-        projectile.param1 = 4;
+        this.param1 = 4;
       }
     } else {
-      projectile.moveFunc = projectile.moveDiagonally;
+      this.moveFunc = this.moveDiagonally;
       if (x - 1 == src._x) {
         if (y - 1 == src._y) {
-          projectile.param1 = 6;
-          projectile.param2 = 2;
+          this.param1 = 6;
+          this.param2 = 2;
         } else {
-          projectile.param1 = 6;
-          projectile.param2 = 8;
+          this.param1 = 6;
+          this.param2 = 8;
         }
       } else {
         if (y - 1 == src._y) {
-          projectile.param1 = 4;
-          projectile.param2 = 2;
+          this.param1 = 4;
+          this.param2 = 2;
         } else {
-          projectile.param1 = 4;
-          projectile.param2 = 8;
+          this.param1 = 4;
+          this.param2 = 8;
         }
       }
     }
     MapUtils.refreshMap();
     // show on map objs
     showObjsOnMap();
+  };
 
+  Game_Projectile.prototype.createProjectile = function(src, x, y) {
+    let projectile = new Game_Projectile(src, x, y);
     projectile.action();
     $gameVariables[0].messageFlag = false;
     return true;
@@ -2204,12 +2189,6 @@
 
   Game_Projectile.prototype.action = function () {
     $gameVariables[0].projectileMoving = true;
-    let distance = 1;
-    switch (this.projectileId) {
-      case 1: // FireBall
-        distance = 5;
-        break;
-    }
 
     this.distanceCount = 0;
     let vm = this;
@@ -2220,17 +2199,17 @@
       for (let id in events) {
         let evt = events[id];
         if (evt.type == 'MOB' || evt == $gamePlayer) { // hit character
-          Game_Projectile.prototype.hitCharacter(vm, evt);
+          vm.hitCharacter(vm, evt);
         } else if (evt.type == 'DOOR' && evt.status != 2) { // hit closed door
-          Game_Projectile.prototype.hitDoor(vm);
+          vm.hitDoor(vm);
         }
       }
       // hit wall
       if ($gameVariables[$gameMap._mapId].mapData[vm._x][vm._y].originalTile == WALL
         || $gameVariables[$gameMap._mapId].mapData[vm._x][vm._y].originalTile == CEILING) {
-        Game_Projectile.prototype.hitWall(vm);
+          vm.hitWall(vm);
       }
-      if (vm.distanceCount < distance) {
+      if (vm.distanceCount < vm.distance) {
         vm.distanceCount++;
         setTimeout(f, 50, vm);
       } else {
@@ -2244,6 +2223,42 @@
   }
 
   Game_Projectile.prototype.hitCharacter = function(vm, evt) {
+    vm.distanceCount = 99;
+  }
+
+  Game_Projectile.prototype.hitDoor = function(vm) {
+    vm.distanceCount = 99;
+  }
+
+  Game_Projectile.prototype.hitWall = function(vm) {
+    vm.distanceCount = 99;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // FireBall extends Game_Projectile
+  FireBall = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  FireBall.prototype = Object.create(Game_Projectile.prototype);
+  FireBall.prototype.constructor = FireBall;
+
+  FireBall.prototype.initialize = function (src, x, y) {
+    Game_Projectile.prototype.initialize.call(this, src, x, y);
+    // setup images
+    this.setImage('!Flame', 4);
+    this.skillName = '火球術';
+    this.distance = 5;
+  };
+
+  FireBall.prototype.createProjectile = function(src, x, y) {
+    let projectile = new FireBall(src, x, y);
+    projectile.action();
+    $gameVariables[0].messageFlag = false;
+    return true;
+  }
+
+  FireBall.prototype.hitCharacter = function(vm, evt) {
     let realSrc = BattleUtils.getRealTarget(vm.src);
     let realTarget = BattleUtils.getRealTarget(evt);
     let value = 30;
@@ -2253,14 +2268,6 @@
     LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc.name())
       ,vm.skillName, LogUtils.getCharName(realTarget.name()), value));
     BattleUtils.checkTargetAlive(realSrc, realTarget, evt);
-    vm.distanceCount = 99;
-  }
-
-  Game_Projectile.prototype.hitDoor = function(vm) {
-    vm.distanceCount = 99;
-  }
-
-  Game_Projectile.prototype.hitWall = function(vm) {
     vm.distanceCount = 99;
   }
 
@@ -2313,7 +2320,8 @@
 
   // override this function for user-defined key detected (only on Scene_Map)
   Input._onKeyDown = function (event) {
-    if (SceneManager._scene instanceof Scene_Map && !$gameMessage.isBusy() && $gamePlayer.canMove()) {
+    if (SceneManager._scene instanceof Scene_Map && !$gameMessage.isBusy() && $gamePlayer.canMove()
+      && SceneManager.isCurrentSceneStarted()) {
       if ($gameVariables[0].directionalFlag) {
         // choose direction mode
         var x = $gamePlayer._x, y = $gamePlayer._y;
@@ -2468,7 +2476,7 @@
           LogUtils.displayLogWindow();
           break;
         case 'f': // fire projectile
-          $gameVariables[0].directionalAction = Game_Projectile.prototype.createProjectile;
+          $gameVariables[0].directionalAction = FireBall.prototype.createProjectile;
           $gameVariables[0].directionalFlag = true;
           MapUtils.displayMessage('往哪個方向發射?');
           break;
@@ -2799,10 +2807,11 @@
     let items = {};
     for (var id in stack) {
       let obj = stack[id];
-      if (items[obj.name]) {
-        items[obj.name]++;
+      let displayName = ItemUtils.getItemDisplayName(obj);
+      if (items[displayName]) {
+        items[displayName]++;
       } else {
-        items[obj.name] = 1;
+        items[displayName] = 1;
       }
     }
     let msg = '';
@@ -2907,6 +2916,56 @@
       }
     }
     ItemUtils.checkAndRemoveEmptyItemPile();
+  }
+
+  ItemUtils.checkItemIdentified = function(item) {
+    let prop = JSON.parse(item.note);
+      switch (prop.type) {
+        case 'POTION': case 'SCROLL': case 'BOOK':
+          // check global database
+          if ($gameVariables[0].identifedObjects.has(prop.type + '_' + item.id)) {
+            return true;
+          } else {
+            return false;
+          }
+        case 'FOOD':
+          // no need to identify
+          return true;
+        default:
+          // identify individually
+          if (item.isIdentified) {
+            return true;
+          } else {
+            return false;
+          }
+      }
+  }
+
+  ItemUtils.getItemDisplayName = function(item) {
+    let displayName;
+    if (ItemUtils.checkItemIdentified(item)) {
+      displayName = item.name;
+    } else {
+      let prop = JSON.parse(item.note);
+      switch (prop.type) {
+        case 'POTION':
+          displayName = Message.display('potionBase');
+          break;
+        case 'SCROLL':
+          displayName = Message.display('scrollBase');
+          break;
+        case 'BOOK':
+          displayName = Message.display('bookBase');
+          break;
+        case 'WEAPON_SWORD':
+          displayName = Message.display('weaponSwordBase');
+          break;
+        case 'SHIELD':
+          displayName = Message.display('shieldBase');
+          break;
+      }
+    }
+    return displayName;
   }
 
   //-----------------------------------------------------------------------------------
@@ -3281,6 +3340,14 @@
     }
   };
 
+  Game_Party.prototype.consumeItem = function(item) {
+    if (DataManager.isItem(item) && item.consumable) {
+      let prop = JSON.parse(item.note);
+      $gameVariables[0].identifedObjects.add(prop.type + '_' + item.id);
+      this.loseItem(item, 1);
+    }
+  };
+
   //-----------------------------------------------------------------------------------
   // DataManager
   //
@@ -3295,6 +3362,39 @@
 
   DataManager.isArmor = function (item) {
     return item && item.etypeId && item.etypeId != 1;
+  };
+
+  //-----------------------------------------------------------------------------
+  // Window_Base
+  //
+  // override this to show unidentified name
+
+  Window_Base.prototype.drawItemName = function(item, x, y, width) {
+    width = width || 312;
+    if (item) {
+        var iconBoxWidth = Window_Base._iconWidth + 4;
+        this.resetTextColor();
+        this.drawIcon(item.iconIndex, x + 2, y + 2);
+        this.drawText(ItemUtils.getItemDisplayName(item), x + iconBoxWidth, y, width - iconBoxWidth);
+    }
+  };
+
+  //-----------------------------------------------------------------------------
+  // Window_Help
+  //
+  // The window for displaying the description of the selected item.
+  // override this to show unidentified objects
+
+  Window_Help.prototype.setItem = function(item) {
+    if (item) {
+      if (ItemUtils.checkItemIdentified(item)) {
+        this.setText(item.description);
+      } else {
+        this.setText(Message.display('unIdentified'));
+      }
+    } else {
+      this.setText('');
+    }
   };
 
   //-----------------------------------------------------------------------------------

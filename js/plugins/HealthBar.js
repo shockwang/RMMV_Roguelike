@@ -19,7 +19,9 @@
     
     // add for update player status after each step
     Scene_Map.prototype.setupStatus = function() {
-        this.addWindow(this._myWindow);
+        if (SceneManager.isCurrentSceneStarted()) {
+            this.addWindow(this._myWindow);
+        }
     }
 
     var _Scene_Map_update = Scene_Map.prototype.update;
