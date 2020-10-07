@@ -2971,6 +2971,10 @@
     return displayName;
   }
 
+  ItemUtils.getItemFullName = function(item) {
+    return item.name + item.description;
+  }
+
   //-----------------------------------------------------------------------------------
   // Window_GetDropItemList
   //
@@ -3235,6 +3239,28 @@
     return attributeNum + 1;
   };
 
+  // do not show status if equip unidentified
+  Window_EquipStatus.prototype.drawItem = function(x, y, paramId) {
+    this.drawParamName(x + this.textPadding(), y, paramId);
+    if (this._actor) {
+      this.drawCurrentParam(x + 140, y, paramId);
+    }
+    this.drawRightArrow(x + 188, y);
+    if (this._tempActor) {
+      let identified = true;
+      for (let id in this._tempActor._equips) {
+        let item = this._tempActor._equips[id]._item;
+        if (item && !item.isIdentified) {
+          identified = false;
+          break;
+        }
+      }
+      if (identified) {
+        this.drawNewParam(x + 222, y, paramId);
+      }
+    }
+  };
+
   //-----------------------------------------------------------------------------------
   // Scene_Equip
   // 
@@ -3313,7 +3339,8 @@
     if (container) {
       var num = 0;
       for (var i in container) {
-        if (item.name == container[i].name) {
+        if ((ItemUtils.getItemFullName(item) == ItemUtils.getItemFullName(container[i]))
+          && (item.isIdentified == container[i].isIdentified)) {
           num++;
         }
       }
@@ -3404,7 +3431,8 @@
     for (var i in objList) {
       var added = false;
       for (var j in this._data) {
-        if (this._data[j].name == objList[i].name) {
+        if ((ItemUtils.getItemFullName(this._data[j]) == ItemUtils.getItemFullName(objList[i]))
+          && (this._data[j].isIdentified == objList[i].isIdentified)) {
           added = true;
           break;
         }
@@ -3649,7 +3677,12 @@
     // TODO: deal with curse
     if (item && !item.isIdentified) {
       item.isIdentified = true;
-      item.name += '(已鑑定)';
+      let array = $gameParty.allItems();
+      for (let id in array) {
+        if (ItemUtils.getItemFullName(array[id]) == ItemUtils.getItemFullName(item)) {
+          array[id].isIdentified = true;
+        }
+      }
     }
     if (this.tradeItemWithParty(item, this.equips()[slotId])
       && (!item || this.equipSlots()[slotId] === item.etypeId)) {
