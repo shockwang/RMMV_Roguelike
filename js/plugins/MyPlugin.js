@@ -3638,4 +3638,48 @@
   Scene_QuaffPotion.prototype.popScene = function () {
     Scene_Item.prototype.popScene.call(this);
   }
+
+  //-----------------------------------------------------------------------------
+  // Game_Actor
+  //
+  // The game object class for an actor.
+
+  // identify item by equip, deal with cursed item
+  Game_Actor.prototype.changeEquip = function(slotId, item) {
+    // TODO: deal with curse
+    if (item && !item.isIdentified) {
+      item.isIdentified = true;
+      item.name += '(已鑑定)';
+    }
+    if (this.tradeItemWithParty(item, this.equips()[slotId])
+      && (!item || this.equipSlots()[slotId] === item.etypeId)) {
+      this._equips[slotId].setObject(item);
+      this.refresh();
+    }
+  };
+
+  //-----------------------------------------------------------------------------
+  // Game_Item
+  //
+  // The game object class for handling skills, items, weapons, and armor. It is
+  // required because save data should not include the database object itself.
+  // override to create object instances
+
+  Game_Item.prototype.initialize = function(item) {
+    this._dataClass = '';
+    this._itemId = 0;
+    this._item = null;
+    if (item) {
+      this.setObject(item);
+      this._item = item;
+    }
+  };
+
+  Game_Item.prototype.object = function() {
+    return this._item;
+  };
+
+  Game_Item.prototype.setObject = function(item) {
+      this._item = item;
+  };
 })();
