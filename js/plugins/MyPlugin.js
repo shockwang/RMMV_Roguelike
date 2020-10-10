@@ -240,7 +240,13 @@
     }
     // define identified data pool
     $gameVariables[0].identifedObjects = new Set();
+
+    for (let i = 0; i < 10; i++) {
+      $gameParty.gainItem(new Sword(), 1);
+    }
   }
+
+
   // log related
   var LogUtils = {
     lineLimit: 18,
@@ -1812,16 +1818,14 @@
 
   Game_Mob.prototype.fromEvent = function (src, target) {
     target.mob = src.mob;
-    target.awareDistance = src.awareDistance;
     target.type = src.type;
     target.x = src.x;
     target.y = src.y;
   }
 
-  Game_Mob.prototype.initStatus = function (event, mobId) {
+  Game_Mob.prototype.initStatus = function (event) {
     // NOTE: attribute name must be the same as Game_Actor
     event.mob = this.mob;
-    event.awareDistance = 8;
     event.type = 'MOB';
   }
 
@@ -1847,11 +1851,12 @@
     } else {
       // new mob instance from mobId
       this.mob = new Game_Enemy(mobId, x, y);
+      this.mob.awareDistance = 8;
       // find empty space for new event
       var eventId = MapUtils.findEmptyFromList($dataMap.events);
       $dataMap.events[eventId] = newDataMapEvent($gameVariables[0].templateEvents.monster, eventId, x, y);
-      this.initStatus($dataMap.events[eventId], mobId);
-      this.initStatus(this, mobId);
+      this.initStatus($dataMap.events[eventId]);
+      this.initStatus(this);
     }
     // store new events back to map variable
     $gameVariables[$gameMap.mapId()].rmDataMap = $dataMap;
@@ -1870,7 +1875,7 @@
     if (Math.abs(this._x - $gamePlayer._x) < 2 && Math.abs(this._y - $gamePlayer._y) < 2) {
       this.turnTowardCharacter($gamePlayer);
       BattleUtils.meleeAttack(this, $gamePlayer);
-    } else if (MapUtils.getDistance(this._x, this._y, $gamePlayer._x, $gamePlayer._y) < this.awareDistance) {
+    } else if (MapUtils.getDistance(this._x, this._y, $gamePlayer._x, $gamePlayer._y) < this.mob.awareDistance) {
       this.moveTowardCharacter($gamePlayer);
     } else {
       this.moveRandom();
@@ -2975,6 +2980,106 @@
     return item.name + item.description;
   }
 
+  ItemUtils.showNumberWithSign = function(value) {
+    return ((value > 0) ? '\\c[24]+' + value : '\\c[25]' + value) + '\\c[0]';
+  }
+
+  ItemUtils.addDescriptionToEquip = function(item) {
+    let result = '\n';
+    for (let i = 0; i < 8; i++) {
+      if (item.params[i] != 0) {
+        switch (i) {
+          case 0:
+            result += 'HP';
+            break;
+          case 1:
+            result += 'MP';
+            break;
+          case 2:
+            result += '力量';
+            break;
+          case 3:
+            result += '體格';
+            break;
+          case 4:
+            result += '智力';
+            break;
+          case 5:
+            result += '睿智';
+            break;
+          case 6:
+            result += '敏捷';
+            break;
+          case 7:
+            result += '運氣';
+            break;
+        }
+        result += ItemUtils.showNumberWithSign(item.params[i]) + ' ';
+      }
+    }
+    for (let id in item.traits) {
+      let attr = item.traits[id];
+      if (attr.code == 22 && attr.value != 0) {
+        switch (attr.dataId) {
+          case 0:
+            result += '護甲強度';
+            break;
+          case 1:
+            result += '魔法抗性';
+            break;
+          case 2:
+            result += '武器威力';
+            break;
+        }
+        result += ItemUtils.showNumberWithSign(Math.round(attr.value * 100)) + ' ';
+      }
+    }
+    item.description += result;
+  }
+
+  ItemUtils.modifyAttr = function(trait, value) {
+    trait.value += (value / 100);
+    trait.value = Math.round(trait.value * 100) / 100;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // ItemTemplate
+  //
+  // class for MV items instance, for OOP purpose
+
+  function ItemTemplate() {
+    this.initialize.apply(this, arguments);
+  }
+
+  ItemTemplate.prototype.constructor = ItemTemplate;
+
+  ItemTemplate.prototype.initialize = function (template) {
+    let clone = cloneObject(template);
+    for (let id in clone) {
+      this[id] = clone[id];
+    }
+  };
+
+  //-----------------------------------------------------------------------------------
+  // Sword
+  //
+  // weapon id 1
+
+  function Sword() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Sword.prototype = Object.create(ItemTemplate.prototype);
+  Sword.prototype.constructor = Sword;
+
+  Sword.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataWeapons[1]);
+    // randomize attributes
+    let modifier = getRandomIntRange(0, 5);
+    ItemUtils.modifyAttr(this.traits[1], modifier);
+    ItemUtils.addDescriptionToEquip(this);
+  };
+
   //-----------------------------------------------------------------------------------
   // Window_GetDropItemList
   //
@@ -3181,7 +3286,7 @@
       var minValue = this.paramMin(paramId);
       return Math.round(value.clamp(minValue, maxValue));
     } else {
-      return this.xparam(paramId - 8) * 100;
+      return Math.round(this.xparam(paramId - 8) * 100);
     }
   };
 
@@ -3353,14 +3458,12 @@
     var container = this.itemContainer(item);
     if (container) {
       if (amount > 0) {
-        for (var i = 0; i < amount; i++) {
-          var toAdd = cloneObject(item);
-          container.push(toAdd);
-        }
-      } else if (amount == -1) {
-        // now only handle -1 case
-        for (var id in container) {
-          if (item.name == container[id].name) {
+        // only deal with +1
+        container.push(item);
+      } else {
+        // only deal with -1
+        for (let id in container) {
+          if (container[id] == item) {
             container.splice(id, 1);
             break;
           }
