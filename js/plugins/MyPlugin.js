@@ -1470,7 +1470,8 @@
       if (Math.random() <= 0.02) {
         var floor = floors[id];
         if (MapUtils.isTileAvailableForMob(mapId, floor.x, floor.y)) {
-          new Game_Mob(floor.x, floor.y, 1);
+          // TODO: implement mob generating method
+          new Bat(floor.x, floor.y);
         }
       }
     }
@@ -1772,8 +1773,8 @@
     for (var i = 0; i < $dataMap.events.length; i++) {
       if ($dataMap.events[i]) {
         if ($dataMap.events[i].type == 'MOB') {
-          this._events[i] = new Game_Mob($dataMap.events[i].x, $dataMap.events[i].y
-            , $dataMap.events[i].mob._enemyId, $dataMap.events[i]);
+          this._events[i] = new window[$dataMap.events[i].mob.mobClass]($dataMap.events[i].x
+            , $dataMap.events[i].y, $dataMap.events[i]);
           if (!$gameVariables[this._mapId].mapData[this._events[i]._x][this._events[i]._y].isVisible){
             // player can't see
             this._events[i].setOpacity(0);
@@ -1851,7 +1852,7 @@
     } else {
       // new mob instance from mobId
       this.mob = new Game_Enemy(mobId, x, y);
-      this.mob.awareDistance = 8;
+      this.mob.awareDistance = 5;
       // find empty space for new event
       var eventId = MapUtils.findEmptyFromList($dataMap.events);
       $dataMap.events[eventId] = newDataMapEvent($gameVariables[0].templateEvents.monster, eventId, x, y);
@@ -1861,12 +1862,6 @@
     // store new events back to map variable
     $gameVariables[$gameMap.mapId()].rmDataMap = $dataMap;
     Game_Event.prototype.initialize.call(this, $gameMap.mapId(), eventId);
-    // setup images
-    switch (mobId) {
-      case 1: // Bat
-        this.setImage('Monster', 0);
-        break;
-    }
     $gameMap._events[eventId] = this;
   };
 
@@ -1962,14 +1957,31 @@
     return Game_CharacterBase.prototype.isCollidedWithEvents.call(this, x, y);
   };
 
-
-
-  // TODO: handle monster looting
   Game_Mob.prototype.looting = function () {
+    // implement in mob instances
+  }
+  
+  //-----------------------------------------------------------------------------------
+  // Bat
+  //
+  // Game_Mob id 1
+
+  Bat = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Bat.prototype = Object.create(Game_Mob.prototype);
+  Bat.prototype.constructor = Bat;
+
+  Bat.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 1, fromData);
+    this.setImage('Monster', 0);
+    this.mob.awareDistance = 8;
+    this.mob.mobClass = 'Bat';
+  }
+
+  Bat.prototype.looting = function () {
     var lootings = [];
-    switch (this.mob._enemyId) {
-      case 1: // Bat
-    }
     // corpse left
     var corpse = cloneObject($dataItems[11]);
     corpse.name = this.mob.name() + "的" + corpse.name;
@@ -2268,8 +2280,8 @@
     let realTarget = BattleUtils.getRealTarget(evt);
     let value = 30;
     realTarget._hp -= value;
-    $gameSystem.createPopup(0, "", "\\c[18]  -" + value, evt);
-    evt.requestAnimation(67);
+    TimeUtils.animeQueue.push(new AnimeObject(evt, 'ANIME', 67));
+    TimeUtils.animeQueue.push(new AnimeObject(evt, 'POP_UP', value));
     LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc.name())
       ,vm.skillName, LogUtils.getCharName(realTarget.name()), value));
     BattleUtils.checkTargetAlive(realSrc, realTarget, evt);
@@ -2537,10 +2549,36 @@
     throw new Error('This is a static class');
   }
 
+  function AnimeObject(target, type, value) {
+    this.target = target;
+    this.type = type; // ANIME, POP_UP
+    this.value = value;
+  }
+
+  TimeUtils.playAnime = function() {
+    for (let id in TimeUtils.animeQueue) {
+      let anime = TimeUtils.animeQueue[id];
+      switch (anime.type) {
+        case 'ANIME':
+          anime.target.requestAnimation(anime.value);
+          break;
+        case 'POP_UP':
+          $gameSystem.createPopup(0, "", "\\c[18]  -" + anime.value, anime.target);
+          break;
+        default:
+          console.log('ERROR: no such type: ' + anime.type);
+          break;
+      }
+    }
+    // clear the queue
+    TimeUtils.animeQueue.length = 0;
+  }
+
   TimeUtils.afterPlayerMovedState = 0;
   TimeUtils.timeSpent = 0;
   TimeUtils.player = null;
   TimeUtils.eventIndicator = 0;
+  TimeUtils.animeQueue = [];
 
   TimeUtils.afterPlayerMoved = function(timeSpent) {
     // block player from moving
@@ -2559,7 +2597,6 @@
         case 1: // while TimeUtils.timeSpent > 0
           if (TimeUtils.timeSpent > 0) {
             var updateTime = (TimeUtils.timeSpent - $gameVariables[0].gameTimeAmp >= 0) ? $gameVariables[0].gameTimeAmp : TimeUtils.timeSpent;
-            // TimeUtils.timeSpent -= $gameVariables[0].gameTimeAmp;
             TimeUtils.timeSpent -= updateTime;
             $gameVariables[0].gameTime += updateTime;
             var gameTurn = Math.floor($gameVariables[0].gameTime / $gameVariables[0].gameTimeAmp);
@@ -2587,6 +2624,7 @@
             if (TimeUtils.player._hp <= 0) {
               // TODO: implement player dead mechanism
               // player died, stop mob action
+              TimeUtils.playAnime();
               return;
             }
             var event = $gameMap._events[TimeUtils.eventIndicator];
@@ -2606,6 +2644,8 @@
           }
           break;
         case 3: // check player status & refresh map
+          // play queued anime
+          TimeUtils.playAnime();
           // deal with energy calculation
           if (playerDashed || playerAttacked) {
             // huge movement, do nothing
@@ -2722,7 +2762,7 @@
         let moveMob = function (target) {
           target.setPosition(-10, -10);
         }
-        setTimeout(moveMob.bind(null, target), 100);
+        setTimeout(moveMob.bind(null, target), 500);
         $dataMap.events[target._eventId] = null;
       }
     }
@@ -2755,9 +2795,9 @@
                 $gameVariables[0].player.skillExp[skillId].exp = 1;
               }
               var index = $gameVariables[0].player.skillExp[skillId].lv - 1;
-              skillBonus = prop[index].atk;
+              skillBonus = prop.effect[index].atk;
               $gameVariables[0].player.skillExp[skillId].exp++;
-              if (prop[index].levelUp != -1 && $gameVariables[0].player.skillExp[skillId].exp >= prop[index].levelUp) {
+              if (prop.effect[index].levelUp != -1 && $gameVariables[0].player.skillExp[skillId].exp >= prop.effect[index].levelUp) {
                 $gameMessage.add('你的' + $dataSkills[skillId].name + '更加熟練了!');
                 $gameVariables[0].player.skillExp[skillId].lv++;
                 $gameVariables[0].player.skillExp[skillId].exp = 0;
@@ -2772,12 +2812,13 @@
     var min = Math.round(max / 3);
     min = (min > 0) ? min : 1;
     var value = getRandomIntRange(min, max);
-    $gameSystem.createPopup(0, "", "\\c[18]  -" + value, target);
+    // $gameSystem.createPopup(0, "", "\\c[18]  -" + value, target);
+    TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value));
     LogUtils.addLog(String.format(Message.display('meleeAttack'), LogUtils.getCharName(realSrc.name())
       , LogUtils.getCharName(realTarget.name()), value));
     realTarget._hp -= value;
     // hit animation
-    target.requestAnimation(16);
+    TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 16));
     BattleUtils.checkTargetAlive(realSrc, realTarget, target);
     if (src == $gamePlayer) {
       playerAttacked = true;
@@ -2936,7 +2977,7 @@
           } else {
             return false;
           }
-        case 'FOOD':
+        case 'FOOD': case 'SKILL':
           // no need to identify
           return true;
         default:
@@ -3817,5 +3858,6 @@
 
   Game_Item.prototype.setObject = function(item) {
       this._item = item;
+      this._itemId = item ? item.id : 0;
   };
 })();
