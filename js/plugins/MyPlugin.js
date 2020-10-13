@@ -1455,7 +1455,7 @@
   MapUtils.setupNewMap = function (mapId) {
     // first load map
     console.log("first load map: " + mapId);
-    var rawMap = MapUtils.generateMapData(genMapRoomsFullMaze, 9, 6);
+    var rawMap = MapUtils.generateMapData(genMapRoomsFullMaze, 66, 44);
     var newMapData = MapUtils.translateMap(rawMap);
     $dataMap.width = rawMap.length;
     $dataMap.height = rawMap[0].length;
@@ -1831,12 +1831,7 @@
   }
 
   Game_Mob.prototype.updateDataMap = function () {
-    for (var i = 0; i < $gameMap._events.length; i++) {
-      if ($gameMap._events[i] == this) {
-        Game_Mob.prototype.fromEvent(this, $dataMap.events[i]);
-        break;
-      }
-    }
+    Game_Mob.prototype.fromEvent(this, $dataMap.events[this._eventId]);
   }
 
   Game_Mob.prototype.initialize = function (x, y, mobId, fromData) {
@@ -1867,17 +1862,20 @@
 
   Game_Mob.prototype.action = function () {
     // check if player is nearby
-    if (Math.abs(this._x - $gamePlayer._x) < 2 && Math.abs(this._y - $gamePlayer._y) < 2) {
+    let distance = MapUtils.getDistance(this._x, this._y, $gamePlayer._x, $gamePlayer._y);
+    if (distance < 2) {
       this.turnTowardCharacter($gamePlayer);
       BattleUtils.meleeAttack(this, $gamePlayer);
-    } else if (MapUtils.getDistance(this._x, this._y, $gamePlayer._x, $gamePlayer._y) < this.mob.awareDistance) {
+    } else if (distance < this.mob.awareDistance) {
       this.moveTowardCharacter($gamePlayer);
-    } else {
+    } else if (distance < 20) {
       this.moveRandom();
-    }
+    } // otherwise don't do anything (for performance enhancement)
 
     // store data back to $dataMap
-    this.updateDataMap();
+    if (distance < 20) {
+      this.updateDataMap();
+    }
   }
 
   // Override moveTowardCharacter() function so mobs can move diagonally
@@ -2018,12 +2016,7 @@
   }
 
   Game_Door.prototype.updateDataMap = function () {
-    for (var i = 0; i < $gameMap._events.length; i++) {
-      if ($gameMap._events[i] == this) {
-        Game_Door.prototype.fromEvent(this, $dataMap.events[i]);
-        break;
-      }
-    }
+    Game_Door.prototype.fromEvent(this, $dataMap.events[this._eventId]);
   }
 
   Game_Door.prototype.initialize = function (x, y, fromData) {
@@ -2205,38 +2198,36 @@
   }
 
   Game_Projectile.prototype.action = function () {
-    $gameVariables[0].projectileMoving = true;
-
     this.distanceCount = 0;
-    let vm = this;
-    let f = function(vm) {
-      vm.moveFunc(vm.param1, vm.param2);
-      // check if hit events
-      let events = $gameMap.eventsXy(vm._x, vm._y);
+    let originalX = this._x, originalY = this._y;
+    let hit = false;
+    for (; this.distanceCount < this.distance; this.distanceCount++) {
+      this.moveFunc(this.param1, this.param2);
+      let events = $gameMap.eventsXy(this._x, this._y);
       for (let id in events) {
         let evt = events[id];
         if (evt.type == 'MOB' || evt == $gamePlayer) { // hit character
-          vm.hitCharacter(vm, evt);
+          TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
+          this.hitCharacter(this, evt);
+          hit = true;
         } else if (evt.type == 'DOOR' && evt.status != 2) { // hit closed door
-          vm.hitDoor(vm);
+          TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
+          this.hitDoor(this);
+          hit = true;
         }
       }
       // hit wall
-      if ($gameVariables[$gameMap._mapId].mapData[vm._x][vm._y].originalTile == WALL
-        || $gameVariables[$gameMap._mapId].mapData[vm._x][vm._y].originalTile == CEILING) {
-          vm.hitWall(vm);
-      }
-      if (vm.distanceCount < vm.distance) {
-        vm.distanceCount++;
-        setTimeout(f, 50, vm);
-      } else {
-        vm.setPosition(-10, -10);
-        $gameMap._events[vm._eventId] = null;
-        $dataMap.events[vm._eventId] = null;
-        $gameVariables[0].projectileMoving = false;
+      if ($gameVariables[$gameMap._mapId].mapData[this._x][this._y].originalTile == WALL
+        || $gameVariables[$gameMap._mapId].mapData[this._x][this._y].originalTile == CEILING) {
+          TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
+          this.hitWall(this);
+          hit = true;
       }
     }
-    f(vm);
+    if (!hit) {
+      TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distance));
+    }
+    this.setPosition(originalX, originalY);
   }
 
   Game_Projectile.prototype.hitCharacter = function(vm, evt) {
@@ -2312,27 +2303,11 @@
 
   // modify _signX & signY, so arrow key triggered only once when pressed.
   Input._signX = function () {
-    var x = 0;
-
-    if (this.isTriggered('left')) {
-      x--;
-    }
-    if (this.isTriggered('right')) {
-      x++;
-    }
-    return x;
+    // do nothing
   };
 
   Input._signY = function () {
-    var y = 0;
-
-    if (this.isTriggered('up')) {
-      y--;
-    }
-    if (this.isTriggered('down')) {
-      y++;
-    }
-    return y;
+    // do nothing
   };
 
   // override this function for user-defined key detected (only on Scene_Map)
@@ -2393,6 +2368,30 @@
         return;
       }
       switch (event.key) {
+        case 'ArrowUp': case '8':
+          $gamePlayer.moveStraight(8);
+          break;
+        case 'ArrowDown': case '2':
+          $gamePlayer.moveStraight(2);
+          break;
+        case 'ArrowLeft': case '4':
+          $gamePlayer.moveStraight(4);
+          break;
+        case 'ArrowRight': case '6':
+          $gamePlayer.moveStraight(6);
+          break;
+        case '7': case 'Home':
+          $gamePlayer.moveDiagonally(4, 8);
+          break;
+        case '9': case 'PageUp':
+          $gamePlayer.moveDiagonally(6, 8);
+          break;
+        case '1': case 'End':
+          $gamePlayer.moveDiagonally(4, 2);
+          break;
+        case '3': case 'PageDown':
+          $gamePlayer.moveDiagonally(6, 2);
+          break;
         case 'Enter': // quick action
           // check stairs
           var stair = null;
@@ -2517,31 +2516,6 @@
   };
 
   //-----------------------------------------------------------------------------------
-  // InputUtils
-  //
-  // Deal with user-defined move actions
-
-  InputUtils = function () {
-    throw new Error('This is a static class');
-  }
-
-  InputUtils.checkKeyPressed = function () {
-    // check if player can move
-    if (!$gamePlayer.canMove()) {
-      return;
-    }
-    if (Input.isTriggered('Numpad7')) {
-      $gamePlayer.moveDiagonally(4, 8);
-    } else if (Input.isTriggered('Numpad9')) {
-      $gamePlayer.moveDiagonally(6, 8);
-    } else if (Input.isTriggered('Numpad1')) {
-      $gamePlayer.moveDiagonally(4, 2);
-    } else if (Input.isTriggered('Numpad3')) {
-      $gamePlayer.moveDiagonally(6, 2);
-    }
-  }
-
-  //-----------------------------------------------------------------------------------
   // TimeUtils
   //
   // time system to update the whole world
@@ -2555,184 +2529,116 @@
     this.value = value;
   }
 
-  TimeUtils.playAnime = function() {
-    for (let id in TimeUtils.animeQueue) {
-      let anime = TimeUtils.animeQueue[id];
-      switch (anime.type) {
-        case 'ANIME':
-          anime.target.requestAnimation(anime.value);
-          break;
-        case 'POP_UP':
-          $gameSystem.createPopup(0, "", "\\c[18]  -" + anime.value, anime.target);
-          break;
-        default:
-          console.log('ERROR: no such type: ' + anime.type);
-          break;
-      }
-    }
-    // clear the queue
-    TimeUtils.animeQueue.length = 0;
-  }
-
-  TimeUtils.afterPlayerMovedState = 0;
-  TimeUtils.timeSpent = 0;
-  TimeUtils.player = null;
-  TimeUtils.eventIndicator = 0;
+  TimeUtils.animeIndicator = 0;
   TimeUtils.animeQueue = [];
 
-  TimeUtils.afterPlayerMoved = function(timeSpent) {
-    // block player from moving
-    $gamePlayer._vehicleGettingOn = true;
-    let func = TimeUtils.afterPlayerMoved, waiting = 0;
+  TimeUtils.playAnime = function() {
+    let func = TimeUtils.playAnime, waiting = 0;
     if (!$gameVariables[0].projectileMoving) {
-      switch (TimeUtils.afterPlayerMovedState) {
-        case 0: // initialize
-          TimeUtils.player = $gameActors._data[1];
-          if (!timeSpent) {
-            timeSpent = $gameVariables[0].gameTimeAmp;
-          }
-          TimeUtils.player.lastTimeMoved += timeSpent;
-          TimeUtils.timeSpent = timeSpent;
-          TimeUtils.afterPlayerMovedState = 1;
-        case 1: // while TimeUtils.timeSpent > 0
-          if (TimeUtils.timeSpent > 0) {
-            var updateTime = (TimeUtils.timeSpent - $gameVariables[0].gameTimeAmp >= 0) ? $gameVariables[0].gameTimeAmp : TimeUtils.timeSpent;
-            TimeUtils.timeSpent -= updateTime;
-            $gameVariables[0].gameTime += updateTime;
-            var gameTurn = Math.floor($gameVariables[0].gameTime / $gameVariables[0].gameTimeAmp);
-            if (gameTurn % 20 == 0) {
-              // regenerate HP
-              var regenValue = Math.round(1 + TimeUtils.player.param(3) / 3);
-              regenValue = getRandomIntRange(1, regenValue);
-              TimeUtils.player.gainHp(regenValue);
-
-              // regenerate MP
-              regenValue = Math.round(1 + TimeUtils.player.param(5) / 3);
-              regenValue = getRandomIntRange(1, regenValue);
-              TimeUtils.player.gainMp(regenValue);
+      if (TimeUtils.animeIndicator < TimeUtils.animeQueue.length) {
+        let anime = TimeUtils.animeQueue[TimeUtils.animeIndicator];
+        switch (anime.type) {
+          case 'ANIME':
+            anime.target.requestAnimation(anime.value);
+            break;
+          case 'POP_UP':
+            $gameSystem.createPopup(0, "", "\\c[18]  -" + anime.value, anime.target);
+            break;
+          case 'PROJECTILE':
+            $gameVariables[0].projectileMoving = true;
+            anime.target.distance = anime.value;
+            anime.target.distanceCount = 0;
+            console.log(anime.value);
+            let f = function(target) {
+              target.moveFunc(target.param1, target.param2);
+              target.distanceCount++;
+              if (target.distanceCount > target.distance) {
+                $gameVariables[0].projectileMoving = false;
+                target.setPosition(-10, -10);
+                $gameMap._events[target._eventId] = null;
+                $dataMap.events[target._eventId] = null;
+                return;
+              }
+              setTimeout(f, 50, target);
             }
-            TimeUtils.afterPlayerMovedState = 2;
-          } else { // clean up
-            TimeUtils.afterPlayerMovedState = 0;
-            // player moveable again
-            $gamePlayer._vehicleGettingOn = false;
-            return;
-          }
-          break;
-        case 2: // update all mobs & items
-          if (TimeUtils.eventIndicator < $gameMap._events.length) {
-            if (TimeUtils.player._hp <= 0) {
-              // TODO: implement player dead mechanism
-              // player died, stop mob action
-              TimeUtils.playAnime();
-              return;
-            }
-            var event = $gameMap._events[TimeUtils.eventIndicator];
-            if (!event || event._erased) {
-              TimeUtils.eventIndicator++;
-              break;
-            }
-            if (event.type == 'MOB' && $gameVariables[0].gameTime - event.mob.lastTimeMoved >= $gameVariables[0].gameTimeAmp) {
-              // TODO: implement mob action speed
-              event.mob.lastTimeMoved += $gameVariables[0].gameTimeAmp;
-              event.action();
-            }
-            TimeUtils.eventIndicator++;
-          } else {
-            TimeUtils.eventIndicator = 0;
-            TimeUtils.afterPlayerMovedState = 3;
-          }
-          break;
-        case 3: // check player status & refresh map
-          // play queued anime
-          TimeUtils.playAnime();
-          // deal with energy calculation
-          if (playerDashed || playerAttacked) {
-            // huge movement, do nothing
-          } else if (playerMoved) {
-            TimeUtils.player.gainTp(3);
-          } else {
-            // player rest
-            TimeUtils.player.gainTp(6);
-          }
-          MapUtils.refreshMap();
-          // show on map objs
-          showObjsOnMap();
-
-          playerAttacked = false;
-          playerMoved = false;
-          playerDashed = false;
-
-          TimeUtils.afterPlayerMovedState = 1;
-          break;
+            f(anime.target);
+            break;
+          default:
+            console.log('ERROR: no such type: ' + anime.type);
+            break;
+        }
+        TimeUtils.animeIndicator++;
+      } else {
+        TimeUtils.animeIndicator = 0;
+        TimeUtils.animeQueue.length = 0;
+        return;
       }
-    } else {
-      waiting = 10;
     }
     setTimeout(func, waiting);
   }
 
-  // NOTE: keep this logic, since it is the original function, and without anime incomplete bug
-  // TimeUtils.afterPlayerMoved = function (timeSpent) {
-  //   // block player from moving
-  //   $gamePlayer._vehicleGettingOn = true;
-  //   var player = $gameActors._data[1];
-  //   if (!timeSpent) {
-  //     timeSpent = $gameVariables[0].gameTimeAmp;
-  //   }
-  //   player.lastTimeMoved += timeSpent;
-  //   while (timeSpent > 0) {
-  //     var updateTime = (timeSpent - $gameVariables[0].gameTimeAmp >= 0) ? $gameVariables[0].gameTimeAmp : timeSpent;
-  //     timeSpent -= $gameVariables[0].gameTimeAmp;
-  //     $gameVariables[0].gameTime += updateTime;
-  //     var gameTurn = Math.floor($gameVariables[0].gameTime / $gameVariables[0].gameTimeAmp);
-  //     if (gameTurn % 20 == 0) {
-  //       // regenerate HP
-  //       var regenValue = Math.round(1 + player.param(3) / 3);
-  //       regenValue = getRandomIntRange(1, regenValue);
-  //       player.gainHp(regenValue);
+  TimeUtils.afterPlayerMoved = function (timeSpent) {
+    // block player from moving
+    $gamePlayer._vehicleGettingOn = true;
+    var player = $gameActors._data[1];
+    if (!timeSpent) {
+      timeSpent = $gameVariables[0].gameTimeAmp;
+    }
+    player.lastTimeMoved += timeSpent;
+    while (timeSpent > 0) {
+      var updateTime = (timeSpent - $gameVariables[0].gameTimeAmp >= 0) ? $gameVariables[0].gameTimeAmp : timeSpent;
+      timeSpent -= updateTime;
+      $gameVariables[0].gameTime += updateTime;
+      var gameTurn = Math.floor($gameVariables[0].gameTime / $gameVariables[0].gameTimeAmp);
+      if (gameTurn % 20 == 0) {
+        // regenerate HP
+        var regenValue = Math.round(1 + player.param(3) / 3);
+        regenValue = getRandomIntRange(1, regenValue);
+        player.gainHp(regenValue);
 
-  //       // regenerate MP
-  //       regenValue = Math.round(1 + player.param(5) / 3);
-  //       regenValue = getRandomIntRange(1, regenValue);
-  //       player.gainMp(regenValue);
-  //     }
-  //     // update all mobs & items
-  //     for (var i = 0; i < $gameMap._events.length; i++) {
-  //       if (player._hp <= 0) {
-  //         // player died, stop mob action
-  //         break;
-  //       }
-  //       var event = $gameMap._events[i];
-  //       if (!event || event._erased) {
-  //         continue;
-  //       }
-  //       if (event.type == 'MOB' && $gameVariables[0].gameTime - event.mob.lastTimeMoved >= $gameVariables[0].gameTimeAmp) {
-  //         // TODO: implement mob action speed
-  //         event.mob.lastTimeMoved += $gameVariables[0].gameTimeAmp;
-  //         event.action();
-  //       }
-  //     }
-  //     // deal with energy calculation
-  //     if (playerDashed || playerAttacked) {
-  //       // huge movement, do nothing
-  //     } else if (playerMoved) {
-  //       player.gainTp(3);
-  //     } else {
-  //       // player rest
-  //       player.gainTp(6);
-  //     }
-  //     MapUtils.refreshMap();
-  //     // show on map objs
-  //     showObjsOnMap();
+        // regenerate MP
+        regenValue = Math.round(1 + player.param(5) / 3);
+        regenValue = getRandomIntRange(1, regenValue);
+        player.gainMp(regenValue);
+      }
+      // update all mobs & items
+      for (var i = 0; i < $gameMap._events.length; i++) {
+        if (player._hp <= 0) {
+          // player died, stop mob action
+          break;
+        }
+        var event = $gameMap._events[i];
+        if (!event || event._erased) {
+          continue;
+        }
+        if (event.type == 'MOB' && $gameVariables[0].gameTime - event.mob.lastTimeMoved >= $gameVariables[0].gameTimeAmp) {
+          // TODO: implement mob action speed
+          event.mob.lastTimeMoved += $gameVariables[0].gameTimeAmp;
+          event.action();
+        }
+      }
+      // play queued anime
+      TimeUtils.playAnime();
+      // deal with energy calculation
+      if (playerDashed || playerAttacked) {
+        // huge movement, do nothing
+      } else if (playerMoved) {
+        player.gainTp(3);
+      } else {
+        // player rest
+        player.gainTp(6);
+      }
+      MapUtils.refreshMap();
+      // show on map objs
+      showObjsOnMap();
 
-  //     playerAttacked = false;
-  //     playerMoved = false;
-  //     playerDashed = false;
-  //   }
-  //   // player moveable again
-  //   $gamePlayer._vehicleGettingOn = false;
-  // }
+      playerAttacked = false;
+      playerMoved = false;
+      playerDashed = false;
+    }
+    // player moveable again
+    $gamePlayer._vehicleGettingOn = false;
+  }
 
   //-----------------------------------------------------------------------------------
   // BattleUtils
