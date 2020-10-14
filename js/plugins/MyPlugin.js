@@ -1159,7 +1159,7 @@
     }
 
     // add exists to each room, connect all isolated regions
-    var maxRegions = 20;
+    var maxRegions = 100;
     for (var i = 0; i < rooms.length; i++) {
       var regions = new Array(maxRegions);
       for (var j = 0; j < regions.length; j++) {
@@ -1455,7 +1455,7 @@
   MapUtils.setupNewMap = function (mapId) {
     // first load map
     console.log("first load map: " + mapId);
-    var rawMap = MapUtils.generateMapData(genMapRoomsFullMaze, 66, 44);
+    var rawMap = MapUtils.generateMapData(genMapRoomsFullMaze, 51, 34);
     var newMapData = MapUtils.translateMap(rawMap);
     $dataMap.width = rawMap.length;
     $dataMap.height = rawMap[0].length;
@@ -1466,12 +1466,14 @@
 
   MapUtils.generateNewMapMobs = function (mapId) {
     var floors = MapUtils.findMapDataFloor($gameVariables[mapId].mapData);
-    for (var id in floors) {
-      if (Math.random() <= 0.02) {
-        var floor = floors[id];
+    let mobCounts = Math.floor(floors.length * 0.02);
+    for (let i = 0; i < mobCounts; i++) {
+      while (true) {
+        let floor = floors[Math.randomInt(floors.length)];
         if (MapUtils.isTileAvailableForMob(mapId, floor.x, floor.y)) {
           // TODO: implement mob generating method
           new Bat(floor.x, floor.y);
+          break;
         }
       }
     }
@@ -2200,46 +2202,49 @@
   Game_Projectile.prototype.action = function () {
     this.distanceCount = 0;
     let originalX = this._x, originalY = this._y;
-    let hit = false;
+    let vanish = false;
     for (; this.distanceCount < this.distance; this.distanceCount++) {
+      if (vanish) {
+        break;
+      }
       this.moveFunc(this.param1, this.param2);
       let events = $gameMap.eventsXy(this._x, this._y);
       for (let id in events) {
         let evt = events[id];
         if (evt.type == 'MOB' || evt == $gamePlayer) { // hit character
-          TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
-          this.hitCharacter(this, evt);
-          hit = true;
+          vanish = this.hitCharacter(this, evt);
         } else if (evt.type == 'DOOR' && evt.status != 2) { // hit closed door
-          TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
-          this.hitDoor(this);
-          hit = true;
+          vanish = this.hitDoor(this);
         }
       }
       // hit wall
       if ($gameVariables[$gameMap._mapId].mapData[this._x][this._y].originalTile == WALL
         || $gameVariables[$gameMap._mapId].mapData[this._x][this._y].originalTile == CEILING) {
-          TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
-          this.hitWall(this);
-          hit = true;
+          vanish = this.hitWall(this);
       }
     }
-    if (!hit) {
+    if (!vanish) {
       TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distance));
     }
     this.setPosition(originalX, originalY);
   }
 
   Game_Projectile.prototype.hitCharacter = function(vm, evt) {
+    TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
     vm.distanceCount = 99;
+    return true;
   }
 
   Game_Projectile.prototype.hitDoor = function(vm) {
+    TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
     vm.distanceCount = 99;
+    return true;
   }
 
   Game_Projectile.prototype.hitWall = function(vm) {
+    TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
     vm.distanceCount = 99;
+    return true;
   }
 
   //-----------------------------------------------------------------------------------
@@ -2271,12 +2276,14 @@
     let realTarget = BattleUtils.getRealTarget(evt);
     let value = 30;
     realTarget._hp -= value;
+    TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
     TimeUtils.animeQueue.push(new AnimeObject(evt, 'ANIME', 67));
     TimeUtils.animeQueue.push(new AnimeObject(evt, 'POP_UP', value));
     LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc.name())
       ,vm.skillName, LogUtils.getCharName(realTarget.name()), value));
     BattleUtils.checkTargetAlive(realSrc, realTarget, evt);
     vm.distanceCount = 99;
+    return true;
   }
 
   //-----------------------------------------------------------------------------------
