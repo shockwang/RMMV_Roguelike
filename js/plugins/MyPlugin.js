@@ -209,22 +209,7 @@
     $gameVariables[0].directionalFlag = false;
     $gameVariables[0].messageFlag = false;
     $gameVariables[0].projectileMoving = false;
-    // setup normal message window
-    var width = Graphics.boxWidth;
-    var height = Graphics.boxHeight / 4;
-    var y = Graphics.boxHeight - height;
-    var messageWindow = new Window_Base(0, y, width, height);
-    $gameVariables[0].messageWindow = messageWindow;
-    // setup log window
     $gameVariables[0].logList = []; // only 18 lines can be displayed
-    $gameVariables[0].logWindow = new Window_Base(0, 100, Graphics.boxWidth, Graphics.boxHeight - 100);
-    // setup non-blocking message window
-    var width = Graphics.boxWidth;
-    var height = Graphics.boxHeight / 4;
-    var y = Graphics.boxHeight - height;
-    var messageWindow2 = new Window_Base(0, y, width, height);
-    messageWindow2.opacity = 0;
-    $gameVariables[0].messageWindowNonBlocking = messageWindow2;
     // define game time (counts * gameTimeAmp for possible future extends)
     $gameVariables[0].gameTime = 0;
     $gameVariables[0].gameTimeAmp = 10;
@@ -246,6 +231,21 @@
     }
   }
 
+  // message window defined here, because it can't be assigned to $gameVariables, will cause save/load crash
+  var messageWindow;
+  var messageWindowNonBlocking;
+  var logWindow;
+
+  MapUtils.initMsgWindow = function() {
+    var width = Graphics.boxWidth;
+    var height = Graphics.boxHeight / 4;
+    var y = Graphics.boxHeight - height;
+    messageWindow = new Window_Base(0, y, width, height);
+    messageWindowNonBlocking = new Window_Base(0, y, width, height);
+    messageWindowNonBlocking.opacity = 0;
+    logWindow = new Window_Base(0, 100, Graphics.boxWidth, Graphics.boxHeight - 100);
+  }
+
 
   // log related
   var LogUtils = {
@@ -256,9 +256,9 @@
       for (var id in $gameVariables[0].logList) {
         result += $gameVariables[0].logList[id] + '\n';
       }
-      $gameVariables[0].logWindow.contents.clear();
-      $gameVariables[0].logWindow.drawTextEx(result, 0, 0);
-      SceneManager._scene.addChild($gameVariables[0].logWindow);
+      logWindow.contents.clear();
+      logWindow.drawTextEx(result, 0, 0);
+      SceneManager._scene.addChild(logWindow);
     },
     addLog: function(msg) {
       $gameVariables[0].logList.push(msg);
@@ -278,21 +278,21 @@
 
   MapUtils.displayMessage = function (msg) {
     $gameVariables[0].messageFlag = true;
-    $gameVariables[0].messageWindow.contents.clear();
-    $gameVariables[0].messageWindow.drawTextEx(msg, 0, 0);
-    SceneManager._scene.addChild($gameVariables[0].messageWindow);
+    messageWindow.contents.clear();
+    messageWindow.drawTextEx(msg, 0, 0);
+    SceneManager._scene.addChild(messageWindow);
   }
 
   MapUtils.displayMessageNonBlocking = function (msg) {
-    $gameVariables[0].messageWindowNonBlocking.contents.clear();
-    $gameVariables[0].messageWindowNonBlocking.drawTextEx(msg, 0, 0);
-    SceneManager._scene.addChild($gameVariables[0].messageWindowNonBlocking);
+    messageWindowNonBlocking.contents.clear();
+    messageWindowNonBlocking.drawTextEx(msg, 0, 0);
+    SceneManager._scene.addChild(messageWindowNonBlocking);
   }
 
   // used when message console already exists on map
   MapUtils.updateMessage = function (msg) {
-    $gameVariables[0].messageWindow.contents.clear();
-    $gameVariables[0].messageWindow.drawTextEx(msg, 0, 0);
+    messageWindow.contents.clear();
+    messageWindow.drawTextEx(msg, 0, 0);
   }
 
   // used to judge visible/walkable tiles
@@ -2076,7 +2076,7 @@
     $gameSelfSwitches.setValue([$gameMap.mapId(), door._eventId, 'A'], true);
     door.updateDataMap();
     $gameVariables[0].messageFlag = false;
-    SceneManager._scene.removeChild($gameVariables[0].messageWindow);
+    SceneManager._scene.removeChild(messageWindow);
     LogUtils.addLog(Message.display('openDoor'));
     return true;
   }
@@ -2115,7 +2115,7 @@
     $gameSelfSwitches.setValue([$gameMap.mapId(), door._eventId, 'A'], false);
     door.updateDataMap();
     $gameVariables[0].messageFlag = false;
-    SceneManager._scene.removeChild($gameVariables[0].messageWindow);
+    SceneManager._scene.removeChild(messageWindow);
     LogUtils.addLog(Message.display('closeDoor'));
     return true;
   }
@@ -2370,8 +2370,8 @@
       } else if ($gameVariables[0].messageFlag) {
         // just wait for next input to make the window disappear
         $gameVariables[0].messageFlag = false;
-        SceneManager._scene.removeChild($gameVariables[0].messageWindow);
-        SceneManager._scene.removeChild($gameVariables[0].logWindow);
+        SceneManager._scene.removeChild(messageWindow);
+        SceneManager._scene.removeChild(logWindow);
         return;
       }
       switch (event.key) {
