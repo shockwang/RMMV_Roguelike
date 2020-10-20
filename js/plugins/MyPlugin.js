@@ -40,6 +40,7 @@
     this.weapons = [];
     this.armors = [];
     this.objectStack = [];
+    this.lastImage = {};
   }
 
   var MapVariable = function (mapData, rmDataMap) {
@@ -64,6 +65,14 @@
     this.nowY = y;
   }
 
+  var ImageData = function(image, imageIndex, pattern, direction, name) {
+    this.image = image;
+    this.imageIndex = imageIndex;
+    this.pattern = pattern;
+    this.direction = direction;
+    this.name = name;
+  }
+
   var FLOOR = '□';
   var CEILING = '■';
   var WALL = 'Ⅲ';
@@ -76,22 +85,6 @@
   var warFogCenter = 3536;
   var upStair = 19;
   var downStair = 27;
-
-  // item figures
-  var bagIcon = 864;
-  var potionIcon = 867;
-  var scrollIcon = 851;
-  var shieldIcon = 906;
-  var bookIcon = 824;
-  var accessoryIcon = 892;
-  var helmetIcon = 920;
-  var armorIcon = 928;
-  var shirtIcon = 908;
-  var hatIcon = 923;
-  var foodIcon = 905;
-
-  // weapon figures
-  var swordIcon = 896;
 
   // door figures
   var doorClosedIcon = 512;
@@ -146,6 +139,37 @@
   function cleanStringFormatResult(txt) {
     if (txt == null) return "";
     return txt.replace(getStringFormatPlaceHolderRegEx("\\d+"), "");
+  }
+
+  // for array shuffle with ranges
+  function shuffle(a, begin, end) {
+    var j, x, i;
+    for (i = end; i >= begin; i--) {
+        j = Math.floor(Math.random() * (i + 1));
+        x = a[i];
+        a[i] = a[j];
+        a[j] = x;
+    }
+    return a;
+  }
+
+  // generate image data mapping at first time
+  function generateImageData() {
+    var result = {};
+    result.items = [];
+    result.items[11] = new ImageData('Meat', 0, 2, 2);
+  
+    result.weapons = [];
+    // long sword
+    result.weapons[1] = new ImageData('Collections1', 4, 0, 4, '木柄劍');
+    result.weapons[2] = new ImageData('Collections1', 4, 1, 4, '木柄長劍');
+    result.weapons[3] = new ImageData('Collections1', 4, 2, 4, '寬柄長劍');
+    result.weapons[4] = new ImageData('Collections1', 5, 0, 4, '鋸齒長劍');
+    result.weapons[5] = new ImageData('Collections1', 5, 1, 4, '鋸齒闊劍');
+    result.weapons[6] = new ImageData('Collections1', 5, 2, 4, '木柄闊劍');
+    result.weapons[7] = new ImageData('Collections1', 6, 0, 4, '鐵灰色闊劍');
+    shuffle(result.weapons, 1, 7);
+    return result;
   }
 
   // Language related data
@@ -223,6 +247,9 @@
       projectile: $dataMap.events[5],
       itemPile: $dataMap.events[6]
     }
+    // define data images mapping
+    $gameVariables[0].itemImageData = generateImageData();
+
     // define identified data pool
     $gameVariables[0].identifedObjects = new Set();
 
@@ -488,9 +515,9 @@
 
   var showObjsOnMap = function() {
     // check non-blocking message
-    let objs = ItemUtils.findMapItemPile($gamePlayer._x, $gamePlayer._y);
-    if (objs) {
-      MapUtils.displayMessageNonBlocking(ItemUtils.displayObjStack(objs.objectStack));
+    let event = ItemUtils.findMapItemPileEvent($gamePlayer._x, $gamePlayer._y);
+    if (event) {
+      MapUtils.displayMessageNonBlocking(ItemUtils.displayObjStack(event.itemPile.objectStack));
     }
   }
 
@@ -635,10 +662,11 @@
   }
 
   MapUtils.drawEvents = function (mapData) {
-    // TODO: implement show itemPiles mechanism (not changed in player memory)
     for (var i = 0; i < $gameMap.events().length; i++) {
       var event = $gameMap.events()[i];
-      if (event._x > 0 && event._y > 0 && mapData[event._x][event._y].isVisible) {
+      if (event.type == 'ITEM_PILE') {
+        ItemUtils.updateItemPile(event);
+      } else if (event._x > 0 && event._y > 0 && mapData[event._x][event._y].isVisible) {
         event.setOpacity(255);
       } else {
         event.setOpacity(0);
@@ -1429,7 +1457,7 @@
   MapUtils.setupNewMap = function (mapId) {
     // first load map
     console.log("first load map: " + mapId);
-    var rawMap = MapUtils.generateMapData(genMapRoomsFullMaze, 51, 34);
+    var rawMap = MapUtils.generateMapData(genMapRoomsFullMaze, 9, 6);
     var newMapData = MapUtils.translateMap(rawMap);
     $dataMap.width = rawMap.length;
     $dataMap.height = rawMap[0].length;
@@ -1757,7 +1785,11 @@
           }
         } else if ($dataMap.events[i].type == 'DOOR') {
           this._events[i] = new Game_Door($dataMap.events[i].x, $dataMap.events[i].y, $dataMap.events[i]);
-        } else {
+        } else if ($dataMap.events[i].type == 'ITEM_PILE') {
+          this._events[i] = new Game_ItemPile($dataMap.events[i].x, $dataMap.events[i].y, $dataMap.events[i]);
+          ItemUtils.updateItemPile(this._events[i]);
+        }
+        else {
           this._events[i] = new Game_Event(this._mapId, i);
         }
       }
@@ -2078,7 +2110,7 @@
       return false;
     }
     // check if there's object blocked the doorway
-    if (events.length > 1 || $gamePlayer.pos(x, y) || ItemUtils.findMapItemPile(x, y)) {
+    if (events.length > 1 || $gamePlayer.pos(x, y) || ItemUtils.findMapItemPileEvent(x, y)) {
       if (character == $gamePlayer) {
         MapUtils.updateMessage("這扇門被什麼卡住了, 關不起來.");
       }
@@ -2480,7 +2512,7 @@
           }
           break;
         case 'g': // pick things up from the ground
-          if (ItemUtils.findMapItemPile($gamePlayer._x, $gamePlayer._y)) {
+          if (ItemUtils.findMapItemPileEvent($gamePlayer._x, $gamePlayer._y)) {
             SceneManager.push(Scene_OnMapItem);
           } else {
             MapUtils.displayMessage("這裡沒有東西可以撿.");
@@ -2810,12 +2842,12 @@
     return msg.substring(0, msg.length - 2);
   }
 
-  ItemUtils.findMapItemPile = function (x, y) {
+  ItemUtils.findMapItemPileEvent = function (x, y) {
     let events = $gameMap.eventsXy(x, y);
     for (let id in events) {
       let event = events[id];
       if (event.type == 'ITEM_PILE') {
-        return event.itemPile;
+        return event;
       }
     }
     return null;
@@ -2832,21 +2864,24 @@
   }
 
   ItemUtils.addItemToItemPile = function (x, y, item) {
-    var itemPile = ItemUtils.findMapItemPile(x, y);
-    if (!itemPile) {
+    let itemPileEvent = ItemUtils.findMapItemPileEvent(x, y);
+    let itemPile;
+    if (!itemPileEvent) {
       itemPile = new ItemPile(x, y);
-      let event = new Game_ItemPile(x, y);
-      event.itemPile = itemPile;
-      event.setImage('!Chest', 0);
+      itemPileEvent = new Game_ItemPile(x, y);
+      itemPileEvent.itemPile = itemPile;
+    } else {
+      itemPile = itemPileEvent.itemPile;
     }
     ItemUtils.addItemToSet(item, itemPile.items, itemPile.weapons, itemPile.armors);
     // setup object stack
     itemPile.objectStack.push(item);
-    // TODO: modify item image
+    ItemUtils.updateItemPile(itemPileEvent);
   }
 
   ItemUtils.removeItemFromItemPile = function (x, y, item) {
-    var itemPile = ItemUtils.findMapItemPile(x, y);
+    let itemPileEvent = ItemUtils.findMapItemPileEvent(x, y);
+    let itemPile = itemPileEvent.itemPile;
     var listToCheck;
     if (DataManager.isItem(item)) {
       listToCheck = itemPile.items;
@@ -2868,17 +2903,7 @@
         break;
       }
     }
-    // TODO: modify item image
-    if (itemPile.objectStack.length == 0) {
-      let events = $gameMap.eventsXy(x, y);
-      for (let i in events) {
-        let toCheck = events[i];
-        if (toCheck.type == 'ITEM_PILE') {
-          $gameMap._events[toCheck._eventId] = null;
-          $dataMap.events[toCheck._eventId] = null;
-        }
-      }
-    }
+    ItemUtils.updateItemPile(itemPileEvent);
   }
 
   ItemUtils.checkItemIdentified = function(item) {
@@ -2921,7 +2946,7 @@
           displayName = Message.display('bookBase');
           break;
         case 'WEAPON_SWORD':
-          displayName = Message.display('weaponSwordBase');
+          displayName = $gameVariables[0].itemImageData.weapons[item.id].name;
           break;
         case 'SHIELD':
           displayName = Message.display('shieldBase');
@@ -2997,6 +3022,47 @@
     trait.value = Math.round(trait.value * 100) / 100;
   }
 
+  ItemUtils.updateItemPile = function(event) {
+    let erased = false;
+    if ($gameVariables[$gameMap._mapId].mapData[event._x][event._y].isVisible) {
+      if (event.itemPile.objectStack.length == 0) {
+        $gameMap._events[event._eventId] = null;
+        $dataMap.events[event._eventId] = null;
+        erased = true;
+      } else {
+        let obj = event.itemPile.objectStack[event.itemPile.objectStack.length - 1];
+        let imageData;
+        if (DataManager.isItem(obj)) {
+          imageData = $gameVariables[0].itemImageData.items[obj.id];
+        } else if (DataManager.isWeapon(obj)) {
+          imageData = $gameVariables[0].itemImageData.weapons[obj.id];
+        } else if (DataManager.isArmor(obj)) {
+          // TODO: implement armor data images
+        } else {
+          console.log('ERROR: ItemUtils.updateItemPile: no such type!');
+        }
+        // setup image
+        event._originalPattern = imageData.pattern;
+        event.setPattern(imageData.pattern);
+        event.setDirection(imageData.direction);
+        event.setImage(imageData.image, imageData.imageIndex);
+        event.setOpacity(255);
+        // setup last image
+        event.itemPile.lastImage = imageData;
+      }
+    } else {
+      // show last image player saw
+      event._originalPattern = event.itemPile.lastImage.pattern;
+      event.setPattern(event.itemPile.lastImage.pattern);
+      event.setDirection(event.itemPile.lastImage.direction);
+      event.setImage(event.itemPile.lastImage.image, event.itemPile.lastImage.imageIndex);
+      event.setOpacity(128);
+    }
+    if (!erased) {
+      event.updateDataMap();
+    }
+  }
+
   //-----------------------------------------------------------------------------------
   // ItemTemplate
   //
@@ -3070,7 +3136,7 @@
     Scene_Item.prototype.initialize.call(this);
     // indicates if player really moved
     this.moved = false;
-    var itemPile = ItemUtils.findMapItemPile($gamePlayer._x, $gamePlayer._y);
+    var itemPile = ItemUtils.findMapItemPileEvent($gamePlayer._x, $gamePlayer._y).itemPile;
     // modify $gameParty items, will change it back when scene closed
     this.tempItems = $gameParty._items;
     this.tempWeapons = $gameParty._weapons;
@@ -3132,7 +3198,8 @@
       // remove item from the ground
       $gameParty.loseItem(this.item(), 1);
       // setup item stacks
-      var itemPile = ItemUtils.findMapItemPile($gamePlayer._x, $gamePlayer._y);
+      let itemPileEvent = ItemUtils.findMapItemPileEvent($gamePlayer._x, $gamePlayer._y);
+      var itemPile = itemPileEvent.itemPile;
       for (var i in itemPile.objectStack) {
         if (itemPile.objectStack[i] == this.item()) {
           itemPile.objectStack.splice(i, 1);
@@ -3141,18 +3208,8 @@
       }
       // setup item to 'temp', which means real $gameParty
       ItemUtils.addItemToSet(this.item(), this.tempItems, this.tempWeapons, this.tempArmors);
-      // check if itemPile is empty
-      if (itemPile.objectStack.length == 0) {
-        let events = $gameMap.eventsXy($gamePlayer._x, $gamePlayer._y);
-        for (let i in events) {
-          let toCheck = events[i];
-          if (toCheck.type == 'ITEM_PILE') {
-            $gameMap._events[toCheck._eventId] = null;
-            $dataMap.events[toCheck._eventId] = null;
-          }
-        }
-      }
       ItemUtils.tempObjStack.push(this.item());
+      ItemUtils.updateItemPile(itemPileEvent);
     }
     this._itemWindow.refresh();
     this._itemWindow.activate();
@@ -3556,8 +3613,9 @@
   Scene_EatFood.prototype.initialize = function () {
     Scene_Item.prototype.initialize.call(this);
     // move food on the ground to player inventory temporarily
-    var itemPile = ItemUtils.findMapItemPile($gamePlayer._x, $gamePlayer._y);
-    if (itemPile) {
+    var itemPileEvent = ItemUtils.findMapItemPileEvent($gamePlayer._x, $gamePlayer._y);
+    if (itemPileEvent) {
+      let itemPile = itemPileEvent.itemPile;
       for (var id in itemPile.items) {
         var item = itemPile.items[id];
         if (Window_FoodList.prototype.includes(item)) {
@@ -3782,5 +3840,20 @@
   Game_Item.prototype.setObject = function(item) {
       this._item = item;
       this._itemId = item ? item.id : 0;
+  };
+
+  //-----------------------------------------------------------------------------
+  // SceneManager
+  //
+  // The static class that manages scene transitions.
+
+  // modify this to show objs on map when pop scene
+  SceneManager.pop = function() {
+    if (this._stack.length > 0) {
+      this.goto(this._stack.pop());
+    } else {
+      this.exit();
+    }
+    setTimeout(showObjsOnMap, 100);
   };
 })();
