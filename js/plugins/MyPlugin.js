@@ -50,7 +50,6 @@
     this.generateRandom = false;
     this.stairDownNum = 1;
     this.stairList = [];
-    this.itemPileList = [];
   }
 
   var Coordinate = function (x, y) {
@@ -221,7 +220,8 @@
     $gameVariables[0].templateEvents = {
       monster: $dataMap.events[3],
       door: $dataMap.events[4],
-      projectile: $dataMap.events[5]
+      projectile: $dataMap.events[5],
+      itemPile: $dataMap.events[6]
     }
     // define identified data pool
     $gameVariables[0].identifedObjects = new Set();
@@ -624,33 +624,6 @@
       }
     }
 
-    // draw items (isolate it because of view design)
-    for (var i in $gameVariables[$gameMap.mapId()].itemPileList) {
-      var itemPile = $gameVariables[$gameMap.mapId()].itemPileList[i];
-      if (mapData[itemPile.x][itemPile.y].isVisible) {
-        var index = itemOffset + itemPile.y * mapData.length + itemPile.x;
-        var icon;
-        var prop = JSON.parse(itemPile.objectStack[itemPile.objectStack.length - 1].note);
-        switch (prop.type) {
-          // icon for items
-          case 'POTION': icon = potionIcon; break;
-          case 'SCROLL': icon = scrollIcon; break;
-          case 'SHIELD': icon = shieldIcon; break;
-          case 'BOOK': icon = bookIcon; break;
-          case 'ACCESSORY': icon = accessoryIcon; break;
-          case 'HELMET': icon = helmetIcon; break;
-          case 'ARMOR': icon = armorIcon; break;
-          case 'SHIRT': icon = shirtIcon; break;
-          case 'HAT': icon = hatIcon; break;
-          case 'FOOD': icon = foodIcon; break;
-          // icon for weapons
-          case 'WEAPON_SWORD': icon = swordIcon; break;
-          default: icon = bagIcon; break;
-        }
-        mapArray[index] = icon;
-      }
-    }
-
     // draw doors
     for (var i in $gameMap.events()) {
       var event = $gameMap.events()[i];
@@ -662,6 +635,7 @@
   }
 
   MapUtils.drawEvents = function (mapData) {
+    // TODO: implement show itemPiles mechanism (not changed in player memory)
     for (var i = 0; i < $gameMap.events().length; i++) {
       var event = $gameMap.events()[i];
       if (event._x > 0 && event._y > 0 && mapData[event._x][event._y].isVisible) {
@@ -1798,7 +1772,7 @@
     return JSON.parse(JSON.stringify(obj));
   }
 
-  newDataMapEvent = function (fromObj, id, x, y) {
+  function newDataMapEvent(fromObj, id, x, y) {
     var newObj = cloneObject(fromObj);
     newObj.id = id;
     newObj.x = x;
@@ -2287,6 +2261,55 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Game_ItemPile
+  //
+  // The game object class for a itemPile on map, inherit from Game_Event
+  Game_ItemPile = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Game_ItemPile.prototype = Object.create(Game_Event.prototype);
+  Game_ItemPile.prototype.constructor = Game_ItemPile;
+
+  Game_ItemPile.prototype.fromEvent = function (src, target) {
+    target.type = src.type;
+    target.x = src.x;
+    target.y = src.y;
+    target.itemPile = src.itemPile;
+  }
+
+  Game_ItemPile.prototype.initStatus = function (event) {
+    event.type = 'ITEM_PILE';
+  }
+
+  Game_ItemPile.prototype.updateDataMap = function () {
+    Game_ItemPile.prototype.fromEvent(this, $dataMap.events[this._eventId]);
+  }
+
+  Game_ItemPile.prototype.initialize = function (x, y, fromData) {
+    var eventId = -1;
+    if (fromData) {
+      for (var i = 1; i < $dataMap.events.length; i++) {
+        if ($dataMap.events[i] && $dataMap.events[i] == fromData) {
+          eventId = i;
+          Game_ItemPile.prototype.fromEvent($dataMap.events[i], this);
+          break;
+        }
+      }
+    } else {
+      // add new event at the bottom of list
+      eventId = $dataMap.events.length;
+      $dataMap.events.push(newDataMapEvent($gameVariables[0].templateEvents.itemPile, eventId, x, y));
+      Game_ItemPile.prototype.initStatus($dataMap.events[$dataMap.events.length - 1]);
+      this.initStatus(this);
+    }
+    // store new events back to map variable
+    $gameVariables[$gameVariables[0].transferInfo.toMapId].rmDataMap = $dataMap;
+    Game_Event.prototype.initialize.call(this, $gameVariables[0].transferInfo.toMapId, eventId);
+    $gameMap._events[eventId] = this;
+  };
+
+  //-----------------------------------------------------------------------------------
   // Input
   //
   // try to add key defined by Input class
@@ -2555,7 +2578,6 @@
             $gameVariables[0].projectileMoving = true;
             anime.target.distance = anime.value;
             anime.target.distanceCount = 0;
-            console.log(anime.value);
             let f = function(target) {
               target.moveFunc(target.param1, target.param2);
               target.distanceCount++;
@@ -2789,35 +2811,14 @@
   }
 
   ItemUtils.findMapItemPile = function (x, y) {
-    for (var i in $gameVariables[$gameMap.mapId()].itemPileList) {
-      var candidate = $gameVariables[$gameMap.mapId()].itemPileList[i];
-      if (candidate.x == x && candidate.y == y) {
-        return candidate;
+    let events = $gameMap.eventsXy(x, y);
+    for (let id in events) {
+      let event = events[id];
+      if (event.type == 'ITEM_PILE') {
+        return event.itemPile;
       }
     }
     return null;
-  }
-
-  // itemType 0: item, 1: weapon, 2: armor
-  ItemUtils.addItemToMap = function (x, y, itemType, id) {
-    var itemPile = ItemUtils.findMapItemPile(x, y);
-    if (!itemPile) {
-      itemPile = new ItemPile(x, y);
-      $gameVariables[$gameMap.mapId()].itemPileList.push(itemPile);
-    }
-    switch (itemType) {
-      case 0:
-        itemPile.items.push(cloneObject($dataItems[id]));
-        break;
-      case 1:
-        itemPile.weapons.push(cloneObject($dataWeapons[id]));
-        break;
-      case 2:
-        itemPile.armors.push(cloneObject($dataArmors[id]));
-        break;
-      default:
-        console.log("ItemUtils.addItemToMap ERROR: should not contain this type: %d", itemType);
-    }
   }
 
   ItemUtils.addItemToSet = function (toAdd, itemSet, weaponSet, armorSet) {
@@ -2830,28 +2831,18 @@
     }
   }
 
-  ItemUtils.checkAndRemoveEmptyItemPile = function () {
-    for (var i in $gameVariables[$gameMap.mapId()].itemPileList) {
-      var candidate = $gameVariables[$gameMap.mapId()].itemPileList[i];
-      if (candidate.x == $gamePlayer._x && candidate.y == $gamePlayer._y) {
-        if (Object.keys(candidate.items).length == 0 && Object.keys(candidate.weapons).length == 0
-          && Object.keys(candidate.armors).length == 0) {
-          $gameVariables[$gameMap.mapId()].itemPileList.splice(i, 1);
-          break;
-        }
-      }
-    }
-  }
-
   ItemUtils.addItemToItemPile = function (x, y, item) {
     var itemPile = ItemUtils.findMapItemPile(x, y);
     if (!itemPile) {
       itemPile = new ItemPile(x, y);
-      $gameVariables[$gameMap.mapId()].itemPileList.push(itemPile);
+      let event = new Game_ItemPile(x, y);
+      event.itemPile = itemPile;
+      event.setImage('!Chest', 0);
     }
     ItemUtils.addItemToSet(item, itemPile.items, itemPile.weapons, itemPile.armors);
     // setup object stack
     itemPile.objectStack.push(item);
+    // TODO: modify item image
   }
 
   ItemUtils.removeItemFromItemPile = function (x, y, item) {
@@ -2877,7 +2868,17 @@
         break;
       }
     }
-    ItemUtils.checkAndRemoveEmptyItemPile();
+    // TODO: modify item image
+    if (itemPile.objectStack.length == 0) {
+      let events = $gameMap.eventsXy(x, y);
+      for (let i in events) {
+        let toCheck = events[i];
+        if (toCheck.type == 'ITEM_PILE') {
+          $gameMap._events[toCheck._eventId] = null;
+          $dataMap.events[toCheck._eventId] = null;
+        }
+      }
+    }
   }
 
   ItemUtils.checkItemIdentified = function(item) {
@@ -3141,7 +3142,16 @@
       // setup item to 'temp', which means real $gameParty
       ItemUtils.addItemToSet(this.item(), this.tempItems, this.tempWeapons, this.tempArmors);
       // check if itemPile is empty
-      ItemUtils.checkAndRemoveEmptyItemPile();
+      if (itemPile.objectStack.length == 0) {
+        let events = $gameMap.eventsXy($gamePlayer._x, $gamePlayer._y);
+        for (let i in events) {
+          let toCheck = events[i];
+          if (toCheck.type == 'ITEM_PILE') {
+            $gameMap._events[toCheck._eventId] = null;
+            $dataMap.events[toCheck._eventId] = null;
+          }
+        }
+      }
       ItemUtils.tempObjStack.push(this.item());
     }
     this._itemWindow.refresh();
