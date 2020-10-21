@@ -209,6 +209,7 @@
       shieldBase: '盾牌',
       readScroll: '你閱讀了{0}.',
       scrollIdentifyRead: '這是一張鑑定卷軸! 你將{0}鑑定為{1}.',
+      scrollEnchatArmorRead: '你穿著的{0}發出一陣藍光!',
       scrollReadNoEffect: '什麼事都沒發生...'
     },
     display: function(msgName) {
@@ -3129,7 +3130,7 @@
   //
   // class for MV items instance, for OOP purpose
 
-  function ItemTemplate() {
+  ItemTemplate = function() {
     this.initialize.apply(this, arguments);
   }
 
@@ -3147,7 +3148,7 @@
   //
   // weapon id 1
 
-  function Sword() {
+  Sword = function() {
     this.initialize.apply(this, arguments);
   }
 
@@ -3167,7 +3168,7 @@
   //
   // item id 51
 
-  function Scroll_Identify() {
+  Scroll_Identify = function() {
     this.initialize.apply(this, arguments);
   }
 
@@ -3191,6 +3192,37 @@
         ItemUtils.identifyObject(toIdentify);
         ItemUtils.identifyObject(this);
         msg = String.format(Message.display('scrollIdentifyRead'), unknownName, toIdentify.name);
+      } else {
+        msg = Message.display('scrollReadNoEffect');
+      }
+      MapUtils.displayMessage(msg);
+      LogUtils.addLog(msg);
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Scroll_EnchantArmor
+  //
+  // item id 52
+
+  Scroll_EnchantArmor = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Scroll_EnchantArmor.prototype = Object.create(ItemTemplate.prototype);
+  Scroll_EnchantArmor.prototype.constructor = Scroll_EnchantArmor;
+
+  Scroll_EnchantArmor.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[52]);
+  }
+
+  Scroll_EnchantArmor.prototype.onRead = function(user) {
+    if (user == $gameParty) {
+      let equips = $gameActors._data[1].equips();
+      let msg;
+      if (equips.length > 0) {
+        let equip = equips[getRandomInt(equips.length)];
+        msg = String.format(Message.display('scrollEnchatArmorRead', equip.name);
       } else {
         msg = Message.display('scrollReadNoEffect');
       }
