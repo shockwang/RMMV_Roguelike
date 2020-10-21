@@ -145,7 +145,7 @@
   function shuffle(a, begin, end) {
     var j, x, i;
     for (i = end; i >= begin; i--) {
-        j = Math.floor(Math.random() * (i + 1));
+        j = Math.floor(Math.random() * (i + 1)) + begin;
         x = a[i];
         a[i] = a[j];
         a[j] = x;
@@ -153,11 +153,27 @@
     return a;
   }
 
+  // generating scroll name
+  function genScrollName() {
+    var result = '';
+    let vocabulary = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let length = getRandomIntRange(5, 20);
+    for (let i = 0; i < length; i++) {
+      result += vocabulary[getRandomInt(vocabulary.length)];
+    }
+    return result;
+  }
+
   // generate image data mapping at first time
   function generateImageData() {
     var result = {};
     result.items = [];
+    // food
     result.items[11] = new ImageData('Meat', 0, 2, 2);
+    // scroll
+    for (let i = 51; i <= 58; i++) {
+      result.items[i] = new ImageData('Collections3', 3, 1, 4, '卷軸: ' + genScrollName());
+    }
   
     result.weapons = [];
     // long sword
@@ -190,7 +206,10 @@
       scrollBase: '卷軸',
       bookBase: '魔法書',
       weaponSwordBase: '長劍',
-      shieldBase: '盾牌'
+      shieldBase: '盾牌',
+      readScroll: '你閱讀了{0}.',
+      scrollIdentifyRead: '這是一張鑑定卷軸! 你將{0}鑑定為{1}.',
+      scrollReadNoEffect: '什麼事都沒發生...'
     },
     display: function(msgName) {
       switch (Message.language) {
@@ -201,6 +220,33 @@
           break;
       }
     }
+  }
+
+  //-----------------------------------------------------------------------------------
+  // SetUtils
+  //
+  // Functions for sets, because Set() can not be stringfy
+
+  SetUtils = function () {
+    throw new Error('This is a static class');
+  };
+
+  SetUtils.add = function(obj, list) {
+    for (let id in list) {
+      if (list[id] == obj) {
+        return;
+      }
+    }
+    list.push(obj);
+  }
+
+  SetUtils.has = function(obj, list) {
+    for (let id in list) {
+      if (list[id] == obj) {
+        return true;
+      }
+    }
+    return false;
   }
 
   //-----------------------------------------------------------------------------------
@@ -251,10 +297,11 @@
     $gameVariables[0].itemImageData = generateImageData();
 
     // define identified data pool
-    $gameVariables[0].identifedObjects = new Set();
+    $gameVariables[0].identifiedObjects = [];
 
     for (let i = 0; i < 10; i++) {
       $gameParty.gainItem(new Sword(), 1);
+      $gameParty.gainItem(new Scroll_Identify(), 1);
     }
   }
 
@@ -2561,6 +2608,9 @@
         case 'q': // quaff potion
           SceneManager.push(Scene_QuaffPotion);
           break;
+        case 'r': // read scroll
+          SceneManager.push(Scene_ReadScroll);
+          break;
       }
     }
     if (this._shouldPreventDefault(event.keyCode)) {
@@ -2906,27 +2956,44 @@
     ItemUtils.updateItemPile(itemPileEvent);
   }
 
+  ItemUtils.identifyObject = function(item) {
+    let prop = JSON.parse(item.note);
+    switch (prop.type) {
+      case 'POTION': case 'SCROLL': case 'BOOK':
+        // write to global database
+        SetUtils.add(prop.type + '_' + item.id, $gameVariables[0].identifiedObjects);
+        break;
+      case 'FOOD': case 'SKILL':
+        // no need to identify
+        break;
+      default:
+        // identify individually
+        item.isIdentified = true;
+        break;
+    }
+  }
+
   ItemUtils.checkItemIdentified = function(item) {
     let prop = JSON.parse(item.note);
-      switch (prop.type) {
-        case 'POTION': case 'SCROLL': case 'BOOK':
-          // check global database
-          if ($gameVariables[0].identifedObjects.has(prop.type + '_' + item.id)) {
-            return true;
-          } else {
-            return false;
-          }
-        case 'FOOD': case 'SKILL':
-          // no need to identify
+    switch (prop.type) {
+      case 'POTION': case 'SCROLL': case 'BOOK':
+        // check global database
+        if (SetUtils.has(prop.type + '_' + item.id, $gameVariables[0].identifiedObjects)) {
           return true;
-        default:
-          // identify individually
-          if (item.isIdentified) {
-            return true;
-          } else {
-            return false;
-          }
-      }
+        } else {
+          return false;
+        }
+      case 'FOOD': case 'SKILL':
+        // no need to identify
+        return true;
+      default:
+        // identify individually
+        if (item.isIdentified) {
+          return true;
+        } else {
+          return false;
+        }
+    }
   }
 
   ItemUtils.getItemDisplayName = function(item) {
@@ -2936,14 +3003,8 @@
     } else {
       let prop = JSON.parse(item.note);
       switch (prop.type) {
-        case 'POTION':
-          displayName = Message.display('potionBase');
-          break;
-        case 'SCROLL':
-          displayName = Message.display('scrollBase');
-          break;
-        case 'BOOK':
-          displayName = Message.display('bookBase');
+        case 'POTION': case 'SCROLL': case 'BOOK':
+          displayName = $gameVariables[0].itemImageData.items[item.id].name;
           break;
         case 'WEAPON_SWORD':
           displayName = $gameVariables[0].itemImageData.weapons[item.id].name;
@@ -3100,6 +3161,43 @@
     ItemUtils.modifyAttr(this.traits[1], modifier);
     ItemUtils.addDescriptionToEquip(this);
   };
+
+  //-----------------------------------------------------------------------------------
+  // Scroll_Identify
+  //
+  // item id 51
+
+  function Scroll_Identify() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Scroll_Identify.prototype = Object.create(ItemTemplate.prototype);
+  Scroll_Identify.prototype.constructor = Scroll_Identify;
+
+  Scroll_Identify.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[51]);
+  }
+
+  Scroll_Identify.prototype.onRead = function(user) {
+    if (user == $gameParty) {
+      LogUtils.addLog(String.format(Message.display('readScroll'), ItemUtils.getItemDisplayName(this)));
+      let items = $gameParty.allItems().filter(function(item){
+        return !ItemUtils.checkItemIdentified(item) && item.name != '鑑定卷軸';
+      });
+      let msg;
+      if (items.length > 0) {
+        let toIdentify = items[getRandomInt(items.length)];
+        let unknownName = ItemUtils.getItemDisplayName(toIdentify);
+        ItemUtils.identifyObject(toIdentify);
+        ItemUtils.identifyObject(this);
+        msg = String.format(Message.display('scrollIdentifyRead'), unknownName, toIdentify.name);
+      } else {
+        msg = Message.display('scrollReadNoEffect');
+      }
+      MapUtils.displayMessage(msg);
+      LogUtils.addLog(msg);
+    }
+  }
 
   //-----------------------------------------------------------------------------------
   // Window_GetDropItemList
@@ -3697,7 +3795,7 @@
   //-----------------------------------------------------------------------------------
   // Window_PotionList
   //
-  // class for items on the map, inherit from Window_ItemList
+  // class for potions, inherit from Window_ItemList
   function Window_PotionList() {
     this.initialize.apply(this, arguments);
   }
@@ -3772,12 +3870,9 @@
     if (this.item()) {
       // remove item from player inventory
       $gameParty.loseItem(this.item(), 1);
-      if (this.item().name.includes(groundWord)) {
-        ItemUtils.removeItemFromItemPile($gamePlayer._x, $gamePlayer._y, this.item());
-      }
       this.popScene();
       var func = function (item) {
-        $gameVariables[0].identifedObjects.add('POTION_' + item.id);
+        SetUtils.add('POTION_' + item.id, $gameVariables[0].identifiedObjects);
         TimeUtils.afterPlayerMoved();
         // TODO: implement quaffing effect
       }
@@ -3787,10 +3882,101 @@
     this._itemWindow.activate();
   };
 
-  // move food on the ground back
-  Scene_QuaffPotion.prototype.popScene = function () {
-    Scene_Item.prototype.popScene.call(this);
+  //-----------------------------------------------------------------------------------
+  // Window_ScrollList
+  //
+  // class for scrolls, inherit from Window_ItemList
+  function Window_ScrollList() {
+    this.initialize.apply(this, arguments);
   }
+
+  Window_ScrollList.prototype = Object.create(Window_ItemList.prototype);
+  Window_ScrollList.prototype.constructor = Window_ScrollList;
+
+  Window_ScrollList.prototype.initialize = function (x, y, width, height) {
+    Window_ItemList.prototype.initialize.call(this, x, y, width, height);
+  };
+
+  Window_ScrollList.prototype.includes = function (item) {
+    try {
+      var prop = JSON.parse(item.note);
+      return prop.type && prop.type == "SCROLL";
+    } catch (e) {
+      // do nothing
+    }
+    return false;
+  }
+
+  Window_ScrollList.prototype.isEnabled = function(item) {
+    return true;
+  };
+
+  //-----------------------------------------------------------------------------------
+  // Scene_ReadScroll
+  //
+  // handle the action when reading a scroll
+  Scene_ReadScroll = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Scene_ReadScroll.prototype = Object.create(Scene_Item.prototype);
+  Scene_ReadScroll.prototype.constructor = Scene_ReadScroll;
+
+  Scene_ReadScroll.prototype.initialize = function () {
+    Scene_Item.prototype.initialize.call(this);
+  };
+
+  // override this function so it creates Window_GetDropItemList window
+  Scene_ReadScroll.prototype.createItemWindow = function () {
+    var wy = this._categoryWindow.y + this._categoryWindow.height;
+    var wh = Graphics.boxHeight - wy;
+    this._itemWindow = new Window_ScrollList(0, wy, Graphics.boxWidth, wh);
+    this._itemWindow.setHelpWindow(this._helpWindow);
+    this._itemWindow.setHandler('ok', this.onItemOk.bind(this));
+    this._itemWindow.setHandler('cancel', this.onItemCancel.bind(this));
+    this.addWindow(this._itemWindow);
+    this._categoryWindow.setItemWindow(this._itemWindow);
+  };
+
+  // override this to show hint message
+  Scene_ReadScroll.prototype.createCategoryWindow = function () {
+    this._categoryWindow = new Window_ItemCategory();
+    this._categoryWindow.setHelpWindow(this._helpWindow);
+    this._helpWindow.drawTextEx('你想朗誦什麼?', 0, 0);
+    this._categoryWindow.y = this._helpWindow.height;
+    this._categoryWindow.setHandler('ok', this.onCategoryOk.bind(this));
+    this._categoryWindow.setHandler('cancel', this.popScene.bind(this));
+    this.addWindow(this._categoryWindow);
+  };
+
+  // override this to show hint message
+  Scene_ReadScroll.prototype.onItemCancel = function () {
+    Scene_Item.prototype.onItemCancel.call(this);
+    this._helpWindow.drawTextEx('你想朗誦什麼?', 0, 0);
+  }
+
+  Scene_ReadScroll.prototype.onItemOk = function () {
+    $gameParty.setLastItem(this.item());
+    if (this.item()) {
+      // remove item from player inventory
+      $gameParty.loseItem(this.item(), 1);
+      this.popScene();
+      var func = function (item) {
+        item.onRead($gameParty);
+        var func2 = function() {
+          if (!$gameVariables[0].messageFlag) {
+            TimeUtils.afterPlayerMoved();
+            return;
+          }
+          setTimeout(func2, 10);
+        }
+        func2();
+      }
+    }
+    setTimeout(func, 100, this.item());
+    this._itemWindow.refresh();
+    this._itemWindow.activate();
+  };
 
   //-----------------------------------------------------------------------------
   // Game_Actor
