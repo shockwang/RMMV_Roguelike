@@ -227,6 +227,7 @@
       scrollEnchantWeaponReadDanger: '你手中的{0}發出刺眼的紅光, 並且劇烈震動起來!',
       scrollEnchantWeaponReadEvaporate: '你手中的{0}劇烈震動, 然後汽化了!',
       scrollRemoveCurseRead: '你裝備中的{0}發出了溫暖的白光...',
+      scrollTeleportRead: '你被傳送到地圖的某處!',
       scrollReadNoEffect: '什麼事都沒發生...',
       removeEquip: '你卸下了{0}.',
       wearEquip: '你裝備上了{0}.',
@@ -327,6 +328,7 @@
       $gameParty.gainItem(new Scroll_EnchantArmor(), 1);
       $gameParty.gainItem(new Scroll_EnchantWeapon(), 1);
       $gameParty.gainItem(new Scroll_RemoveCurse(), 1);
+      $gameParty.gainItem(new Scroll_Teleport(), 1);
     }
   }
 
@@ -3288,7 +3290,6 @@
 
   Scroll_Identify.prototype.onRead = function(user) {
     if (user == $gameParty) {
-      LogUtils.addLog(String.format(Message.display('readScroll'), ItemUtils.getItemDisplayName(this)));
       let items = $gameParty.allItems().filter(function(item){
         return !ItemUtils.checkItemIdentified(item) && item.name != '鑑定卷軸';
       });
@@ -3325,7 +3326,6 @@
 
   Scroll_EnchantArmor.prototype.onRead = function(user) {
     if (user == $gameParty) {
-      LogUtils.addLog(String.format(Message.display('readScroll'), ItemUtils.getItemDisplayName(this)));
       let equips = $gameActors._data[1].equips().filter(function(item) {
         if (item) {
           let prop = JSON.parse(item.note);
@@ -3381,7 +3381,6 @@
 
   Scroll_EnchantWeapon.prototype.onRead = function(user) {
     if (user == $gameParty) {
-      LogUtils.addLog(String.format(Message.display('readScroll'), ItemUtils.getItemDisplayName(this)));
       let equips = $gameActors._data[1].equips().filter(function(item) {
         if (item) {
           let prop = JSON.parse(item.note);
@@ -3437,7 +3436,6 @@
 
   Scroll_RemoveCurse.prototype.onRead = function(user) {
     if (user == $gameParty) {
-      LogUtils.addLog(String.format(Message.display('readScroll'), ItemUtils.getItemDisplayName(this)));
       let equips = $gameActors._data[1].equips().filter(function(item) {
         if (item) {
           return item.bucState == -1;
@@ -3456,6 +3454,47 @@
       }
       MapUtils.displayMessage(msg);
       LogUtils.addLog(msg);
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Scroll_Teleport
+  //
+  // item id 55
+
+  Scroll_Teleport = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Scroll_Teleport.prototype = Object.create(ItemTemplate.prototype);
+  Scroll_Teleport.prototype.constructor = Scroll_Teleport;
+
+  Scroll_Teleport.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[55]);
+  }
+
+  Scroll_Teleport.prototype.onRead = function(user) {
+    if (user == $gameParty) {
+      let floors = MapUtils.findMapDataFloor($gameVariables[$gameMap._mapId].mapData);
+      while (true) {
+        let floor = floors[Math.randomInt(floors.length)];
+        if (MapUtils.isTileAvailableForMob($gameMap._mapId, floor.x, floor.y)) {
+          $gamePlayer.setPosition(floor.x, floor.y);
+          let screenX = ($gamePlayer._x - 10.125 < 0) ? 0 : $gamePlayer._x - 10.125;
+          screenX = (screenX + 20 > $gameMap.width()) ? $gameMap.width() - 20 : screenX;
+          let screenY = ($gamePlayer._y - 7.75 < 0) ? 0 : $gamePlayer._y - 7.75;
+          screenY = (screenY + 17 > $gameMap.height()) ? $gameMap.height() - 17 : screenY;
+          $gameMap._displayX = screenX;
+          $gameMap._displayY = screenY;
+          AudioManager.playSe({name: "Run", pan: 0, pitch: 100, volume: 100});
+          MapUtils.refreshMap();
+          // show on map objs
+          showObjsOnMap();
+          break;
+        }
+      }
+      LogUtils.addLog(Message.display('scrollTeleportRead'));
+      ItemUtils.identifyObject(this);
     }
   }
 
@@ -4216,6 +4255,7 @@
       $gameParty.loseItem(this.item(), 1);
       this.popScene();
       var func = function (item) {
+        LogUtils.addLog(String.format(Message.display('readScroll'), ItemUtils.getItemDisplayName(item)));
         item.onRead($gameParty);
         var func2 = function() {
           if (!$gameVariables[0].messageFlag) {
@@ -4241,6 +4281,7 @@
   Game_Actor.prototype.changeEquip = function(slotId, item) {
     // deal with curse
     if (this.equips()[slotId] && this.equips()[slotId].bucState == -1) {
+      AudioManager.playSe({name: "Buzzer1", pan: 0, pitch: 100, volume: 100});
       setTimeout(function(item) {
         let msg = String.format(Message.display('changeEquipCursed'), item.name);
         LogUtils.addLog(msg);
