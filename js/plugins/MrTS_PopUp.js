@@ -135,14 +135,15 @@
     //--------------------------------------------------------------------------
     // Game Party
 
-    var _GameParty_gainItem = Game_Party.prototype.gainItem;
-    Game_Party.prototype.gainItem = function(item, amount, includeEquip) {
-        _GameParty_gainItem.call(this, item, amount, includeEquip);
-        if (amount != 0 && item) {
-            var text = item.name + (amount != 0 ? " " + paramQuantitySign + "" + amount : "");
-            $gameSystem.createPopup(item.iconIndex, "left", text, $gamePlayer);
-        }
-    };
+    // note: disable item POP_UP
+    // var _GameParty_gainItem = Game_Party.prototype.gainItem;
+    // Game_Party.prototype.gainItem = function(item, amount, includeEquip) {
+    //     _GameParty_gainItem.call(this, item, amount, includeEquip);
+    //     if (amount != 0 && item) {
+    //         var text = item.name + (amount != 0 ? " " + paramQuantitySign + "" + amount : "");
+    //         $gameSystem.createPopup(item.iconIndex, "left", text, $gamePlayer);
+    //     }
+    // };
 
     var _GameParty_gainGold = Game_Party.prototype.gainGold;
     Game_Party.prototype.gainGold = function(amount) {

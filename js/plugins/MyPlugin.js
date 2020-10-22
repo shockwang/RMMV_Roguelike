@@ -219,11 +219,18 @@
       weaponSwordBase: '長劍',
       shieldBase: '盾牌',
       readScroll: '你閱讀了{0}.',
-      scrollIdentifyRead: '這是一張鑑定卷軸! 你將{0}鑑定為{1}.',
-      scrollEnchantArmorRead: '你穿著的{0}發出一陣藍光!',
-      scrollEnchantArmorReadDanger: '你穿著的{0}發出危險的紅光, 並且劇烈震動起來!',
-      scrollEnchantArmorReadEvaporate: '你穿著的{0}劇烈震動, 然後汽化了!',
-      scrollReadNoEffect: '什麼事都沒發生...'
+      scrollIdentifyRead: '你將{0}鑑定為{1}.',
+      scrollEnchantArmorRead: '你身上的{0}發出一陣銀光!',
+      scrollEnchantArmorReadDanger: '你身上的{0}發出刺眼的紅光, 並且劇烈震動起來!',
+      scrollEnchantArmorReadEvaporate: '你身上的{0}劇烈震動, 然後汽化了!',
+      scrollEnchantWeaponRead: '你手中的{0}發出一陣銀光!',
+      scrollEnchantWeaponReadDanger: '你手中的{0}發出刺眼的紅光, 並且劇烈震動起來!',
+      scrollEnchantWeaponReadEvaporate: '你手中的{0}劇烈震動, 然後汽化了!',
+      scrollRemoveCurseRead: '你裝備中的{0}發出了溫暖的白光...',
+      scrollReadNoEffect: '什麼事都沒發生...',
+      removeEquip: '你卸下了{0}.',
+      wearEquip: '你裝備上了{0}.',
+      changeEquipCursed: '你嘗試卸下{0}, 但是失敗了!'
     },
     display: function(msgName) {
       switch (Message.language) {
@@ -318,6 +325,8 @@
       $gameParty.gainItem(new Shield(), 1);
       $gameParty.gainItem(new Scroll_Identify(), 1);
       $gameParty.gainItem(new Scroll_EnchantArmor(), 1);
+      $gameParty.gainItem(new Scroll_EnchantWeapon(), 1);
+      $gameParty.gainItem(new Scroll_RemoveCurse(), 1);
     }
   }
 
@@ -3094,6 +3103,17 @@
     item.description = item.description.split('\n')[0] + result;
   }
 
+  ItemUtils.updateEquipName = function(equip) {
+    let temp = equip.name.split(']');
+    let name = (temp.length == 1) ? temp[0] : temp[1];
+    if (equip.bucState == 1) {
+      name = '[祝福]' + name;
+    } else if (equip.bucState == -1) {
+      name = '[詛咒]' + name;
+    }
+    equip.name = name;
+  }
+
   ItemUtils.modifyAttr = function(trait, value) {
     trait.value += (value / 100);
     trait.value = Math.round(trait.value * 100) / 100;
@@ -3204,6 +3224,7 @@
     for (let id in clone) {
       this[id] = clone[id];
     }
+    this.bucState = 0; // 0: uncursed, -1: cursed, 1: blessed
   };
 
   //-----------------------------------------------------------------------------------
@@ -3224,6 +3245,9 @@
     let modifier = getRandomIntRange(0, 5);
     ItemUtils.modifyAttr(this.traits[1], modifier);
     ItemUtils.updateEquipDescription(this);
+    // randomize bucState
+    this.bucState = getRandomIntRange(-1, 2);
+    ItemUtils.updateEquipName(this);
   };
 
   //-----------------------------------------------------------------------------------
@@ -3241,7 +3265,7 @@
   Shield.prototype.initialize = function () {
     ItemTemplate.prototype.initialize.call(this, $dataArmors[1]);
     // randomize attributes
-    let modifier = getRandomIntRange(-1, 1);
+    let modifier = getRandomIntRange(-1, 2);
     ItemUtils.modifyAttr(this.traits[0], modifier);
     ItemUtils.updateEquipDescription(this);
   };
@@ -3330,6 +3354,102 @@
           }
           ItemUtils.enchantEquip(equip, 1);
         }
+        ItemUtils.identifyObject(this);
+      } else {
+        msg = Message.display('scrollReadNoEffect');
+      }
+      MapUtils.displayMessage(msg);
+      LogUtils.addLog(msg);
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Scroll_EnchantWeapon
+  //
+  // item id 53
+
+  Scroll_EnchantWeapon = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Scroll_EnchantWeapon.prototype = Object.create(ItemTemplate.prototype);
+  Scroll_EnchantWeapon.prototype.constructor = Scroll_EnchantWeapon;
+
+  Scroll_EnchantWeapon.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[53]);
+  }
+
+  Scroll_EnchantWeapon.prototype.onRead = function(user) {
+    if (user == $gameParty) {
+      LogUtils.addLog(String.format(Message.display('readScroll'), ItemUtils.getItemDisplayName(this)));
+      let equips = $gameActors._data[1].equips().filter(function(item) {
+        if (item) {
+          let prop = JSON.parse(item.note);
+          return prop.type && prop.type == 'WEAPON';
+        }
+        return false;
+      });
+      let msg;
+      if (equips.length > 0) {
+        let equip = equips[getRandomInt(equips.length)];
+        let nowValue = ItemUtils.getEnchantment(equip);
+        if (nowValue >= 5) {
+          // weapon destroyed
+          msg = String.format(Message.display('scrollEnchantWeaponReadEvaporate'), equip.name);
+          for (let id in $gameActors._data[1]._equips) {
+            if ($gameActors._data[1]._equips[id]._item == equip) {
+              $gameActors._data[1]._equips[id] = new Game_Item();
+              break;
+            }
+          }
+        } else {
+          if (nowValue >= 3) {
+            msg = String.format(Message.display('scrollEnchantWeaponReadDanger'), equip.name);
+          } else {
+            msg = String.format(Message.display('scrollEnchantWeaponRead'), equip.name);
+          }
+          ItemUtils.enchantEquip(equip, 1);
+        }
+        ItemUtils.identifyObject(this);
+      } else {
+        msg = Message.display('scrollReadNoEffect');
+      }
+      MapUtils.displayMessage(msg);
+      LogUtils.addLog(msg);
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Scroll_RemoveCurse
+  //
+  // item id 54
+
+  Scroll_RemoveCurse = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Scroll_RemoveCurse.prototype = Object.create(ItemTemplate.prototype);
+  Scroll_RemoveCurse.prototype.constructor = Scroll_RemoveCurse;
+
+  Scroll_RemoveCurse.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[54]);
+  }
+
+  Scroll_RemoveCurse.prototype.onRead = function(user) {
+    if (user == $gameParty) {
+      LogUtils.addLog(String.format(Message.display('readScroll'), ItemUtils.getItemDisplayName(this)));
+      let equips = $gameActors._data[1].equips().filter(function(item) {
+        if (item) {
+          return item.bucState == -1;
+        }
+        return false;
+      });
+      let msg;
+      if (equips.length > 0) {
+        let equip = equips[getRandomInt(equips.length)];
+        msg = String.format(Message.display('scrollRemoveCurseRead'), equip.name);
+        equip.bucState = 0;
+        ItemUtils.updateEquipName(equip);
         ItemUtils.identifyObject(this);
       } else {
         msg = Message.display('scrollReadNoEffect');
@@ -3630,35 +3750,29 @@
   // 
   // override this to judge if player really changed equipment, then update time
   Scene_Equip.prototype.onItemOk = function () {
-    SoundManager.playEquip();
-    this.actor().changeEquip(this._slotWindow.index(), this._itemWindow.item());
-    this._slotWindow.activate();
-    this._slotWindow.refresh();
-    this._itemWindow.deselect();
-    this._itemWindow.refresh();
-    this._statusWindow.refresh();
-    SceneManager.goto(Scene_Map);
-    setTimeout('TimeUtils.afterPlayerMoved();', 100);
+    let success = this.actor().changeEquip(this._slotWindow.index(), this._itemWindow.item());
+    if (success) {
+      SoundManager.playEquip();
+      this._slotWindow.activate();
+      this._slotWindow.refresh();
+      this._itemWindow.deselect();
+      this._itemWindow.refresh();
+      this._statusWindow.refresh();
+      SceneManager.goto(Scene_Map);
+      setTimeout('TimeUtils.afterPlayerMoved();', 100);
+    } else {
+      SceneManager.goto(Scene_Map);
+    }
   };
 
-  Scene_Equip.prototype.commandOptimize = function () {
-    SoundManager.playEquip();
-    this.actor().optimizeEquipments();
-    this._statusWindow.refresh();
-    this._slotWindow.refresh();
-    this._commandWindow.activate();
-    SceneManager.goto(Scene_Map);
-    setTimeout('TimeUtils.afterPlayerMoved();', 100);
-  };
+  //-----------------------------------------------------------------------------
+  // Window_EquipCommand
+  //
+  // The window for selecting a command on the equipment screen.
 
-  Scene_Equip.prototype.commandClear = function () {
-    SoundManager.playEquip();
-    this.actor().clearEquipments();
-    this._statusWindow.refresh();
-    this._slotWindow.refresh();
-    this._commandWindow.activate();
-    SceneManager.goto(Scene_Map);
-    setTimeout('TimeUtils.afterPlayerMoved();', 100);
+  // modify this to disable optimize & clear
+  Window_EquipCommand.prototype.makeCommandList = function() {
+    this.addCommand(TextManager.equip2,   'equip');
   };
 
   //-----------------------------------------------------------------------------------
@@ -4125,7 +4239,15 @@
 
   // identify item by equip, deal with cursed item
   Game_Actor.prototype.changeEquip = function(slotId, item) {
-    // TODO: deal with curse
+    // deal with curse
+    if (this.equips()[slotId] && this.equips()[slotId].bucState == -1) {
+      setTimeout(function(item) {
+        let msg = String.format(Message.display('changeEquipCursed'), item.name);
+        LogUtils.addLog(msg);
+        MapUtils.displayMessage(msg);
+      }, 100, this.equips()[slotId]);
+      return false;
+    }
     if (item && !item.isIdentified) {
       item.isIdentified = true;
       let array = $gameParty.allItems();
@@ -4135,11 +4257,20 @@
         }
       }
     }
+    let msg = '';
+    if (this.equips()[slotId]) {
+      msg += String.format(Message.display('removeEquip'), this.equips()[slotId].name);
+    }
     if (this.tradeItemWithParty(item, this.equips()[slotId])
       && (!item || this.equipSlots()[slotId] === item.etypeId)) {
       this._equips[slotId].setObject(item);
       this.refresh();
     }
+    if (item) {
+      msg += String.format(Message.display('wearEquip'), item.name);
+    }
+    LogUtils.addLog(msg);
+    return true;
   };
 
   //-----------------------------------------------------------------------------
