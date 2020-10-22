@@ -185,6 +185,17 @@
     result.weapons[6] = new ImageData('Collections1', 5, 2, 4, '木柄闊劍');
     result.weapons[7] = new ImageData('Collections1', 6, 0, 4, '鐵灰色闊劍');
     shuffle(result.weapons, 1, 7);
+
+    result.armors = [];
+    // shield
+    result.armors[1] = new ImageData('Collections2', 4, 0, 2, '圓木盾');
+    result.armors[2] = new ImageData('Collections2', 4, 1, 2, '鑲鐵圓木盾');
+    result.armors[3] = new ImageData('Collections2', 4, 2, 2, '長木盾');
+    result.armors[4] = new ImageData('Collections2', 5, 0, 2, '塔盾');
+    result.armors[5] = new ImageData('Collections2', 5, 1, 2, '骷髏面盾');
+    result.armors[6] = new ImageData('Collections2', 5, 2, 2, '骨盾');
+    result.armors[7] = new ImageData('Collections2', 6, 0, 2, '鐵製刺盾');
+    shuffle(result.armors, 1, 7);
     return result;
   }
 
@@ -209,7 +220,9 @@
       shieldBase: '盾牌',
       readScroll: '你閱讀了{0}.',
       scrollIdentifyRead: '這是一張鑑定卷軸! 你將{0}鑑定為{1}.',
-      scrollEnchatArmorRead: '你穿著的{0}發出一陣藍光!',
+      scrollEnchantArmorRead: '你穿著的{0}發出一陣藍光!',
+      scrollEnchantArmorReadDanger: '你穿著的{0}發出危險的紅光, 並且劇烈震動起來!',
+      scrollEnchantArmorReadEvaporate: '你穿著的{0}劇烈震動, 然後汽化了!',
       scrollReadNoEffect: '什麼事都沒發生...'
     },
     display: function(msgName) {
@@ -302,7 +315,9 @@
 
     for (let i = 0; i < 10; i++) {
       $gameParty.gainItem(new Sword(), 1);
+      $gameParty.gainItem(new Shield(), 1);
       $gameParty.gainItem(new Scroll_Identify(), 1);
+      $gameParty.gainItem(new Scroll_EnchantArmor(), 1);
     }
   }
 
@@ -3007,11 +3022,11 @@
         case 'POTION': case 'SCROLL': case 'BOOK':
           displayName = $gameVariables[0].itemImageData.items[item.id].name;
           break;
-        case 'WEAPON_SWORD':
+        case 'WEAPON':
           displayName = $gameVariables[0].itemImageData.weapons[item.id].name;
           break;
-        case 'SHIELD':
-          displayName = Message.display('shieldBase');
+        case 'ARMOR':
+          displayName = $gameVariables[0].itemImageData.armors[item.id].name;
           break;
       }
     }
@@ -3026,7 +3041,7 @@
     return ((value > 0) ? '\\c[24]+' + value : '\\c[25]' + value) + '\\c[0]';
   }
 
-  ItemUtils.addDescriptionToEquip = function(item) {
+  ItemUtils.updateEquipDescription = function(item) {
     let result = '\n';
     for (let i = 0; i < 8; i++) {
       if (item.params[i] != 0) {
@@ -3076,7 +3091,7 @@
         result += ItemUtils.showNumberWithSign(Math.round(attr.value * 100)) + ' ';
       }
     }
-    item.description += result;
+    item.description = item.description.split('\n')[0] + result;
   }
 
   ItemUtils.modifyAttr = function(trait, value) {
@@ -3099,7 +3114,7 @@
         } else if (DataManager.isWeapon(obj)) {
           imageData = $gameVariables[0].itemImageData.weapons[obj.id];
         } else if (DataManager.isArmor(obj)) {
-          // TODO: implement armor data images
+          imageData = $gameVariables[0].itemImageData.armors[obj.id];
         } else {
           console.log('ERROR: ItemUtils.updateItemPile: no such type!');
         }
@@ -3123,6 +3138,54 @@
     if (!erased) {
       event.updateDataMap();
     }
+  }
+
+  ItemUtils.getEnchantment = function(item) {
+    let temp = item.name.split(/\+|-/);
+    if (temp.length == 1) {
+      return 0;
+    } else {
+      let value = parseInt(temp[1]);
+      if (item.name[temp[0].length] == '-') {
+        return value * -1;
+      } else {
+        return value;
+      }
+    }
+  }
+
+  ItemUtils.enchantEquip = function(equip, value) {
+    let temp = equip.name.split(/\+|-/);
+    let nowValue = 0;
+    if (temp.length != 1) {
+      let value2 = parseInt(temp[1]);
+      if (equip.name[temp[0].length] == '-') {
+        nowValue = value2 * -1;
+      } else {
+        nowValue = value2;
+      }
+    }
+    nowValue += value;
+    let newName = temp[0];
+    if (nowValue > 0) {
+      newName += '+' + nowValue;
+    } else if (nowValue < 0) {
+      newName += '-' + nowValue;
+    }
+    equip.name = newName;
+    let prop = JSON.parse(equip.note);
+    for (let id in equip.traits) {
+      let toCheck = equip.traits[id];
+      if (toCheck.code == 22) {
+        if (prop.type == 'WEAPON' && toCheck.dataId == 2) {
+          ItemUtils.modifyAttr(toCheck, value);
+        } else if (prop.type == 'ARMOR' && toCheck.dataId == 0) {
+          ItemUtils.modifyAttr(toCheck, value);
+        }
+        break;
+      }
+    }
+    ItemUtils.updateEquipDescription(equip);
   }
 
   //-----------------------------------------------------------------------------------
@@ -3160,7 +3223,27 @@
     // randomize attributes
     let modifier = getRandomIntRange(0, 5);
     ItemUtils.modifyAttr(this.traits[1], modifier);
-    ItemUtils.addDescriptionToEquip(this);
+    ItemUtils.updateEquipDescription(this);
+  };
+
+  //-----------------------------------------------------------------------------------
+  // Shield
+  //
+  // armor id 1
+
+  Shield = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Shield.prototype = Object.create(ItemTemplate.prototype);
+  Shield.prototype.constructor = Shield;
+
+  Shield.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataArmors[1]);
+    // randomize attributes
+    let modifier = getRandomIntRange(-1, 1);
+    ItemUtils.modifyAttr(this.traits[0], modifier);
+    ItemUtils.updateEquipDescription(this);
   };
 
   //-----------------------------------------------------------------------------------
@@ -3218,11 +3301,36 @@
 
   Scroll_EnchantArmor.prototype.onRead = function(user) {
     if (user == $gameParty) {
-      let equips = $gameActors._data[1].equips();
+      LogUtils.addLog(String.format(Message.display('readScroll'), ItemUtils.getItemDisplayName(this)));
+      let equips = $gameActors._data[1].equips().filter(function(item) {
+        if (item) {
+          let prop = JSON.parse(item.note);
+          return prop.type && prop.type == 'ARMOR';
+        }
+        return false;
+      });
       let msg;
       if (equips.length > 0) {
         let equip = equips[getRandomInt(equips.length)];
-        msg = String.format(Message.display('scrollEnchatArmorRead', equip.name);
+        let nowValue = ItemUtils.getEnchantment(equip);
+        if (nowValue >= 5) {
+          // armor destroyed
+          msg = String.format(Message.display('scrollEnchantArmorReadEvaporate'), equip.name);
+          for (let id in $gameActors._data[1]._equips) {
+            if ($gameActors._data[1]._equips[id]._item == equip) {
+              $gameActors._data[1]._equips[id] = new Game_Item();
+              break;
+            }
+          }
+        } else {
+          if (nowValue >= 3) {
+            msg = String.format(Message.display('scrollEnchantArmorReadDanger'), equip.name);
+          } else {
+            msg = String.format(Message.display('scrollEnchantArmorRead'), equip.name);
+          }
+          ItemUtils.enchantEquip(equip, 1);
+        }
+        ItemUtils.identifyObject(this);
       } else {
         msg = Message.display('scrollReadNoEffect');
       }
