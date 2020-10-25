@@ -145,7 +145,7 @@
   function shuffle(a, begin, end) {
     var j, x, i;
     for (i = end; i >= begin; i--) {
-        j = Math.floor(Math.random() * (i + 1)) + begin;
+        j = Math.floor(Math.random() * (i - begin + 1)) + begin;
         x = a[i];
         a[i] = a[j];
         a[j] = x;
@@ -170,6 +170,20 @@
     result.items = [];
     // food
     result.items[11] = new ImageData('Meat', 0, 2, 2);
+    // potion
+    result.items[31] = new ImageData('Collections1', 0, 0, 6, '紅色藥水');
+    result.items[32] = new ImageData('Collections1', 0, 1, 6, '橙色藥水');
+    result.items[33] = new ImageData('Collections1', 0, 2, 6, '黃色藥水');
+    result.items[34] = new ImageData('Collections1', 1, 0, 6, '藍色藥水');
+    result.items[35] = new ImageData('Collections1', 1, 1, 6, '紫色藥水');
+    result.items[36] = new ImageData('Collections1', 1, 2, 6, '綠色藥水');
+    result.items[37] = new ImageData('Collections1', 2, 0, 6, '灰色藥水');
+    result.items[38] = new ImageData('Collections1', 2, 1, 6, '紅色試管');
+    result.items[39] = new ImageData('Collections1', 2, 2, 6, '澄色試管');
+    result.items[40] = new ImageData('Collections1', 3, 0, 6, '黃色試管');
+    result.items[41] = new ImageData('Collections1', 3, 1, 6, '藍色試管');
+    result.items[42] = new ImageData('Collections1', 3, 2, 6, '紫色試管');
+    shuffle(result.items, 31, 42);
     // scroll
     for (let i = 51; i <= 58; i++) {
       result.items[i] = new ImageData('Collections3', 3, 1, 4, '卷軸: ' + genScrollName());
@@ -218,6 +232,9 @@
       bookBase: '魔法書',
       weaponSwordBase: '長劍',
       shieldBase: '盾牌',
+      quaffPotion: '你喝下了{0}',
+      quaffPotionHeal: '{0}的生命力恢復了!',
+      quaffPotionMana: '{0}的魔力恢復了!',
       readScroll: '你閱讀了{0}.',
       scrollIdentifyRead: '你將{0}鑑定為{1}.',
       scrollEnchantArmorRead: '你身上的{0}發出一陣銀光!',
@@ -336,6 +353,8 @@
       $gameParty.gainItem(new Scroll_DestroyArmor(), 1);
       $gameParty.gainItem(new Scroll_CreateMonster(), 1);
       $gameParty.gainItem(new Scroll_ScareMonster(), 1);
+      $gameParty.gainItem(new Potion_Heal(), 1);
+      $gameParty.gainItem(new Potion_Mana(), 1);
     }
   }
 
@@ -3354,6 +3373,60 @@
   };
 
   //-----------------------------------------------------------------------------------
+  // Potion_Heal
+  //
+  // item id 31
+
+  Potion_Heal = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Potion_Heal.prototype = Object.create(ItemTemplate.prototype);
+  Potion_Heal.prototype.constructor = Potion_Heal;
+
+  Potion_Heal.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[31]);
+  }
+
+  Potion_Heal.prototype.onQuaff = function(user) {
+    if (user == $gameParty) {
+      let realUser = BattleUtils.getRealTarget($gamePlayer);
+      realUser.setHp(realUser._hp + 50);
+      let msg = String.format(Message.display('quaffPotionHeal'), LogUtils.getCharName(realUser.name()));
+      ItemUtils.identifyObject(this);
+      MapUtils.displayMessage(msg);
+      LogUtils.addLog(msg);
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Potion_Mana
+  //
+  // item id 32
+
+  Potion_Mana = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Potion_Mana.prototype = Object.create(ItemTemplate.prototype);
+  Potion_Mana.prototype.constructor = Potion_Mana;
+
+  Potion_Mana.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[32]);
+  }
+
+  Potion_Mana.prototype.onQuaff = function(user) {
+    if (user == $gameParty) {
+      let realUser = BattleUtils.getRealTarget($gamePlayer);
+      realUser.setMp(realUser._mp + 20);
+      let msg = String.format(Message.display('quaffPotionMana'), LogUtils.getCharName(realUser.name()));
+      ItemUtils.identifyObject(this);
+      MapUtils.displayMessage(msg);
+      LogUtils.addLog(msg);
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
   // Scroll_Identify
   //
   // item id 51
@@ -3689,16 +3762,18 @@
     if (user == $gameParty) {
       let msg = Message.display('scrollScareMonsterRead');
       LogUtils.addLog(msg);
-      let monsterScared = false;
+      let seeMonsterScared = false;
       for (let id in $gameMap._events) {
         let evt = $gameMap._events[id];
-        if (evt && evt.type == 'MOB' && $gameVariables[$gameMap._mapId].mapData[evt._x][evt._y].isVisible) {
+        if (evt && evt.type == 'MOB' && MapUtils.getDistance(evt._x, evt._y, $gamePlayer._x, $gamePlayer._y) <= 10) {
           evt.mob.afraidCount = 20;
-          LogUtils.addLog(String.format(Message.display('monsterFlee'), evt.mob.name()));
-          monsterScared = true;
+          if ($gameVariables[$gameMap._mapId].mapData[evt._x][evt._y].isVisible) {
+            LogUtils.addLog(String.format(Message.display('monsterFlee'), evt.mob.name()));
+            seeMonsterScared = true;
+          }
         }
       }
-      if (monsterScared) {
+      if (seeMonsterScared) {
         ItemUtils.identifyObject(this);
       }
       MapUtils.displayMessage(msg);
@@ -4372,11 +4447,18 @@
       $gameParty.loseItem(this.item(), 1);
       this.popScene();
       var func = function (item) {
-        SetUtils.add('POTION_' + item.id, $gameVariables[0].identifiedObjects);
-        TimeUtils.afterPlayerMoved();
-        // TODO: implement quaffing effect
+        LogUtils.addLog(String.format(Message.display('quaffPotion'), ItemUtils.getItemDisplayName(item)));
+        item.onQuaff($gameParty);
+        var func2 = function() {
+          if (!$gameVariables[0].messageFlag) {
+            TimeUtils.afterPlayerMoved();
+            return;
+          }
+          setTimeout(func2, 10);
+        }
+        func2();
       }
-      setTimeout(func.bind(null, this.item()), 100);
+      setTimeout(func, 100, this.item());
     }
     this._itemWindow.refresh();
     this._itemWindow.activate();
