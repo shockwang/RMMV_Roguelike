@@ -156,7 +156,7 @@
   // generating scroll name
   function genScrollName() {
     var result = '';
-    let vocabulary = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let vocabulary = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ';
     let length = getRandomIntRange(5, 20);
     for (let i = 0; i < length; i++) {
       result += vocabulary[getRandomInt(vocabulary.length)];
@@ -228,10 +228,14 @@
       scrollEnchantWeaponReadEvaporate: '你手中的{0}劇烈震動, 然後汽化了!',
       scrollRemoveCurseRead: '你裝備中的{0}發出了溫暖的白光...',
       scrollTeleportRead: '你被傳送到地圖的某處!',
+      scrollDestroyArmorRead: '你裝備中的{0}化為飛灰, 隨風飄散了!',
+      scrollCreateMonsterRead: '怪物突然出現在你面前!',
+      scrollScareMonsterRead: '空中突然響起巨大的恐怖聲音!',
       scrollReadNoEffect: '什麼事都沒發生...',
       removeEquip: '你卸下了{0}.',
       wearEquip: '你裝備上了{0}.',
-      changeEquipCursed: '你嘗試卸下{0}, 但是失敗了!'
+      changeEquipCursed: '你嘗試卸下{0}, 但是失敗了!',
+      monsterFlee: '{0}轉身逃跑!'
     },
     display: function(msgName) {
       switch (Message.language) {
@@ -329,6 +333,9 @@
       $gameParty.gainItem(new Scroll_EnchantWeapon(), 1);
       $gameParty.gainItem(new Scroll_RemoveCurse(), 1);
       $gameParty.gainItem(new Scroll_Teleport(), 1);
+      $gameParty.gainItem(new Scroll_DestroyArmor(), 1);
+      $gameParty.gainItem(new Scroll_CreateMonster(), 1);
+      $gameParty.gainItem(new Scroll_ScareMonster(), 1);
     }
   }
 
@@ -898,6 +905,18 @@
       scene.createDisplayObjects();
       scene.setupStatus();
     }
+  }
+
+  MapUtils.findAdjacentBlocks = function(target) {
+    var result = [];
+    for (let i = target._x - 1; i <= target._x + 1; i++) {
+      for (let j = target._y - 1; j <= target._y + 1; j++) {
+        if (i != target._x || j != target._y) {
+          result.push(new Coordinate(i, j));
+        }
+      }
+    }
+    return result;
   }
 
   var RNG = [
@@ -1930,6 +1949,7 @@
       // new mob instance from mobId
       this.mob = new Game_Enemy(mobId, x, y);
       this.mob.awareDistance = 5;
+      this.mob.afraidCount = 0;
       // find empty space for new event
       var eventId = MapUtils.findEmptyFromList($dataMap.events);
       $dataMap.events[eventId] = newDataMapEvent($gameVariables[0].templateEvents.monster, eventId, x, y);
@@ -1945,7 +1965,10 @@
   Game_Mob.prototype.action = function () {
     // check if player is nearby
     let distance = MapUtils.getDistance(this._x, this._y, $gamePlayer._x, $gamePlayer._y);
-    if (distance < 2) {
+    if (this.mob.afraidCount > 0) {
+      this.moveAwayFromCharacter($gamePlayer);
+      this.mob.afraidCount--;
+    } else if (distance < 2) {
       this.turnTowardCharacter($gamePlayer);
       BattleUtils.meleeAttack(this, $gamePlayer);
     } else if (distance < this.mob.awareDistance) {
@@ -1979,6 +2002,63 @@
           var added = false;
           for (var i = 0; i < candidate.length; i++) {
             if (distance < distanceRecord[i]) {
+              candidate.splice(i, 0, coordinate);
+              distanceRecord.splice(i, 0, distance);
+              added = true;
+              break;
+            }
+          }
+          if (!added) {
+            candidate.push(coordinate);
+            distanceRecord.push(distance);
+          }
+        }
+      }
+    }
+    for (var i = 0; i < candidate.length; i++) {
+      var horz = 0, vert = 0;
+      var sx = this.deltaXFrom(candidate[i].x);
+      var sy = this.deltaYFrom(candidate[i].y);
+      if (sx > 0) {
+        horz = 4;
+      } else if (sx < 0) {
+        horz = 6;
+      }
+      if (sy > 0) {
+        vert = 8;
+      } else if (sy < 0) {
+        vert = 2;
+      }
+      if (sx == 0 || sy == 0) {
+        this.moveStraight((sx == 0) ? vert : horz);
+      } else {
+        this.moveDiagonally(horz, vert);
+      }
+      if (this.isMovementSucceeded()) {
+        break;
+      }
+    }
+    return this.isMovementSucceeded();
+  }
+
+  Game_Mob.prototype.moveAwayFromCharacter = function (character) {
+    var mapData = $gameVariables[$gameMap.mapId()].mapData;
+    var candidate = [], distanceRecord = [];
+    var nowDistance = MapUtils.getDistance(this._x, this._y, character._x, character._y);
+    for (var i = 0; i < 8; i++) {
+      var coordinate = MapUtils.getNearbyCoordinate(this._x, this._y, i);
+      if (!MapUtils.isTilePassable(mapData[coordinate.x][coordinate.y].originalTile)) {
+        continue;
+      }
+      var distance = MapUtils.getDistance(coordinate.x, coordinate.y, character._x, character._y);
+      if (distance > nowDistance) {
+        if (candidate.length == 0) {
+          candidate.push(coordinate);
+          distanceRecord.push(distance);
+        } else {
+          var added = false;
+          for (var i = 0; i < candidate.length; i++) {
+            if (distance > distanceRecord[i]) {
               candidate.splice(i, 0, coordinate);
               distanceRecord.splice(i, 0, distance);
               added = true;
@@ -2805,9 +2885,10 @@
         // move dead mobs so it won't block the door
         let moveMob = function (target) {
           target.setPosition(-10, -10);
+          $gameMap._events[target._eventId] = null;
+          $dataMap.events[target._eventId] = null;
         }
         setTimeout(moveMob.bind(null, target), 500);
-        $dataMap.events[target._eventId] = null;
       }
     }
   }
@@ -3478,7 +3559,7 @@
       let floors = MapUtils.findMapDataFloor($gameVariables[$gameMap._mapId].mapData);
       while (true) {
         let floor = floors[Math.randomInt(floors.length)];
-        if (MapUtils.isTileAvailableForMob($gameMap._mapId, floor.x, floor.y)) {
+        if (MapUtils.isTileAvailableForMob($gameMap._mapId, floor.x, floor.y) && (floor.x != $gamePlayer._x && floor.y != $gamePlayer._y)) {
           $gamePlayer.setPosition(floor.x, floor.y);
           let screenX = ($gamePlayer._x - 10.125 < 0) ? 0 : $gamePlayer._x - 10.125;
           screenX = (screenX + 20 > $gameMap.width()) ? $gameMap.width() - 20 : screenX;
@@ -3495,6 +3576,132 @@
       }
       LogUtils.addLog(Message.display('scrollTeleportRead'));
       ItemUtils.identifyObject(this);
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Scroll_DestroyArmor
+  //
+  // item id 56
+
+  Scroll_DestroyArmor = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Scroll_DestroyArmor.prototype = Object.create(ItemTemplate.prototype);
+  Scroll_DestroyArmor.prototype.constructor = Scroll_DestroyArmor;
+
+  Scroll_DestroyArmor.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[56]);
+  }
+
+  Scroll_DestroyArmor.prototype.onRead = function(user) {
+    if (user == $gameParty) {
+      let equips = $gameActors._data[1].equips().filter(function(item) {
+        if (item) {
+          let prop = JSON.parse(item.note);
+          return prop.type && prop.type == 'ARMOR';
+        }
+        return false;
+      });
+      let msg;
+      if (equips.length > 0) {
+        let equip = equips[getRandomInt(equips.length)];
+        msg = String.format(Message.display('scrollDestroyArmorRead'), equip.name);
+        for (let id in $gameActors._data[1]._equips) {
+          if ($gameActors._data[1]._equips[id]._item == equip) {
+            $gameActors._data[1]._equips[id] = new Game_Item();
+            break;
+          }
+        }
+        ItemUtils.identifyObject(this);
+      } else {
+        msg = Message.display('scrollReadNoEffect');
+      }
+      MapUtils.displayMessage(msg);
+      LogUtils.addLog(msg);
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Scroll_CreateMonster
+  //
+  // item id 57
+
+  Scroll_CreateMonster = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Scroll_CreateMonster.prototype = Object.create(ItemTemplate.prototype);
+  Scroll_CreateMonster.prototype.constructor = Scroll_CreateMonster;
+
+  Scroll_CreateMonster.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[57]);
+  }
+
+  Scroll_CreateMonster.prototype.onRead = function(user) {
+    if (user == $gameParty) {
+      let blocks = MapUtils.findAdjacentBlocks($gamePlayer);
+      let msg, targetFloor;
+      while (blocks.length > 0) {
+        let id = getRandomInt(blocks.length);
+        let floor = blocks[id];
+        if (MapUtils.isTileAvailableForMob($gameMap._mapId, floor.x, floor.y)) {
+          targetFloor = floor;
+          break;
+        } else {
+          blocks.splice(id, 1);
+        }
+      }
+      if (targetFloor) {
+        // TODO: implement mob generating method
+        new Bat(targetFloor.x, targetFloor.y);
+        MapUtils.refreshMap();
+        // show on map objs
+        showObjsOnMap();
+        msg = Message.display('scrollCreateMonsterRead');
+        ItemUtils.identifyObject(this);
+      } else {
+        msg = Message.display('scrollReadNoEffect');
+      }
+      MapUtils.displayMessage(msg);
+      LogUtils.addLog(msg);
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Scroll_ScareMonster
+  //
+  // item id 58
+
+  Scroll_ScareMonster = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Scroll_ScareMonster.prototype = Object.create(ItemTemplate.prototype);
+  Scroll_ScareMonster.prototype.constructor = Scroll_ScareMonster;
+
+  Scroll_ScareMonster.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[58]);
+  }
+
+  Scroll_ScareMonster.prototype.onRead = function(user) {
+    if (user == $gameParty) {
+      let msg = Message.display('scrollScareMonsterRead');
+      LogUtils.addLog(msg);
+      let monsterScared = false;
+      for (let id in $gameMap._events) {
+        let evt = $gameMap._events[id];
+        if (evt && evt.type == 'MOB' && $gameVariables[$gameMap._mapId].mapData[evt._x][evt._y].isVisible) {
+          evt.mob.afraidCount = 20;
+          LogUtils.addLog(String.format(Message.display('monsterFlee'), evt.mob.name()));
+          monsterScared = true;
+        }
+      }
+      if (monsterScared) {
+        ItemUtils.identifyObject(this);
+      }
+      MapUtils.displayMessage(msg);
     }
   }
 
