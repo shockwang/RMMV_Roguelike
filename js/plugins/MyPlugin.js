@@ -74,13 +74,11 @@
   }
 
   var FLOOR = '□';
-  var CEILING = '■';
-  var WALL = 'Ⅲ';
+  var WALL = '■';
   var DOOR = 'Ｄ';
 
   // ----------map constants----------
-  var ceilingCenter = 5888;
-  var wallCenter = 6282;
+  var ceilingCenter = 6752;
   var floorCenter = 2816;
   var warFogCenter = 3536;
   var upStair = 19;
@@ -342,6 +340,11 @@
     // define identified data pool
     $gameVariables[0].identifiedObjects = [];
 
+    // temp data for projectile
+    $gameVariables[0].fireProjectileInfo = {
+      item: null
+    }
+
     for (let i = 0; i < 10; i++) {
       $gameParty.gainItem(new Sword(), 1);
       $gameParty.gainItem(new Shield(), 1);
@@ -518,28 +521,18 @@
         }
       }
 
-      // ceiling followed by wall check
-      if (visible && mapData[x][y].originalTile == WALL) {
-        mapData[x][y - 1].isVisible = true;
-      }
-
       // other ceiling check
-      if (!visible && mapData[x][y].originalTile == CEILING) {
-        if (y + 1 < mapData[0].length && mapData[x][y + 1].originalTile == WALL && mapData[x][y + 1].isVisible) {
-          // ceiling attached with wall
+      if (!visible && mapData[x][y].originalTile == WALL) {
+        var xVisible = false, yVisible = false;
+        if ((x - 1 >= 0 && mapData[x - 1][y].isVisible) || (x + 1 < mapData.length && mapData[x + 1][y].isVisible)) {
+          xVisible = true;
+        }
+        if ((y - 1 >= 0 && mapData[x][y - 1].isVisible) || (y + 1 < mapData[0].length && mapData[x][y + 1].isVisible)) {
+          yVisible = true;
+        }
+        if (xVisible && yVisible) {
+          // corner case
           visible = true;
-        } else {
-          var xVisible = false, yVisible = false;
-          if ((x - 1 >= 0 && mapData[x - 1][y].isVisible) || (x + 1 < mapData.length && mapData[x + 1][y].isVisible)) {
-            xVisible = true;
-          }
-          if ((y - 1 >= 0 && mapData[x][y - 1].isVisible) || (y + 1 < mapData[0].length && mapData[x][y + 1].isVisible)) {
-            yVisible = true;
-          }
-          if (xVisible && yVisible) {
-            // corner case
-            visible = true;
-          }
         }
       }
     }
@@ -635,38 +628,11 @@
     for (var j = 0; j < rawData[0].length; j++) {
       for (var i = 0; i < rawData.length; i++) {
         if (rawData[i][j] == FLOOR) {
-          // deal with shadow
-          if (i - 1 >= 0 && j - 1 >= 0 && MapUtils.isTilePassable(rawData[i][j])
-            && !MapUtils.isTilePassable(rawData[i - 1][j]) && !MapUtils.isTilePassable(rawData[i - 1][j - 1])) {
-            mapData[i][j].shadow = 5;
-          }
           // skip the floor tunning
           continue;
-        } else if (rawData[i][j] == CEILING) {
+        } else if (rawData[i][j] == WALL) {
           // deal with ceiling
           north = false, south = false, east = false, west = false;
-          // check east
-          if (i + 1 < rawData.length && rawData[i + 1][j] != CEILING) {
-            east = true;
-          }
-          // check west
-          if (i - 1 >= 0 && rawData[i - 1][j] != CEILING) {
-            west = true;
-          }
-          // check north
-          if (j - 1 >= 0 && rawData[i][j - 1] != CEILING) {
-            north = true;
-          }
-          // check south
-          if (j + 1 < rawData.length && rawData[i][j + 1] != CEILING) {
-            south = true;
-          }
-
-          // now decide tile type
-          mapData[i][j].base = refineMapTile(east, west, south, north, ceilingCenter);
-        } else if (rawData[i][j] == WALL) {
-          // deal with wall
-          east = false, west = false;
           // check east
           if (i + 1 < rawData.length && rawData[i + 1][j] != WALL) {
             east = true;
@@ -675,23 +641,17 @@
           if (i - 1 >= 0 && rawData[i - 1][j] != WALL) {
             west = true;
           }
+          // check north
+          if (j - 1 >= 0 && rawData[i][j - 1] != WALL) {
+            north = true;
+          }
+          // check south
+          if (j + 1 < rawData.length && rawData[i][j + 1] != WALL) {
+            south = true;
+          }
 
           // now decide tile type
-          var result = wallCenter;
-          if (east) {
-            if (west) {
-              result += 5;
-            } else {
-              result += 4;
-            }
-          } else {
-            if (west) {
-              result += 1;
-            } else {
-              result += 0;
-            }
-          }
-          mapData[i][j].base = result;
+          mapData[i][j].base = refineMapTile(east, west, south, north, ceilingCenter);
         } else if (rawData[i][j] == DOOR) {
           new Game_Door(i, j);
         }
@@ -729,7 +689,6 @@
         updateVisible($gamePlayer, viewDistance, i, j, mapData);
         if (mapData[i][j].isVisible || mapData[i][j].isExplored) {
           mapArray[index] = mapData[i][j].base;
-          mapArray[shadowOffset + index] = mapData[i][j].shadow;
           mapData[i][j].isExplored = true;
           if (mapData[i][j].isVisible) {
             // update item piles
@@ -974,17 +933,17 @@
 
     // fill the map
     for (var i = 0; i < map.length; i++) {
-      map[i][0] = CEILING;
+      map[i][0] = WALL;
     }
     for (var j = 0; j < map[0].length; j++) {
-      map[0][j] = CEILING;
+      map[0][j] = WALL;
     }
 
     var index = 1;
     for (var i = 0; i < genMap.length; i++) {
       for (var j = 0; j < genMap[i].length; j++) {
         map[i * 2 + index][j * 2 + index] = FLOOR;
-        map[i * 2 + 1 + index][j * 2 + 1 + index] = CEILING;
+        map[i * 2 + 1 + index][j * 2 + 1 + index] = WALL;
         // check if inside of room
         if (genMap[i][j].isRoom && !genMap[i][j].northWall && !genMap[i][j].eastWall) {
           map[i * 2 + 1 + index][j * 2 + 1 + index] = FLOOR;
@@ -992,7 +951,7 @@
 
         var north;
         if (genMap[i][j].northWall) {
-          north = CEILING;
+          north = WALL;
         } else if (genMap[i][j].northDoor) {
           north = DOOR;
         } else {
@@ -1002,7 +961,7 @@
 
         var east;
         if (genMap[i][j].eastWall) {
-          east = CEILING;
+          east = WALL;
         } else if (genMap[i][j].eastDoor) {
           east = DOOR;
         } else {
@@ -1012,34 +971,6 @@
       }
     }
     return map;
-  }
-
-  function addWall(map) {
-    var map2 = new Array(map.length);
-    for (var i = 0; i < map.length; i++) {
-      map2[i] = new Array(Math.floor(map[0].length * 1.5));
-    }
-
-    var index = 0;
-    for (var j = 0; j < map[0].length; j++) {
-      var needWall = false;
-      for (var i = 0; i < map.length; i++) {
-        map2[i][j + index] = map[i][j];
-        if (j + 1 < map[0].length && map[i][j + 1] == FLOOR && map[i][j] == CEILING) {
-          needWall = true;
-          map2[i][j + index + 1] = WALL;
-        } else if (map[i][j] == DOOR) {
-          map2[i][j + index] = DOOR;
-          map2[i][j + index + 1] = FLOOR;
-        } else {
-          map2[i][j + index + 1] = map[i][j];
-        }
-      }
-      if (needWall) {
-        index++;
-      }
-    }
-    return map2;
   }
 
   // map data structure definition
@@ -1448,8 +1379,7 @@
   MapUtils.generateMapData = function (genMapFunction, width, height) {
     var mapRaw = genMapFunction(width, height);
     var mapPixel = genMapToMap(mapRaw);
-    //return mapPixel;
-    return addWall(mapPixel);
+    return mapPixel;
   }
 
   MapUtils.getNearbyCoordinate = function (x, y, index) {
@@ -1569,7 +1499,7 @@
   MapUtils.setupNewMap = function (mapId) {
     // first load map
     console.log("first load map: " + mapId);
-    var rawMap = MapUtils.generateMapData(genMapRoomsFullMaze, 9, 6);
+    var rawMap = MapUtils.generateMapData(genMapRoomsFullMaze, 9, 9);
     var newMapData = MapUtils.translateMap(rawMap);
     $dataMap.width = rawMap.length;
     $dataMap.height = rawMap[0].length;
@@ -2397,8 +2327,7 @@
         }
       }
       // hit wall
-      if ($gameVariables[$gameMap._mapId].mapData[this._x][this._y].originalTile == WALL
-        || $gameVariables[$gameMap._mapId].mapData[this._x][this._y].originalTile == CEILING) {
+      if ($gameVariables[$gameMap._mapId].mapData[this._x][this._y].originalTile == WALL) {
           vanish = this.hitWall(this);
       }
     }
@@ -2423,6 +2352,33 @@
   Game_Projectile.prototype.hitWall = function(vm) {
     TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
     vm.distanceCount = 99;
+    return true;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Projectile_Potion extends Game_Projectile
+  Projectile_Potion = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Projectile_Potion.prototype = Object.create(Game_Projectile.prototype);
+  Projectile_Potion.prototype.constructor = Projectile_Potion;
+
+  Projectile_Potion.prototype.initialize = function (src, x, y) {
+    Game_Projectile.prototype.initialize.call(this, src, x, y);
+    // setup images
+    let imageData = ItemUtils.getImageData($gameVariables[0].fireProjectileInfo.item);
+    this._originalPattern = imageData.pattern;
+    this.setPattern(imageData.pattern);
+    this._direction = imageData.direction;
+    this.setImage(imageData.image, imageData.imageIndex);
+    this.distance = 5;
+  };
+
+  Projectile_Potion.prototype.createProjectile = function(src, x, y) {
+    let projectile = new Projectile_Potion(src, x, y);
+    projectile.action();
+    $gameVariables[0].messageFlag = false;
     return true;
   }
 
@@ -2727,9 +2683,11 @@
           LogUtils.displayLogWindow();
           break;
         case 'f': // fire projectile
-          $gameVariables[0].directionalAction = FireBall.prototype.createProjectile;
-          $gameVariables[0].directionalFlag = true;
-          MapUtils.displayMessage('往哪個方向發射?');
+          // TODO: move fireball to cast functionality
+          // $gameVariables[0].directionalAction = FireBall.prototype.createProjectile;
+          // $gameVariables[0].directionalFlag = true;
+          // MapUtils.displayMessage('往哪個方向發射?');
+          SceneManager.push(Scene_FireProjectile);
           break;
         case 'q': // quaff potion
           SceneManager.push(Scene_QuaffPotion);
@@ -3221,6 +3179,20 @@
     trait.value = Math.round(trait.value * 100) / 100;
   }
 
+  ItemUtils.getImageData = function(obj) {
+    let imageData;
+    if (DataManager.isItem(obj)) {
+      imageData = $gameVariables[0].itemImageData.items[obj.id];
+    } else if (DataManager.isWeapon(obj)) {
+      imageData = $gameVariables[0].itemImageData.weapons[obj.id];
+    } else if (DataManager.isArmor(obj)) {
+      imageData = $gameVariables[0].itemImageData.armors[obj.id];
+    } else {
+      console.log('ERROR: ItemUtils.updateItemPile: no such type!');
+    }
+    return imageData;
+  }
+
   ItemUtils.updateItemPile = function(event) {
     let erased = false;
     if ($gameVariables[$gameMap._mapId].mapData[event._x][event._y].isVisible) {
@@ -3230,16 +3202,7 @@
         erased = true;
       } else {
         let obj = event.itemPile.objectStack[event.itemPile.objectStack.length - 1];
-        let imageData;
-        if (DataManager.isItem(obj)) {
-          imageData = $gameVariables[0].itemImageData.items[obj.id];
-        } else if (DataManager.isWeapon(obj)) {
-          imageData = $gameVariables[0].itemImageData.weapons[obj.id];
-        } else if (DataManager.isArmor(obj)) {
-          imageData = $gameVariables[0].itemImageData.armors[obj.id];
-        } else {
-          console.log('ERROR: ItemUtils.updateItemPile: no such type!');
-        }
+        let imageData = ItemUtils.getImageData(obj);
         // setup image
         event._originalPattern = imageData.pattern;
         event.setPattern(imageData.pattern);
@@ -3391,6 +3354,7 @@
   Potion_Heal.prototype.onQuaff = function(user) {
     if (user == $gameParty) {
       let realUser = BattleUtils.getRealTarget($gamePlayer);
+      $gamePlayer.requestAnimation(45);
       realUser.setHp(realUser._hp + 50);
       let msg = String.format(Message.display('quaffPotionHeal'), LogUtils.getCharName(realUser.name()));
       ItemUtils.identifyObject(this);
@@ -3418,6 +3382,7 @@
   Potion_Mana.prototype.onQuaff = function(user) {
     if (user == $gameParty) {
       let realUser = BattleUtils.getRealTarget($gamePlayer);
+      $gamePlayer.requestAnimation(45);
       realUser.setMp(realUser._mp + 20);
       let msg = String.format(Message.display('quaffPotionMana'), LogUtils.getCharName(realUser.name()));
       ItemUtils.identifyObject(this);
@@ -4557,6 +4522,95 @@
       }
     }
     setTimeout(func, 100, this.item());
+    this._itemWindow.refresh();
+    this._itemWindow.activate();
+  };
+
+  //-----------------------------------------------------------------------------------
+  // Window_ProjectileList
+  //
+  // class for potions, inherit from Window_ItemList
+  function Window_ProjectileList() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_ProjectileList.prototype = Object.create(Window_ItemList.prototype);
+  Window_ProjectileList.prototype.constructor = Window_ProjectileList;
+
+  Window_ProjectileList.prototype.initialize = function (x, y, width, height) {
+    Window_ItemList.prototype.initialize.call(this, x, y, width, height);
+  };
+
+  Window_ProjectileList.prototype.includes = function (item) {
+    try {
+      var prop = JSON.parse(item.note);
+      return prop.type && prop.type == "POTION";
+    } catch (e) {
+      // do nothing
+    }
+    return false;
+  }
+
+  Window_ProjectileList.prototype.isEnabled = function(item) {
+    return true;
+  };
+
+  //-----------------------------------------------------------------------------------
+  // Scene_FireProjectile
+  //
+  // handle the action when quaffing
+  Scene_FireProjectile = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Scene_FireProjectile.prototype = Object.create(Scene_Item.prototype);
+  Scene_FireProjectile.prototype.constructor = Scene_FireProjectile;
+
+  Scene_FireProjectile.prototype.initialize = function () {
+    Scene_Item.prototype.initialize.call(this);
+  };
+
+  // override this function so it creates Window_GetDropItemList window
+  Scene_FireProjectile.prototype.createItemWindow = function () {
+    var wy = this._categoryWindow.y + this._categoryWindow.height;
+    var wh = Graphics.boxHeight - wy;
+    this._itemWindow = new Window_PotionList(0, wy, Graphics.boxWidth, wh);
+    this._itemWindow.setHelpWindow(this._helpWindow);
+    this._itemWindow.setHandler('ok', this.onItemOk.bind(this));
+    this._itemWindow.setHandler('cancel', this.onItemCancel.bind(this));
+    this.addWindow(this._itemWindow);
+    this._categoryWindow.setItemWindow(this._itemWindow);
+  };
+
+  // override this to show hint message
+  Scene_FireProjectile.prototype.createCategoryWindow = function () {
+    this._categoryWindow = new Window_ItemCategory();
+    this._categoryWindow.setHelpWindow(this._helpWindow);
+    this._helpWindow.drawTextEx('你想投擲什麼?', 0, 0);
+    this._categoryWindow.y = this._helpWindow.height;
+    this._categoryWindow.setHandler('ok', this.onCategoryOk.bind(this));
+    this._categoryWindow.setHandler('cancel', this.popScene.bind(this));
+    this.addWindow(this._categoryWindow);
+  };
+
+  // override this to show hint message
+  Scene_FireProjectile.prototype.onItemCancel = function () {
+    Scene_Item.prototype.onItemCancel.call(this);
+    this._helpWindow.drawTextEx('你想投擲什麼?', 0, 0);
+  }
+
+  Scene_FireProjectile.prototype.onItemOk = function () {
+    $gameParty.setLastItem(this.item());
+    if (this.item()) {
+      $gameVariables[0].fireProjectileInfo.item = this.item();
+      this.popScene();
+      var func = function () {
+        $gameVariables[0].directionalAction = Projectile_Potion.prototype.createProjectile;
+        $gameVariables[0].directionalFlag = true;
+        MapUtils.displayMessage('往哪個方向投擲?');
+      }
+      setTimeout(func, 100);
+    }
     this._itemWindow.refresh();
     this._itemWindow.activate();
   };
