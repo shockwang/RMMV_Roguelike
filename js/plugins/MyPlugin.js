@@ -253,7 +253,8 @@
       throwItem: '{0}丟出了{1}!',
       throwPotionHit: '{0}在{1}頭上碎裂開來!',
       throwPotionCrash: '{0}碎裂開來, 你聞到一股奇怪的味道...',
-      monsterFlee: '{0}轉身逃跑!'
+      monsterFlee: '{0}轉身逃跑!',
+      bumpWall: '{0}撞在牆上.'
     },
     display: function(msgName) {
       switch (Message.language) {
@@ -330,6 +331,8 @@
     $gameVariables[0].player = {};
     $gameVariables[0].player.skillExp = {};
     $gameVariables[0].player.nutrition = 900;
+    $gameVariables[0].player.blindCount = 0;
+    $gameVariables[0].player.originalViewDistance = viewDistance;
     // initialize template events
     $gameVariables[0].templateEvents = {
       monster: $dataMap.events[3],
@@ -1686,6 +1689,14 @@
       }
       this._followers.updateMove();
       moved = true;
+    } else if ($gameVariables[0].player.blindCount > 0) {
+      let coordinate = Input.getNextCoordinate($gamePlayer, d.toString());
+      if (!$gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].isExplored) {
+        $gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].isExplored = true;
+        let realSrc = BattleUtils.getRealTarget($gamePlayer);
+        LogUtils.addLog(String.format(Message.display('bumpWall'), LogUtils.getCharName(realSrc.name())));
+        moved = true;
+      }
     }
     Game_Character.prototype.moveStraight.call(this, d);
     if (moved) {
@@ -1710,6 +1721,28 @@
       }
       this._followers.updateMove();
       moved = true;
+    } else if ($gameVariables[0].player.blindCount > 0) {
+      let d;
+      if (horz == 4) {
+        if (vert == 8) {
+          d = 7;
+        } else if (vert == 2) {
+          d = 1;
+        }
+      } else if (horz == 6) {
+        if (vert == 8) {
+          d = 9;
+        } else if (vert == 2) {
+          d = 3;
+        }
+      }
+      let coordinate = Input.getNextCoordinate($gamePlayer, d.toString());
+      if (!$gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].isExplored) {
+        $gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].isExplored = true;
+        let realSrc = BattleUtils.getRealTarget($gamePlayer);
+        LogUtils.addLog(String.format(Message.display('bumpWall'), LogUtils.getCharName(realSrc.name())));
+        moved = true;
+      }
     }
     Game_Character.prototype.moveDiagonally.call(this, horz, vert);
     if (moved) {
@@ -2552,46 +2585,52 @@
     // do nothing
   };
 
+  Input.getNextCoordinate = function(src, key) {
+    let x = src._x, y = src._y;
+    switch (key) {
+      case 'ArrowUp': case '8':
+        y--;
+        break;
+      case 'ArrowDown': case '2':
+        y++;
+        break;
+      case 'ArrowLeft': case '4':
+        x--;
+        break;
+      case 'ArrowRight': case '6':
+        x++;
+        break;
+      case '1': case 'End':
+        x--;
+        y++;
+        break;
+      case '3': case 'PageDown':
+        x++;
+        y++;
+        break;
+      case '7': case 'Home':
+        x--;
+        y--;
+        break;
+      case '9': case 'PageUp':
+        x++;
+        y--;
+        break;
+      default:
+        MapUtils.updateMessage('這不是一個方向.');
+        break;
+    }
+    return new Coordinate(x, y);
+  }
+
   // override this function for user-defined key detected (only on Scene_Map)
   Input._onKeyDown = function (event) {
     if (SceneManager._scene instanceof Scene_Map && !$gameMessage.isBusy() && $gamePlayer.canMove()
       && SceneManager.isCurrentSceneStarted()) {
       if ($gameVariables[0].directionalFlag) {
         // choose direction mode
-        var x = $gamePlayer._x, y = $gamePlayer._y;
-        switch (event.key) {
-          case 'ArrowUp': case '8':
-            y--;
-            break;
-          case 'ArrowDown': case '2':
-            y++;
-            break;
-          case 'ArrowLeft': case '4':
-            x--;
-            break;
-          case 'ArrowRight': case '6':
-            x++;
-            break;
-          case '1': case 'End':
-            x--;
-            y++;
-            break;
-          case '3': case 'PageDown':
-            x++;
-            y++;
-            break;
-          case '7': case 'Home':
-            x--;
-            y--;
-            break;
-          case '9': case 'PageUp':
-            x++;
-            y--;
-            break;
-          default:
-            MapUtils.updateMessage('這不是一個方向.');
-            break;
-        }
+        let coordinate = Input.getNextCoordinate($gamePlayer, event.key);
+        let x = coordinate.x, y = coordinate.y;
         if (!(x == $gamePlayer._x && y == $gamePlayer._y)) {
           playerMoved = $gameVariables[0].directionalAction($gamePlayer, x, y);
         }
@@ -3271,7 +3310,7 @@
         // setup last image
         event.itemPile.lastImage = imageData;
       }
-    } else {
+    } else if (event.itemPile.lastImage.image) {
       // show last image player saw
       event._originalPattern = event.itemPile.lastImage.pattern;
       event.setPattern(event.itemPile.lastImage.pattern);
