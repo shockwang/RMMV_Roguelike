@@ -169,13 +169,13 @@
     // food
     result.items[11] = new ImageData('Meat', 0, 2, 2);
     // potion
-    result.items[31] = new ImageData('Collections1', 0, 0, 6, '紅色藥水');
-    result.items[32] = new ImageData('Collections1', 0, 1, 6, '橙色藥水');
-    result.items[33] = new ImageData('Collections1', 0, 2, 6, '黃色藥水');
-    result.items[34] = new ImageData('Collections1', 1, 0, 6, '藍色藥水');
-    result.items[35] = new ImageData('Collections1', 1, 1, 6, '紫色藥水');
-    result.items[36] = new ImageData('Collections1', 1, 2, 6, '綠色藥水');
-    result.items[37] = new ImageData('Collections1', 2, 0, 6, '灰色藥水');
+    result.items[31] = new ImageData('Collections1', 0, 0, 6, '紅色燒瓶');
+    result.items[32] = new ImageData('Collections1', 0, 1, 6, '橙色燒瓶');
+    result.items[33] = new ImageData('Collections1', 0, 2, 6, '黃色燒瓶');
+    result.items[34] = new ImageData('Collections1', 1, 0, 6, '藍色燒瓶');
+    result.items[35] = new ImageData('Collections1', 1, 1, 6, '紫色燒瓶');
+    result.items[36] = new ImageData('Collections1', 1, 2, 6, '綠色燒瓶');
+    result.items[37] = new ImageData('Collections1', 2, 0, 6, '灰色燒瓶');
     result.items[38] = new ImageData('Collections1', 2, 1, 6, '紅色試管');
     result.items[39] = new ImageData('Collections1', 2, 2, 6, '澄色試管');
     result.items[40] = new ImageData('Collections1', 3, 0, 6, '黃色試管');
@@ -231,8 +231,8 @@
       weaponSwordBase: '長劍',
       shieldBase: '盾牌',
       quaffPotion: '你喝下了{0}',
-      quaffPotionHeal: '{0}的生命力恢復了!',
-      quaffPotionMana: '{0}的魔力恢復了!',
+      quaffPotionHeal: '{0}恢復了{1}點生命力!',
+      quaffPotionMana: '{0}恢復了{1}點魔力!',
       readScroll: '你閱讀了{0}.',
       scrollIdentifyRead: '你將{0}鑑定為{1}.',
       scrollEnchantArmorRead: '你身上的{0}發出一陣銀光!',
@@ -250,6 +250,9 @@
       removeEquip: '你卸下了{0}.',
       wearEquip: '你裝備上了{0}.',
       changeEquipCursed: '你嘗試卸下{0}, 但是失敗了!',
+      throwItem: '{0}丟出了{1}!',
+      throwPotionHit: '{0}在{1}頭上碎裂開來!',
+      throwPotionCrash: '{0}碎裂開來, 你聞到一股奇怪的味道...',
       monsterFlee: '{0}轉身逃跑!'
     },
     display: function(msgName) {
@@ -2335,6 +2338,7 @@
       TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distance));
     }
     this.setPosition(originalX, originalY);
+    return vanish;
   }
 
   Game_Projectile.prototype.hitCharacter = function(vm, evt) {
@@ -2377,9 +2381,56 @@
 
   Projectile_Potion.prototype.createProjectile = function(src, x, y) {
     let projectile = new Projectile_Potion(src, x, y);
+    if ($gameVariables[$gameMap._mapId].mapData[src._x][src._y].isVisible) {
+      let realSrc = BattleUtils.getRealTarget(src);
+      LogUtils.addLog(String.format(Message.display('throwItem'), LogUtils.getCharName(realSrc.name())
+        , ItemUtils.getItemDisplayName($gameVariables[0].fireProjectileInfo.item)));
+    }
     projectile.action();
+    // lose item
+    if (src == $gamePlayer) {
+      $gameParty.loseItem($gameVariables[0].fireProjectileInfo.item, 1);
+    } else {
+      // TODO: implement mob inventory
+    }
     $gameVariables[0].messageFlag = false;
     return true;
+  }
+
+  Projectile_Potion.prototype.hitCharacter = function(vm, evt) {
+    TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
+    vm.distanceCount = 99;
+    TimeUtils.animeQueue.push(new AnimeObject(null, 'SE', "Crash"));
+    if ($gameVariables[$gameMap._mapId].mapData[vm._x][vm._y].isVisible) {
+      let realTarget = BattleUtils.getRealTarget(evt);
+      LogUtils.addLog(String.format(Message.display('throwPotionHit')
+        , ItemUtils.getItemDisplayName($gameVariables[0].fireProjectileInfo.item)
+        , LogUtils.getCharName(realTarget.name())));
+    }
+    $gameVariables[0].fireProjectileInfo.item.onQuaff(evt);
+    return true;
+  }
+
+  Projectile_Potion.prototype.hitDoor = function(vm) {
+    TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
+    vm.distanceCount = 99;
+    TimeUtils.animeQueue.push(new AnimeObject(null, 'SE', "Crash"));
+    if ($gameVariables[$gameMap._mapId].mapData[vm._x][vm._y].isVisible) {
+      LogUtils.addLog(String.format(Message.display('throwPotionCrash')
+        , ItemUtils.getItemDisplayName($gameVariables[0].fireProjectileInfo.item)));
+    }
+    return true;
+  }
+
+  Projectile_Potion.prototype.hitWall = function(vm) {
+    return this.hitDoor(vm);
+  }
+
+  Projectile_Potion.prototype.action = function () {
+    let vanish = Game_Projectile.prototype.action.call(this);
+    if (!vanish) {
+      this.hitDoor(this);
+    }
   }
 
   //-----------------------------------------------------------------------------------
@@ -2413,7 +2464,7 @@
     realTarget._hp -= value;
     TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
     TimeUtils.animeQueue.push(new AnimeObject(evt, 'ANIME', 67));
-    TimeUtils.animeQueue.push(new AnimeObject(evt, 'POP_UP', value));
+    TimeUtils.animeQueue.push(new AnimeObject(evt, 'POP_UP', value * -1));
     LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc.name())
       ,vm.skillName, LogUtils.getCharName(realTarget.name()), value));
     BattleUtils.checkTargetAlive(realSrc, realTarget, evt);
@@ -2721,7 +2772,7 @@
 
   function AnimeObject(target, type, value) {
     this.target = target;
-    this.type = type; // ANIME, POP_UP
+    this.type = type; // ANIME, POP_UP, PROJECTILE, SE
     this.value = value;
   }
 
@@ -2738,7 +2789,13 @@
             anime.target.requestAnimation(anime.value);
             break;
           case 'POP_UP':
-            $gameSystem.createPopup(0, "", "\\c[18]  -" + anime.value, anime.target);
+            let str;
+            if (anime.value > 0) {
+              str = "\\c[24]  +";
+            } else {
+              str = "\\c[18]  ";
+            }
+            $gameSystem.createPopup(0, "", str + anime.value, anime.target);
             break;
           case 'PROJECTILE':
             $gameVariables[0].projectileMoving = true;
@@ -2757,6 +2814,9 @@
               setTimeout(f, 50, target);
             }
             f(anime.target);
+            break;
+          case 'SE':
+            AudioManager.playSe({name: anime.value, pan: 0, pitch: 100, volume: 100});
             break;
           default:
             console.log('ERROR: no such type: ' + anime.type);
@@ -2914,8 +2974,7 @@
     var min = Math.round(max / 3);
     min = (min > 0) ? min : 1;
     var value = getRandomIntRange(min, max);
-    // $gameSystem.createPopup(0, "", "\\c[18]  -" + value, target);
-    TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value));
+    TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
     LogUtils.addLog(String.format(Message.display('meleeAttack'), LogUtils.getCharName(realSrc.name())
       , LogUtils.getCharName(realTarget.name()), value));
     realTarget._hp -= value;
@@ -3352,14 +3411,16 @@
   }
 
   Potion_Heal.prototype.onQuaff = function(user) {
-    if (user == $gameParty) {
-      let realUser = BattleUtils.getRealTarget($gamePlayer);
-      $gamePlayer.requestAnimation(45);
-      realUser.setHp(realUser._hp + 50);
-      let msg = String.format(Message.display('quaffPotionHeal'), LogUtils.getCharName(realUser.name()));
-      ItemUtils.identifyObject(this);
-      MapUtils.displayMessage(msg);
+    TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 45));
+    let realUser = BattleUtils.getRealTarget(user);
+    let value = 50;
+    realUser.setHp(realUser._hp + value);
+    TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', value));
+    if ($gameVariables[$gameMap._mapId].mapData[user._x][user._y].isVisible) {
+      let msg = String.format(Message.display('quaffPotionHeal'), LogUtils.getCharName(realUser.name())
+        , value);
       LogUtils.addLog(msg);
+      ItemUtils.identifyObject(this);
     }
   }
 
@@ -3380,13 +3441,15 @@
   }
 
   Potion_Mana.prototype.onQuaff = function(user) {
-    if (user == $gameParty) {
-      let realUser = BattleUtils.getRealTarget($gamePlayer);
-      $gamePlayer.requestAnimation(45);
-      realUser.setMp(realUser._mp + 20);
-      let msg = String.format(Message.display('quaffPotionMana'), LogUtils.getCharName(realUser.name()));
+    TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 45));
+    let realUser = BattleUtils.getRealTarget(user);
+    let value = 20;
+    realUser.setMp(realUser._mp + value);
+    TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', value));
+    if ($gameVariables[$gameMap._mapId].mapData[user._x][user._y].isVisible) {
+      let msg = String.format(Message.display('quaffPotionMana'), LogUtils.getCharName(realUser.name())
+        , value);
       ItemUtils.identifyObject(this);
-      MapUtils.displayMessage(msg);
       LogUtils.addLog(msg);
     }
   }
@@ -4413,7 +4476,7 @@
       this.popScene();
       var func = function (item) {
         LogUtils.addLog(String.format(Message.display('quaffPotion'), ItemUtils.getItemDisplayName(item)));
-        item.onQuaff($gameParty);
+        item.onQuaff($gamePlayer);
         var func2 = function() {
           if (!$gameVariables[0].messageFlag) {
             TimeUtils.afterPlayerMoved();
