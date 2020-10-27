@@ -89,7 +89,7 @@
   var doorOpenedIcon = 528;
 
   // view parameters
-  var viewDistance = 8;
+  var viewDistance = 0;
 
   // room parameters
   var roomNum = 3, minRoomSize = 4, maxRoomSize = 16;
@@ -254,7 +254,8 @@
       throwPotionHit: '{0}在{1}頭上碎裂開來!',
       throwPotionCrash: '{0}碎裂開來, 你聞到一股奇怪的味道...',
       monsterFlee: '{0}轉身逃跑!',
-      bumpWall: '{0}撞在牆上.'
+      bumpWall: '{0}撞在牆上.',
+      bumpDoor: '{0}撞在門上.'
     },
     display: function(msgName) {
       switch (Message.language) {
@@ -685,7 +686,6 @@
     }
 
     var index = 0;
-    var shadowOffset = mapSize * 4;
     var warFogOffset = mapSize;
     var stairOffset = mapSize * 2;
     var itemOffset = mapSize * 3;
@@ -722,6 +722,19 @@
       if (event instanceof Game_Door && mapData[event._x][event._y].isVisible) {
         var index = stairOffset + event._y * mapData.length + event._x;
         mapArray[index] = (event.status == 2) ? doorOpenedIcon : doorClosedIcon;
+      }
+    }
+  }
+
+  MapUtils.drawDoorWhenBlind = function(x, y) {
+    let mapData = $gameVariables[$gameMap.mapId()].mapData;
+    let stairOffset = mapData.length * mapData[0].length * 2;
+    let index = stairOffset + y * mapData.length + x;
+    let events = $gameMap.eventsXy(x, y);
+    for (let id in events) {
+      if (events[id] instanceof Game_Door) {
+        $dataMap.data[index] = (events[id].status == 2) ? doorOpenedIcon : doorClosedIcon;
+        break;
       }
     }
   }
@@ -889,6 +902,8 @@
       scene.createDisplayObjects();
       scene.setupStatus();
     }
+    // show on map objs
+    showObjsOnMap();
   }
 
   MapUtils.findAdjacentBlocks = function(target) {
@@ -1693,8 +1708,15 @@
       let coordinate = Input.getNextCoordinate($gamePlayer, d.toString());
       if (!$gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].isExplored) {
         $gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].isExplored = true;
+        let format;
+        if ($gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].originalTile == DOOR) {
+          MapUtils.drawDoorWhenBlind(coordinate.x, coordinate.y);
+          format = Message.display('bumpDoor');
+        } else {
+          format = Message.display('bumpWall');
+        }
         let realSrc = BattleUtils.getRealTarget($gamePlayer);
-        LogUtils.addLog(String.format(Message.display('bumpWall'), LogUtils.getCharName(realSrc.name())));
+        LogUtils.addLog(String.format(format, LogUtils.getCharName(realSrc.name())));
         moved = true;
       }
     }
@@ -1739,8 +1761,14 @@
       let coordinate = Input.getNextCoordinate($gamePlayer, d.toString());
       if (!$gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].isExplored) {
         $gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].isExplored = true;
+        if ($gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].originalTile == DOOR) {
+          MapUtils.drawDoorWhenBlind(coordinate.x, coordinate.y);
+          format = Message.display('bumpDoor');
+        } else {
+          format = Message.display('bumpWall');
+        }
         let realSrc = BattleUtils.getRealTarget($gamePlayer);
-        LogUtils.addLog(String.format(Message.display('bumpWall'), LogUtils.getCharName(realSrc.name())));
+        LogUtils.addLog(String.format(format, LogUtils.getCharName(realSrc.name())));
         moved = true;
       }
     }
@@ -2218,6 +2246,9 @@
     }
     // open the door successfully
     door.status = 2;
+    if (character == $gamePlayer && $gameVariables[0].player.blindCount > 0) {
+      MapUtils.drawDoorWhenBlind(x, y);
+    }
     $gameSelfSwitches.setValue([$gameMap.mapId(), door._eventId, 'A'], true);
     door.updateDataMap();
     $gameVariables[0].messageFlag = false;
@@ -2257,6 +2288,9 @@
     }
     // close the door successfully
     door.status = 1;
+    if (character == $gamePlayer && $gameVariables[0].player.blindCount > 0) {
+      MapUtils.drawDoorWhenBlind(x, y);
+    }
     $gameSelfSwitches.setValue([$gameMap.mapId(), door._eventId, 'A'], false);
     door.updateDataMap();
     $gameVariables[0].messageFlag = false;
@@ -2333,8 +2367,6 @@
       }
     }
     MapUtils.refreshMap();
-    // show on map objs
-    showObjsOnMap();
   };
 
   Game_Projectile.prototype.createProjectile = function(src, x, y) {
@@ -2923,8 +2955,6 @@
         player.gainTp(6);
       }
       MapUtils.refreshMap();
-      // show on map objs
-      showObjsOnMap();
 
       playerAttacked = false;
       playerMoved = false;
@@ -3709,8 +3739,6 @@
           $gameMap._displayY = screenY;
           AudioManager.playSe({name: "Run", pan: 0, pitch: 100, volume: 100});
           MapUtils.refreshMap();
-          // show on map objs
-          showObjsOnMap();
           break;
         }
       }
@@ -3797,8 +3825,6 @@
         // TODO: implement mob generating method
         new Bat(targetFloor.x, targetFloor.y);
         MapUtils.refreshMap();
-        // show on map objs
-        showObjsOnMap();
         msg = Message.display('scrollCreateMonsterRead');
         ItemUtils.identifyObject(this);
       } else {
