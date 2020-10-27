@@ -89,7 +89,7 @@
   var doorOpenedIcon = 528;
 
   // view parameters
-  var viewDistance = 0;
+  var viewDistance = 8;
 
   // room parameters
   var roomNum = 3, minRoomSize = 4, maxRoomSize = 16;
@@ -254,8 +254,12 @@
       throwPotionHit: '{0}在{1}頭上碎裂開來!',
       throwPotionCrash: '{0}碎裂開來, 你聞到一股奇怪的味道...',
       monsterFlee: '{0}轉身逃跑!',
+      recoverFromAfraid: '{0}恢復鎮定了.',
       bumpWall: '{0}撞在牆上.',
-      bumpDoor: '{0}撞在門上.'
+      bumpDoor: '{0}撞在門上.',
+      blind: '{0}失去視覺了!',
+      recoverFromBlind: '{0}的視覺恢復了.',
+      somebody: '某人'
     },
     display: function(msgName) {
       switch (Message.language) {
@@ -296,6 +300,49 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // CharUtils
+  //
+  // character related methods
+
+  CharUtils = function () {
+    throw new Error('This is a static class');
+  };
+
+  // initialize character status map
+  CharUtils.initStatus = function() {
+    var result = {
+      afraidCount: 0,
+      blindCount: 0
+    }
+    return result;
+  }
+
+  CharUtils.updateStatus = function(event) {
+    let target = BattleUtils.getRealTarget(event);
+    for (let id in target.status) {
+      if (target.status[id] > 0) {
+        target.status[id]--;
+        if (target.status[id] == 0
+          && (event == $gamePlayer || $gameVariables[$gameMap._mapId].mapData[event._x][event._y].isVisible)) {
+          switch (id) {
+            case 'afraidCount':
+              LogUtils.addLog(String.format(Message.display('recoverFromAfraid')
+                , LogUtils.getCharName(target.name())));
+              break;
+            case 'blindCount':
+              LogUtils.addLog(String.format(Message.display('recoverFromBlind')
+                , LogUtils.getCharName(target.name())));
+              if (event == $gamePlayer) {
+                viewDistance = $gameActors._data[1].originalViewDistance;
+              }
+              break;
+          }
+        }
+      }
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
   // MapUtils
   //
   // All random map related algorithm/functions
@@ -329,11 +376,10 @@
     $gameVariables[0].gameTime = 0;
     $gameVariables[0].gameTimeAmp = 10;
     // define player attributes
-    $gameVariables[0].player = {};
-    $gameVariables[0].player.skillExp = {};
-    $gameVariables[0].player.nutrition = 900;
-    $gameVariables[0].player.blindCount = 0;
-    $gameVariables[0].player.originalViewDistance = viewDistance;
+    $gameActors._data[1].skillExp = {};
+    $gameActors._data[1].nutrition = 900;
+    $gameActors._data[1].status = CharUtils.initStatus();
+    $gameActors._data[1].originalViewDistance = viewDistance;
     // initialize template events
     $gameVariables[0].templateEvents = {
       monster: $dataMap.events[3],
@@ -365,6 +411,7 @@
       $gameParty.gainItem(new Scroll_ScareMonster(), 1);
       $gameParty.gainItem(new Potion_Heal(), 1);
       $gameParty.gainItem(new Potion_Mana(), 1);
+      $gameParty.gainItem(new Potion_Blind(), 1);
     }
   }
 
@@ -406,6 +453,8 @@
     getCharName: function(name) {
       if (name == $gameActors._data[1].name()) {
         return '你';
+      } else if ($gameActors._data[1].status.blindCount > 0) {
+        return Message.display('somebody');
       } else {
         return name;
       }
@@ -1704,7 +1753,7 @@
       }
       this._followers.updateMove();
       moved = true;
-    } else if ($gameVariables[0].player.blindCount > 0) {
+    } else if ($gameActors._data[1].status.blindCount > 0) {
       let coordinate = Input.getNextCoordinate($gamePlayer, d.toString());
       if (!$gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].isExplored) {
         $gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].isExplored = true;
@@ -1743,7 +1792,7 @@
       }
       this._followers.updateMove();
       moved = true;
-    } else if ($gameVariables[0].player.blindCount > 0) {
+    } else if ($gameActors._data[1].status.blindCount > 0) {
       let d;
       if (horz == 4) {
         if (vert == 8) {
@@ -1962,7 +2011,7 @@
       // new mob instance from mobId
       this.mob = new Game_Enemy(mobId, x, y);
       this.mob.awareDistance = 5;
-      this.mob.afraidCount = 0;
+      this.mob.status = CharUtils.initStatus();
       // find empty space for new event
       var eventId = MapUtils.findEmptyFromList($dataMap.events);
       $dataMap.events[eventId] = newDataMapEvent($gameVariables[0].templateEvents.monster, eventId, x, y);
@@ -1978,9 +2027,10 @@
   Game_Mob.prototype.action = function () {
     // check if player is nearby
     let distance = MapUtils.getDistance(this._x, this._y, $gamePlayer._x, $gamePlayer._y);
-    if (this.mob.afraidCount > 0) {
+    if (this.mob.status.afraidCount > 0) {
       this.moveAwayFromCharacter($gamePlayer);
-      this.mob.afraidCount--;
+    } else if (this.mob.status.blindCount > 0) {
+      this.moveRandom();
     } else if (distance < 2) {
       this.turnTowardCharacter($gamePlayer);
       BattleUtils.meleeAttack(this, $gamePlayer);
@@ -2246,7 +2296,7 @@
     }
     // open the door successfully
     door.status = 2;
-    if (character == $gamePlayer && $gameVariables[0].player.blindCount > 0) {
+    if (character == $gamePlayer && $gameActors._data[1].status.blindCount > 0) {
       MapUtils.drawDoorWhenBlind(x, y);
     }
     $gameSelfSwitches.setValue([$gameMap.mapId(), door._eventId, 'A'], true);
@@ -2288,7 +2338,7 @@
     }
     // close the door successfully
     door.status = 1;
-    if (character == $gamePlayer && $gameVariables[0].player.blindCount > 0) {
+    if (character == $gamePlayer && $gameActors._data[1].status.blindCount > 0) {
       MapUtils.drawDoorWhenBlind(x, y);
     }
     $gameSelfSwitches.setValue([$gameMap.mapId(), door._eventId, 'A'], false);
@@ -2941,10 +2991,12 @@
           // TODO: implement mob action speed
           event.mob.lastTimeMoved += $gameVariables[0].gameTimeAmp;
           event.action();
+          CharUtils.updateStatus(event);
         }
       }
       // play queued anime
       TimeUtils.playAnime();
+      CharUtils.updateStatus($gamePlayer);
       // deal with energy calculation
       if (playerDashed || playerAttacked) {
         // huge movement, do nothing
@@ -3020,18 +3072,18 @@
             var skillId = realSrc._skills[id];
             if ($dataSkills[skillId].name == "劍術") {
               var prop = JSON.parse($dataSkills[skillId].note);
-              if (!$gameVariables[0].player.skillExp[skillId]) {
-                $gameVariables[0].player.skillExp[skillId] = {};
-                $gameVariables[0].player.skillExp[skillId].lv = 1;
-                $gameVariables[0].player.skillExp[skillId].exp = 1;
+              if (!$gameActors._data[1].skillExp[skillId]) {
+                $gameActors._data[1].skillExp[skillId] = {};
+                $gameActors._data[1].skillExp[skillId].lv = 1;
+                $gameActors._data[1].skillExp[skillId].exp = 1;
               }
-              var index = $gameVariables[0].player.skillExp[skillId].lv - 1;
+              var index = $gameActors._data[1].skillExp[skillId].lv - 1;
               skillBonus = prop.effect[index].atk;
-              $gameVariables[0].player.skillExp[skillId].exp++;
-              if (prop.effect[index].levelUp != -1 && $gameVariables[0].player.skillExp[skillId].exp >= prop.effect[index].levelUp) {
+              $gameActors._data[1].skillExp[skillId].exp++;
+              if (prop.effect[index].levelUp != -1 && $gameActors._data[1].skillExp[skillId].exp >= prop.effect[index].levelUp) {
                 $gameMessage.add('你的' + $dataSkills[skillId].name + '更加熟練了!');
-                $gameVariables[0].player.skillExp[skillId].lv++;
-                $gameVariables[0].player.skillExp[skillId].exp = 0;
+                $gameActors._data[1].skillExp[skillId].lv++;
+                $gameActors._data[1].skillExp[skillId].exp = 0;
               }
             }
           }
@@ -3054,10 +3106,6 @@
       playerAttacked = true;
       TimeUtils.afterPlayerMoved();
     }
-  }
-
-  BattleUtils.fire = function(src, distance) {
-
   }
 
   BattleUtils.playerDied = function (msg) {
@@ -3524,6 +3572,37 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Potion_Blind
+  //
+  // item id 33
+
+  Potion_Blind = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Potion_Blind.prototype = Object.create(ItemTemplate.prototype);
+  Potion_Blind.prototype.constructor = Potion_Blind;
+
+  Potion_Blind.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[33]);
+  }
+
+  Potion_Blind.prototype.onQuaff = function(user) {
+    let realUser = BattleUtils.getRealTarget(user);
+    realUser.status.blindCount = 20;
+    if (user == $gamePlayer) {
+      viewDistance = 0;
+    }
+    TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 60));
+    TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '失明'));
+    if ($gameVariables[$gameMap._mapId].mapData[user._x][user._y].isVisible) {
+      let msg = String.format(Message.display('blind'), LogUtils.getCharName(realUser.name()));
+      ItemUtils.identifyObject(this);
+      LogUtils.addLog(msg);
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
   // Scroll_Identify
   //
   // item id 51
@@ -3859,7 +3938,7 @@
       for (let id in $gameMap._events) {
         let evt = $gameMap._events[id];
         if (evt && evt.type == 'MOB' && MapUtils.getDistance(evt._x, evt._y, $gamePlayer._x, $gamePlayer._y) <= 10) {
-          evt.mob.afraidCount = 20;
+          evt.mob.status.afraidCount = 20;
           if ($gameVariables[$gameMap._mapId].mapData[evt._x][evt._y].isVisible) {
             LogUtils.addLog(String.format(Message.display('monsterFlee'), evt.mob.name()));
             seeMonsterScared = true;
@@ -4196,7 +4275,7 @@
   Window_SkillList.prototype.drawItemName = function (item, x, y, width) {
     width = width || 312;
     if (item) {
-      var skillLv = ($gameVariables[0].player.skillExp[item.id]) ? $gameVariables[0].player.skillExp[item.id].lv : 1;
+      var skillLv = ($gameActors._data[1].skillExp[item.id]) ?$gameActors._data[1].skillExp[item.id].lv : 1;
       var iconBoxWidth = Window_Base._iconWidth + 4;
       this.resetTextColor();
       this.drawIcon(item.iconIndex, x + 2, y + 2);

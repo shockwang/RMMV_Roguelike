@@ -69,22 +69,26 @@
         }
         var status = '';
         // deal with nutrition system
-        if ($gameVariables[0].player.nutrition > 1000) {
+        if ($gameActors._data[1].nutrition > 1000) {
             this.changeTextColor('#4169E1'); // royal blue
             status += '過飽 ';
-        } else if ($gameVariables[0].player.nutrition < 150 && $gameVariables[0].player.nutrition >= 50) {
+        } else if ($gameActors._data[1].nutrition < 150 && $gameActors._data[1].nutrition >= 50) {
             this.changeTextColor('#FFFF00'); // yellow
             status += '飢餓 ';
-        } else if ($gameVariables[0].player.nutrition < 50 && $gameVariables[0].player.nutrition >= 0) {
+        } else if ($gameActors._data[1].nutrition < 50 && $gameActors._data[1].nutrition >= 0) {
             this.changeTextColor('#FF8C00'); // dark orange
             status += '虛弱 ';
-        } else if ($gameVariables[0].player.nutrition < 0 && $gameVariables[0].player.nutrition >= -200) {
+        } else if ($gameActors._data[1].nutrition < 0 && $gameActors._data[1].nutrition >= -200) {
             this.changeTextColor('#FF0000'); // red
             status += '昏厥 ';
         }
+        // draw buff/debuff
+        if ($gameActors._data[1].status.blindCount > 0) {
+            this.changeTextColor('#FF0000');
+            status += '失明 ';
+        }
         var width = this.textWidth(status);
         this.drawText(status, x, y, width);
-        var offset = x + width;
     }
 
     My_Window.prototype.refresh = function(){
