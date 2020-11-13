@@ -259,6 +259,16 @@
       bumpDoor: '{0}撞在門上.',
       blind: '{0}失去視覺了!',
       recoverFromBlind: '{0}的視覺恢復了.',
+      paralyze: '{0}麻痺了!',
+      recoverFromParalyze: '{0}又能夠行動了.',
+      sleep: '{0}陷入了沉睡.',
+      recoverFromSleep: '{0}醒了過來.',
+      speedUp: '{0}的速度突然加快了!',
+      speedUpEnd: '{0}的速度慢了下來.',
+      growth: '{0}的{1}提昇了!',
+      levelUp: '{0}的等級提昇了!',
+      invisible: '{0}的身形消失了!',
+      invisibleEnd: '{0}的身形浮現出來了.',
       somebody: '某人'
     },
     display: function(msgName) {
@@ -312,7 +322,11 @@
   CharUtils.initStatus = function() {
     var result = {
       afraidCount: 0,
-      blindCount: 0
+      blindCount: 0,
+      paralyzeCount: 0,
+      sleepCount: 0,
+      speedUpCount: 0,
+      invisibleCount: 0,
     }
     return result;
   }
@@ -327,19 +341,61 @@
           switch (id) {
             case 'afraidCount':
               LogUtils.addLog(String.format(Message.display('recoverFromAfraid')
-                , LogUtils.getCharName(target.name())));
+                , LogUtils.getCharName(target)));
               break;
             case 'blindCount':
               LogUtils.addLog(String.format(Message.display('recoverFromBlind')
-                , LogUtils.getCharName(target.name())));
+                , LogUtils.getCharName(target)));
               if (event == $gamePlayer) {
                 viewDistance = $gameActors._data[1].originalViewDistance;
+              }
+              break;
+            case 'paralyzeCount':
+              LogUtils.addLog(String.format(Message.display('recoverFromParalyze')
+                , LogUtils.getCharName(target)));
+              break;
+            case 'sleepCount':
+              LogUtils.addLog(String.format(Message.display('recoverFromSleep')
+                , LogUtils.getCharName(target)));
+              break;
+            case 'speedUpCount':
+              LogUtils.addLog(String.format(Message.display('speedUpEnd')
+                , LogUtils.getCharName(target)));
+              break;
+            case 'invisibleCount':
+              LogUtils.addLog(String.format(Message.display('invisibleEnd')
+                , LogUtils.getCharName(target)));
+              if (event == $gamePlayer) {
+                $gamePlayer.setOpacity(255);
               }
               break;
           }
         }
       }
     }
+  }
+
+  CharUtils.updateSleepCountWhenHit = function(target) {
+    if (target.status.sleepCount > 0 && target.status.sleepCount <= 15) {
+      // wake up when hit
+      target.status.sleepCount = 0;
+      LogUtils.addLog(String.format(Message.display('recoverFromSleep')
+        , LogUtils.getCharName(target)));
+    }
+  }
+
+  CharUtils.getActionTime = function(target) {
+    let result = $gameVariables[0].gameTimeAmp;
+    if (target.status.speedUpCount > 0) {
+      result /= 2;
+    }
+    return result;
+  }
+
+  CharUtils.levelUp = function(target) {
+    // TODO: implement level up mechanism
+    target._paramPlus[0] += 5 + Math.round(target.param(3) / 2);
+    target._paramPlus[1] += 5 + Math.round(target.param(5) / 2);
   }
 
   //-----------------------------------------------------------------------------------
@@ -412,6 +468,12 @@
       $gameParty.gainItem(new Potion_Heal(), 1);
       $gameParty.gainItem(new Potion_Mana(), 1);
       $gameParty.gainItem(new Potion_Blind(), 1);
+      $gameParty.gainItem(new Potion_Paralyze(), 1);
+      $gameParty.gainItem(new Potion_Sleep(), 1);
+      $gameParty.gainItem(new Potion_Speed(), 1);
+      $gameParty.gainItem(new Potion_Growth(), 1);
+      $gameParty.gainItem(new Potion_LevelUp(), 1);
+      $gameParty.gainItem(new Potion_Invisible(), 1);
     }
   }
 
@@ -450,13 +512,13 @@
         $gameVariables[0].logList.splice(0, 1);
       }
     },
-    getCharName: function(name) {
-      if (name == $gameActors._data[1].name()) {
+    getCharName: function(target) {
+      if (target == $gameActors._data[1]) {
         return '你';
-      } else if ($gameActors._data[1].status.blindCount > 0) {
+      } else if ($gameActors._data[1].status.blindCount > 0 || target.status.invisibleCount > 0) {
         return Message.display('somebody');
       } else {
-        return name;
+        return target.name();
       }
     }
   };
@@ -794,7 +856,11 @@
       if (event.type == 'ITEM_PILE') {
         ItemUtils.updateItemPile(event);
       } else if (event._x > 0 && event._y > 0 && mapData[event._x][event._y].isVisible) {
-        event.setOpacity(255);
+        if (event.mob && event.mob.status.invisibleCount > 0) {
+          event.setOpacity(0);
+        } else {
+          event.setOpacity(255);
+        }
       } else {
         event.setOpacity(0);
       }
@@ -1739,7 +1805,7 @@
   // handle map change when player moved
   Game_Player.prototype.moveStraight = function (d) {
     var moved = false;
-    var timeSpent = $gameVariables[0].gameTimeAmp;
+    var timeSpent = CharUtils.getActionTime($gameActors._data[1]);
     if (this.canPass(this.x, this.y, d)) {
       if (Input.isPressed('shift')) {
         if ($gameActors._data[1]._tp < 10) {
@@ -1765,7 +1831,7 @@
           format = Message.display('bumpWall');
         }
         let realSrc = BattleUtils.getRealTarget($gamePlayer);
-        LogUtils.addLog(String.format(format, LogUtils.getCharName(realSrc.name())));
+        LogUtils.addLog(String.format(format, LogUtils.getCharName(realSrc)));
         moved = true;
       }
     }
@@ -1778,7 +1844,7 @@
 
   Game_Player.prototype.moveDiagonally = function (horz, vert) {
     var moved = false;
-    var timeSpent = $gameVariables[0].gameTimeAmp;
+    var timeSpent = CharUtils.getActionTime($gameActors._data[1]);
     if (this.canPassDiagonally(this.x, this.y, horz, vert)) {
       if (Input.isPressed('shift')) {
         if ($gameActors._data[1]._tp < 10) {
@@ -1817,7 +1883,7 @@
           format = Message.display('bumpWall');
         }
         let realSrc = BattleUtils.getRealTarget($gamePlayer);
-        LogUtils.addLog(String.format(format, LogUtils.getCharName(realSrc.name())));
+        LogUtils.addLog(String.format(format, LogUtils.getCharName(realSrc)));
         moved = true;
       }
     }
@@ -1934,7 +2000,8 @@
         if ($dataMap.events[i].type == 'MOB') {
           this._events[i] = new window[$dataMap.events[i].mob.mobClass]($dataMap.events[i].x
             , $dataMap.events[i].y, $dataMap.events[i]);
-          if (!$gameVariables[this._mapId].mapData[this._events[i]._x][this._events[i]._y].isVisible){
+          if (!$gameVariables[this._mapId].mapData[this._events[i]._x][this._events[i]._y].isVisible
+            || this._events[i].mob.invisibleCount > 0){
             // player can't see
             this._events[i].setOpacity(0);
           }
@@ -2027,21 +2094,24 @@
   Game_Mob.prototype.action = function () {
     // check if player is nearby
     let distance = MapUtils.getDistance(this._x, this._y, $gamePlayer._x, $gamePlayer._y);
-    if (this.mob.status.afraidCount > 0) {
-      this.moveAwayFromCharacter($gamePlayer);
-    } else if (this.mob.status.blindCount > 0) {
-      this.moveRandom();
-    } else if (distance < 2) {
-      this.turnTowardCharacter($gamePlayer);
-      BattleUtils.meleeAttack(this, $gamePlayer);
-    } else if (distance < this.mob.awareDistance) {
-      this.moveTowardCharacter($gamePlayer);
-    } else if (distance < 20) {
-      this.moveRandom();
-    } // otherwise don't do anything (for performance enhancement)
-
-    // store data back to $dataMap
     if (distance < 20) {
+      // only update mobs in distance (for performance issue)
+      if (this.mob.status.afraidCount > 0) {
+        this.moveAwayFromCharacter($gamePlayer);
+      } else if (this.mob.status.blindCount > 0 || BattleUtils.getRealTarget($gamePlayer).status.invisibleCount > 0) {
+        // TODO: mob can attack when blind and try to walk into a character
+        this.moveRandom();
+      } else if (this.mob.status.paralyzeCount > 0 || this.mob.status.sleepCount > 0) {
+        // do nothing
+      } else if (distance < 2) {
+        this.turnTowardCharacter($gamePlayer);
+        BattleUtils.meleeAttack(this, $gamePlayer);
+      } else if (distance < this.mob.awareDistance) {
+        this.moveTowardCharacter($gamePlayer);
+      } else {
+        this.moveRandom();
+      }
+      // store data back to $dataMap
       this.updateDataMap();
     }
   }
@@ -2498,7 +2568,7 @@
     let projectile = new Projectile_Potion(src, x, y);
     if ($gameVariables[$gameMap._mapId].mapData[src._x][src._y].isVisible) {
       let realSrc = BattleUtils.getRealTarget(src);
-      LogUtils.addLog(String.format(Message.display('throwItem'), LogUtils.getCharName(realSrc.name())
+      LogUtils.addLog(String.format(Message.display('throwItem'), LogUtils.getCharName(realSrc)
         , ItemUtils.getItemDisplayName($gameVariables[0].fireProjectileInfo.item)));
     }
     projectile.action();
@@ -2520,7 +2590,7 @@
       let realTarget = BattleUtils.getRealTarget(evt);
       LogUtils.addLog(String.format(Message.display('throwPotionHit')
         , ItemUtils.getItemDisplayName($gameVariables[0].fireProjectileInfo.item)
-        , LogUtils.getCharName(realTarget.name())));
+        , LogUtils.getCharName(realTarget)));
     }
     $gameVariables[0].fireProjectileInfo.item.onQuaff(evt);
     return true;
@@ -2580,8 +2650,8 @@
     TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
     TimeUtils.animeQueue.push(new AnimeObject(evt, 'ANIME', 67));
     TimeUtils.animeQueue.push(new AnimeObject(evt, 'POP_UP', value * -1));
-    LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc.name())
-      ,vm.skillName, LogUtils.getCharName(realTarget.name()), value));
+    LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc)
+      ,vm.skillName, LogUtils.getCharName(realTarget), value));
     BattleUtils.checkTargetAlive(realSrc, realTarget, evt);
     vm.distanceCount = 99;
     return true;
@@ -2958,60 +3028,71 @@
     $gamePlayer._vehicleGettingOn = true;
     var player = $gameActors._data[1];
     if (!timeSpent) {
-      timeSpent = $gameVariables[0].gameTimeAmp;
+      timeSpent = CharUtils.getActionTime(player);
     }
-    player.lastTimeMoved += timeSpent;
-    while (timeSpent > 0) {
-      var updateTime = (timeSpent - $gameVariables[0].gameTimeAmp >= 0) ? $gameVariables[0].gameTimeAmp : timeSpent;
-      timeSpent -= updateTime;
-      $gameVariables[0].gameTime += updateTime;
-      var gameTurn = Math.floor($gameVariables[0].gameTime / $gameVariables[0].gameTimeAmp);
-      if (gameTurn % 20 == 0) {
-        // regenerate HP
-        var regenValue = Math.round(1 + player.param(3) / 3);
-        regenValue = getRandomIntRange(1, regenValue);
-        player.gainHp(regenValue);
 
-        // regenerate MP
-        regenValue = Math.round(1 + player.param(5) / 3);
-        regenValue = getRandomIntRange(1, regenValue);
-        player.gainMp(regenValue);
-      }
-      // update all mobs & items
-      for (var i = 0; i < $gameMap._events.length; i++) {
-        if (player._hp <= 0) {
-          // player died, stop mob action
-          break;
-        }
-        var event = $gameMap._events[i];
-        if (!event || event._erased) {
-          continue;
-        }
-        if (event.type == 'MOB' && $gameVariables[0].gameTime - event.mob.lastTimeMoved >= $gameVariables[0].gameTimeAmp) {
-          // TODO: implement mob action speed
-          event.mob.lastTimeMoved += $gameVariables[0].gameTimeAmp;
-          event.action();
-          CharUtils.updateStatus(event);
-        }
-      }
-      // play queued anime
-      TimeUtils.playAnime();
-      CharUtils.updateStatus($gamePlayer);
-      // deal with energy calculation
-      if (playerDashed || playerAttacked) {
-        // huge movement, do nothing
-      } else if (playerMoved) {
-        player.gainTp(3);
-      } else {
-        // player rest
-        player.gainTp(6);
-      }
-      MapUtils.refreshMap();
+    do {
+      player.lastTimeMoved += timeSpent;
+      let tempTimeSpent = timeSpent;
+      while (tempTimeSpent > 0) {
+        var updateTime = (tempTimeSpent - $gameVariables[0].gameTimeAmp >= 0) ? $gameVariables[0].gameTimeAmp : tempTimeSpent;
+        tempTimeSpent -= updateTime;
+        $gameVariables[0].gameTime += updateTime;
+        var gameTurn = Math.floor($gameVariables[0].gameTime / $gameVariables[0].gameTimeAmp);
+        if (gameTurn % 20 == 0) {
+          // regenerate HP
+          var regenValue = Math.round(1 + player.param(3) / 3);
+          regenValue = getRandomIntRange(1, regenValue);
+          player.gainHp(regenValue);
 
-      playerAttacked = false;
-      playerMoved = false;
-      playerDashed = false;
-    }
+          // regenerate MP
+          regenValue = Math.round(1 + player.param(5) / 3);
+          regenValue = getRandomIntRange(1, regenValue);
+          player.gainMp(regenValue);
+        }
+        // update all mobs & items
+        let done;
+        do {
+          done = true;
+          for (var i = 0; i < $gameMap._events.length; i++) {
+            if (player._hp <= 0) {
+              // player died, stop mob action
+              break;
+            }
+            var event = $gameMap._events[i];
+            if (!event || event._erased) {
+              continue;
+            }
+            // TODO: implement mob action speed
+            if (event.type == 'MOB'
+              && $gameVariables[0].gameTime - event.mob.lastTimeMoved >= CharUtils.getActionTime(event.mob)) {
+              done = false;
+              event.mob.lastTimeMoved += CharUtils.getActionTime(event.mob);
+              event.action();
+              CharUtils.updateStatus(event);
+            }
+          }
+        } while (!done);
+        // play queued anime
+        TimeUtils.playAnime();
+        CharUtils.updateStatus($gamePlayer);
+        // deal with energy calculation
+        if (playerDashed || playerAttacked) {
+          // huge movement, do nothing
+        } else if (playerMoved) {
+          player.gainTp(3);
+        } else {
+          // player rest
+          player.gainTp(6);
+        }
+        MapUtils.refreshMap();
+
+        playerAttacked = false;
+        playerMoved = false;
+        playerDashed = false;
+      }
+    } while (player.status.paralyzeCount > 0 || player.status.sleepCount > 0); // check if player unable to move
+
     // player moveable again
     $gamePlayer._vehicleGettingOn = false;
   }
@@ -3030,8 +3111,8 @@
 
   BattleUtils.checkTargetAlive = function(realSrc, realTarget, target) {
     if (realTarget._hp <= 0) {
-      LogUtils.addLog(String.format(Message.display('targetKilled'), LogUtils.getCharName(realTarget.name())
-        , LogUtils.getCharName(realSrc.name())));
+      LogUtils.addLog(String.format(Message.display('targetKilled'), LogUtils.getCharName(realTarget)
+        , LogUtils.getCharName(realSrc)));
       if (target == $gamePlayer) {
         BattleUtils.playerDied('你被' + realSrc.name() + '殺死了...');
       } else {
@@ -3096,9 +3177,10 @@
     min = (min > 0) ? min : 1;
     var value = getRandomIntRange(min, max);
     TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
-    LogUtils.addLog(String.format(Message.display('meleeAttack'), LogUtils.getCharName(realSrc.name())
-      , LogUtils.getCharName(realTarget.name()), value));
+    LogUtils.addLog(String.format(Message.display('meleeAttack'), LogUtils.getCharName(realSrc)
+      , LogUtils.getCharName(realTarget), value));
     realTarget._hp -= value;
+    CharUtils.updateSleepCountWhenHit(realTarget);
     // hit animation
     TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 16));
     BattleUtils.checkTargetAlive(realSrc, realTarget, target);
@@ -3286,36 +3368,42 @@
     return ((value > 0) ? '\\c[24]+' + value : '\\c[25]' + value) + '\\c[0]';
   }
 
+  ItemUtils.getAttributeName = function(index) {
+    let result = '';
+    switch (index) {
+      case 0:
+        result = 'HP';
+        break;
+      case 1:
+        result = 'MP';
+        break;
+      case 2:
+        result = '力量';
+        break;
+      case 3:
+        result = '體格';
+        break;
+      case 4:
+        result = '智力';
+        break;
+      case 5:
+        result = '睿智';
+        break;
+      case 6:
+        result = '敏捷';
+        break;
+      case 7:
+        result = '運氣';
+        break;
+    }
+    return result;
+  }
+
   ItemUtils.updateEquipDescription = function(item) {
     let result = '\n';
     for (let i = 0; i < 8; i++) {
       if (item.params[i] != 0) {
-        switch (i) {
-          case 0:
-            result += 'HP';
-            break;
-          case 1:
-            result += 'MP';
-            break;
-          case 2:
-            result += '力量';
-            break;
-          case 3:
-            result += '體格';
-            break;
-          case 4:
-            result += '智力';
-            break;
-          case 5:
-            result += '睿智';
-            break;
-          case 6:
-            result += '敏捷';
-            break;
-          case 7:
-            result += '運氣';
-            break;
-        }
+        result += ItemUtils.getAttributeName(i);
         result += ItemUtils.showNumberWithSign(item.params[i]) + ' ';
       }
     }
@@ -3534,7 +3622,7 @@
     realUser.setHp(realUser._hp + value);
     TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', value));
     if ($gameVariables[$gameMap._mapId].mapData[user._x][user._y].isVisible) {
-      let msg = String.format(Message.display('quaffPotionHeal'), LogUtils.getCharName(realUser.name())
+      let msg = String.format(Message.display('quaffPotionHeal'), LogUtils.getCharName(realUser)
         , value);
       LogUtils.addLog(msg);
       ItemUtils.identifyObject(this);
@@ -3564,7 +3652,7 @@
     realUser.setMp(realUser._mp + value);
     TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', value));
     if ($gameVariables[$gameMap._mapId].mapData[user._x][user._y].isVisible) {
-      let msg = String.format(Message.display('quaffPotionMana'), LogUtils.getCharName(realUser.name())
+      let msg = String.format(Message.display('quaffPotionMana'), LogUtils.getCharName(realUser)
         , value);
       ItemUtils.identifyObject(this);
       LogUtils.addLog(msg);
@@ -3596,7 +3684,183 @@
     TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 60));
     TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '失明'));
     if ($gameVariables[$gameMap._mapId].mapData[user._x][user._y].isVisible) {
-      let msg = String.format(Message.display('blind'), LogUtils.getCharName(realUser.name()));
+      let msg = String.format(Message.display('blind'), LogUtils.getCharName(realUser));
+      ItemUtils.identifyObject(this);
+      LogUtils.addLog(msg);
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Potion_Paralyze
+  //
+  // item id 34
+
+  Potion_Paralyze = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Potion_Paralyze.prototype = Object.create(ItemTemplate.prototype);
+  Potion_Paralyze.prototype.constructor = Potion_Paralyze;
+
+  Potion_Paralyze.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[34]);
+  }
+
+  Potion_Paralyze.prototype.onQuaff = function(user) {
+    let realUser = BattleUtils.getRealTarget(user);
+    realUser.status.paralyzeCount = 5;
+    TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 64));
+    TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '麻痺'));
+    if ($gameVariables[$gameMap._mapId].mapData[user._x][user._y].isVisible) {
+      let msg = String.format(Message.display('paralyze'), LogUtils.getCharName(realUser));
+      ItemUtils.identifyObject(this);
+      LogUtils.addLog(msg);
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Potion_Sleep
+  //
+  // item id 35
+
+  Potion_Sleep = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Potion_Sleep.prototype = Object.create(ItemTemplate.prototype);
+  Potion_Sleep.prototype.constructor = Potion_Sleep;
+
+  Potion_Sleep.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[35]);
+  }
+
+  Potion_Sleep.prototype.onQuaff = function(user) {
+    let realUser = BattleUtils.getRealTarget(user);
+    realUser.status.sleepCount = 20;
+    TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 62));
+    TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '睡眠'));
+    if ($gameVariables[$gameMap._mapId].mapData[user._x][user._y].isVisible) {
+      let msg = String.format(Message.display('sleep'), LogUtils.getCharName(realUser));
+      ItemUtils.identifyObject(this);
+      LogUtils.addLog(msg);
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Potion_Speed
+  //
+  // item id 36
+
+  Potion_Speed = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Potion_Speed.prototype = Object.create(ItemTemplate.prototype);
+  Potion_Speed.prototype.constructor = Potion_Speed;
+
+  Potion_Speed.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[36]);
+  }
+
+  Potion_Speed.prototype.onQuaff = function(user) {
+    let realUser = BattleUtils.getRealTarget(user);
+    realUser.status.speedUpCount = 20;
+    TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 51));
+    TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '加速'));
+    if ($gameVariables[$gameMap._mapId].mapData[user._x][user._y].isVisible) {
+      let msg = String.format(Message.display('speedUp'), LogUtils.getCharName(realUser));
+      ItemUtils.identifyObject(this);
+      LogUtils.addLog(msg);
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Potion_Growth
+  //
+  // item id 37
+
+  Potion_Growth = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Potion_Growth.prototype = Object.create(ItemTemplate.prototype);
+  Potion_Growth.prototype.constructor = Potion_Growth;
+
+  Potion_Growth.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[37]);
+  }
+
+  Potion_Growth.prototype.onQuaff = function(user) {
+    let realUser = BattleUtils.getRealTarget(user);
+    let index = getRandomIntRange(2, 8);
+    realUser._paramPlus[index]++;
+    TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 49));
+    TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '能力提昇'));
+    if ($gameVariables[$gameMap._mapId].mapData[user._x][user._y].isVisible) {
+      let msg = String.format(Message.display('growth'), LogUtils.getCharName(realUser)
+        , ItemUtils.getAttributeName(index));
+      ItemUtils.identifyObject(this);
+      LogUtils.addLog(msg);
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Potion_LevelUp
+  //
+  // item id 38
+
+  Potion_LevelUp = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Potion_LevelUp.prototype = Object.create(ItemTemplate.prototype);
+  Potion_LevelUp.prototype.constructor = Potion_LevelUp;
+
+  Potion_LevelUp.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[38]);
+  }
+
+  Potion_LevelUp.prototype.onQuaff = function(user) {
+    let realUser = BattleUtils.getRealTarget(user);
+    CharUtils.levelUp(realUser);
+    TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 46));
+    TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '升級'));
+    if ($gameVariables[$gameMap._mapId].mapData[user._x][user._y].isVisible) {
+      let msg = String.format(Message.display('levelUp'), LogUtils.getCharName(realUser));
+      ItemUtils.identifyObject(this);
+      LogUtils.addLog(msg);
+    }
+    if (user == $gamePlayer) {
+      realUser.changeLevel(realUser._level + 1, true);
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Potion_Invisible
+  //
+  // item id 39
+
+  Potion_Invisible = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Potion_Invisible.prototype = Object.create(ItemTemplate.prototype);
+  Potion_Invisible.prototype.constructor = Potion_Invisible;
+
+  Potion_Invisible.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[39]);
+  }
+
+  Potion_Invisible.prototype.onQuaff = function(user) {
+    let realUser = BattleUtils.getRealTarget(user);
+    realUser.status.invisibleCount = 20;
+    if (user == $gamePlayer) {
+      $gamePlayer.setOpacity(64);
+    }
+    TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 35));
+    TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '隱形'));
+    if ($gameVariables[$gameMap._mapId].mapData[user._x][user._y].isVisible) {
+      let msg = String.format(Message.display('invisible'), LogUtils.getCharName(realUser));
       ItemUtils.identifyObject(this);
       LogUtils.addLog(msg);
     }
