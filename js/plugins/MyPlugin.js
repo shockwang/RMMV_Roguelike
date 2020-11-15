@@ -218,6 +218,7 @@
       meleeAttack: '{0}對{1}造成了{2}點傷害.',
       projectileAttack: '{0}的{1}對{2}造成了{3}點傷害.',
       targetKilled: '{0}被{1}殺死了!',
+      targetDied: '{0}死了...',
       openDoor: '你打開了一扇門.',
       closeDoor: '你關上了一扇門.',
       goUpstair: '你往上走了一層.',
@@ -269,6 +270,13 @@
       levelUp: '{0}的等級提昇了!',
       invisible: '{0}的身形消失了!',
       invisibleEnd: '{0}的身形浮現出來了.',
+      seeInvisible: '{0}可以察覺隱形的事物了.',
+      seeInvisibleEnd: '{0}察覺隱形事物的能力消失了.',
+      acidDamage: '{0}受到了{1}點酸蝕傷害!',
+      equipAcidDamage: '{0}的{1}受到了酸的侵蝕!',
+      poison: '{0}中毒了!',
+      recoverFromPoison: '{0}從毒素中恢復了.',
+      poisonDamage: '{0}受到了{1}點毒素傷害.',
       somebody: '某人'
     },
     display: function(msgName) {
@@ -327,6 +335,8 @@
       sleepCount: 0,
       speedUpCount: 0,
       invisibleCount: 0,
+      seeInvisibleCount: 0,
+      poisonCount: 0,
     }
     return result;
   }
@@ -336,6 +346,16 @@
     for (let id in target.status) {
       if (target.status[id] > 0) {
         target.status[id]--;
+        if (id == 'poisonCount') {
+          let value = 3;
+          target._hp -= value;
+          if ($gameVariables[$gameMap._mapId].mapData[event._x][event._y].isVisible) {
+            TimeUtils.animeQueue.push(new AnimeObject(event, 'POP_UP', -1 * value));
+            LogUtils.addLog(String.format(Message.display('poisonDamage'), LogUtils.getCharName(target)
+              , value));
+          }
+          BattleUtils.checkTargetAlive(null, target, event);
+        }
         if (target.status[id] == 0
           && (event == $gamePlayer || $gameVariables[$gameMap._mapId].mapData[event._x][event._y].isVisible)) {
           switch (id) {
@@ -369,6 +389,14 @@
                 $gamePlayer.setOpacity(255);
               }
               break;
+            case 'seeInvisibleCount':
+              LogUtils.addLog(String.format(Message.display('seeInvisibleEnd')
+                , LogUtils.getCharName(target)));
+              break;
+            case 'poisonCount':
+              LogUtils.addLog(String.format(Message.display('recoverFromPoison')
+                , LogUtils.getCharName(target)));
+              break;
           }
         }
       }
@@ -396,6 +424,15 @@
     // TODO: implement level up mechanism
     target._paramPlus[0] += 5 + Math.round(target.param(3) / 2);
     target._paramPlus[1] += 5 + Math.round(target.param(5) / 2);
+  }
+
+  CharUtils.canSee = function(src, target) {
+    if (src.status.blindCount > 0) {
+      return false;
+    } else if (target.status.invisibleCount > 0 && src.status.seeInvisibleCount == 0) {
+      return false;
+    }
+    return true;
   }
 
   //-----------------------------------------------------------------------------------
@@ -474,6 +511,9 @@
       $gameParty.gainItem(new Potion_Growth(), 1);
       $gameParty.gainItem(new Potion_LevelUp(), 1);
       $gameParty.gainItem(new Potion_Invisible(), 1);
+      $gameParty.gainItem(new Potion_SeeInvisible(), 1);
+      $gameParty.gainItem(new Potion_Acid(), 1);
+      $gameParty.gainItem(new Potion_Poison(), 1);
     }
   }
 
@@ -507,15 +547,18 @@
       SceneManager._scene.addChild(logWindow);
     },
     addLog: function(msg) {
-      $gameVariables[0].logList.push(msg);
+      let lines = msg.split('\n');
+      for (let id in lines) {
+        $gameVariables[0].logList.push(lines[id]);
+      }
       if ($gameVariables[0].logList.length > LogUtils.lineLimit) {
-        $gameVariables[0].logList.splice(0, 1);
+        $gameVariables[0].logList.splice(0, $gameVariables[0].logList.length - LogUtils.lineLimit);
       }
     },
     getCharName: function(target) {
       if (target == $gameActors._data[1]) {
         return '你';
-      } else if ($gameActors._data[1].status.blindCount > 0 || target.status.invisibleCount > 0) {
+      } else if (!CharUtils.canSee($gameActors._data[1], target)) {
         return Message.display('somebody');
       } else {
         return target.name();
@@ -850,14 +893,28 @@
     }
   }
 
+  MapUtils.drawMob = function(mapData, event) {
+    if (mapData[event._x][event._y].isVisible) {
+      if (event.mob.status.invisibleCount > 0) {
+        if (CharUtils.canSee($gameActors._data[1], event.mob)) {
+          event.setOpacity(128);
+        } else {
+          event.setOpacity(0);
+        }
+      } else {
+        event.setOpacity(255);
+      }
+    }
+  }
+
   MapUtils.drawEvents = function (mapData) {
     for (var i = 0; i < $gameMap.events().length; i++) {
       var event = $gameMap.events()[i];
       if (event.type == 'ITEM_PILE') {
         ItemUtils.updateItemPile(event);
       } else if (event._x > 0 && event._y > 0 && mapData[event._x][event._y].isVisible) {
-        if (event.mob && event.mob.status.invisibleCount > 0) {
-          event.setOpacity(0);
+        if (event.mob) {
+          MapUtils.drawMob(mapData, event);
         } else {
           event.setOpacity(255);
         }
@@ -2000,11 +2057,7 @@
         if ($dataMap.events[i].type == 'MOB') {
           this._events[i] = new window[$dataMap.events[i].mob.mobClass]($dataMap.events[i].x
             , $dataMap.events[i].y, $dataMap.events[i]);
-          if (!$gameVariables[this._mapId].mapData[this._events[i]._x][this._events[i]._y].isVisible
-            || this._events[i].mob.invisibleCount > 0){
-            // player can't see
-            this._events[i].setOpacity(0);
-          }
+          MapUtils.drawMob($gameVariables[this._mapId].mapData, this._events[i]);
         } else if ($dataMap.events[i].type == 'DOOR') {
           this._events[i] = new Game_Door($dataMap.events[i].x, $dataMap.events[i].y, $dataMap.events[i]);
         } else if ($dataMap.events[i].type == 'ITEM_PILE') {
@@ -2098,7 +2151,7 @@
       // only update mobs in distance (for performance issue)
       if (this.mob.status.afraidCount > 0) {
         this.moveAwayFromCharacter($gamePlayer);
-      } else if (this.mob.status.blindCount > 0 || BattleUtils.getRealTarget($gamePlayer).status.invisibleCount > 0) {
+      } else if (!CharUtils.canSee(this.mob, $gameActors._data[1])) {
         // TODO: mob can attack when blind and try to walk into a character
         this.moveRandom();
       } else if (this.mob.status.paralyzeCount > 0 || this.mob.status.sleepCount > 0) {
@@ -3074,8 +3127,8 @@
           }
         } while (!done);
         // play queued anime
-        TimeUtils.playAnime();
         CharUtils.updateStatus($gamePlayer);
+        TimeUtils.playAnime();
         // deal with energy calculation
         if (playerDashed || playerAttacked) {
           // huge movement, do nothing
@@ -3109,15 +3162,24 @@
     return (src == $gamePlayer) ? $gameActors._data[1] : src.mob;
   }
 
+  // realSrc can be null, which means realTarget died on his own
   BattleUtils.checkTargetAlive = function(realSrc, realTarget, target) {
     if (realTarget._hp <= 0) {
-      LogUtils.addLog(String.format(Message.display('targetKilled'), LogUtils.getCharName(realTarget)
-        , LogUtils.getCharName(realSrc)));
+      let msg;
+      if (realSrc) {
+        msg = String.format(Message.display('targetKilled'), LogUtils.getCharName(realTarget)
+          , LogUtils.getCharName(realSrc));
+      } else {
+        msg = String.format(Message.display('targetDied'), LogUtils.getCharName(realTarget));
+      }
+      LogUtils.addLog(msg);
       if (target == $gamePlayer) {
-        BattleUtils.playerDied('你被' + realSrc.name() + '殺死了...');
+        BattleUtils.playerDied(msg);
       } else {
         target.looting();
-        realSrc.gainExp(realTarget.exp());
+        if (realSrc) {
+          realSrc.gainExp(realTarget.exp());
+        }
         // remove target event from $dataMap.events
         // NOTE: Do not remove it from $gameMap._events! will cause crash
         $gameMap.eraseEvent(target._eventId);
@@ -3505,21 +3567,13 @@
 
   ItemUtils.enchantEquip = function(equip, value) {
     let temp = equip.name.split(/\+|-/);
-    let nowValue = 0;
-    if (temp.length != 1) {
-      let value2 = parseInt(temp[1]);
-      if (equip.name[temp[0].length] == '-') {
-        nowValue = value2 * -1;
-      } else {
-        nowValue = value2;
-      }
-    }
+    let nowValue = ItemUtils.getEnchantment(equip);
     nowValue += value;
     let newName = temp[0];
     if (nowValue > 0) {
       newName += '+' + nowValue;
     } else if (nowValue < 0) {
-      newName += '-' + nowValue;
+      newName += nowValue;
     }
     equip.name = newName;
     let prop = JSON.parse(equip.note);
@@ -3861,6 +3915,105 @@
     TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '隱形'));
     if ($gameVariables[$gameMap._mapId].mapData[user._x][user._y].isVisible) {
       let msg = String.format(Message.display('invisible'), LogUtils.getCharName(realUser));
+      ItemUtils.identifyObject(this);
+      LogUtils.addLog(msg);
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Potion_SeeInvisible
+  //
+  // item id 40
+
+  Potion_SeeInvisible = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Potion_SeeInvisible.prototype = Object.create(ItemTemplate.prototype);
+  Potion_SeeInvisible.prototype.constructor = Potion_SeeInvisible;
+
+  Potion_SeeInvisible.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[40]);
+  }
+
+  Potion_SeeInvisible.prototype.onQuaff = function(user) {
+    let realUser = BattleUtils.getRealTarget(user);
+    realUser.status.seeInvisibleCount = 40;
+    AudioManager.playSe({name: "Ice4", pan: 0, pitch: 100, volume: 100});
+    TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '偵測隱形'));
+    if ($gameVariables[$gameMap._mapId].mapData[user._x][user._y].isVisible) {
+      let msg = String.format(Message.display('seeInvisible'), LogUtils.getCharName(realUser));
+      ItemUtils.identifyObject(this);
+      LogUtils.addLog(msg);
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Potion_Acid
+  //
+  // item id 41
+
+  Potion_Acid = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Potion_Acid.prototype = Object.create(ItemTemplate.prototype);
+  Potion_Acid.prototype.constructor = Potion_Acid;
+
+  Potion_Acid.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[41]);
+  }
+
+  Potion_Acid.prototype.onQuaff = function(user) {
+    let realUser = BattleUtils.getRealTarget(user);
+    let damage = 30;
+    realUser._hp -= damage;
+    let msg = String.format(Message.display('acidDamage'), LogUtils.getCharName(realUser), damage);
+    // TODO: damage armor/weapon
+    if (user == $gamePlayer) {
+      let equips = realUser.equips().filter(function(item) {
+        return item != null;
+      })
+      if (equips.length > 0) {
+        let toDamage = equips[getRandomInt(equips.length)];
+        LogUtils.addLog(String.format(Message.display('equipAcidDamage')
+          , LogUtils.getCharName(realUser), toDamage.name));
+        ItemUtils.enchantEquip(toDamage, -1);
+      }
+    }
+    TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 39));
+    TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '酸蝕'));
+
+    if ($gameVariables[$gameMap._mapId].mapData[user._x][user._y].isVisible) {
+      LogUtils.addLog(msg);
+      ItemUtils.identifyObject(this);
+    }
+    BattleUtils.checkTargetAlive(null, realUser, user);
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Potion_Poison
+  //
+  // item id 42
+
+  Potion_Poison = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Potion_Poison.prototype = Object.create(ItemTemplate.prototype);
+  Potion_Poison.prototype.constructor = Potion_Poison;
+
+  Potion_Poison.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[42]);
+  }
+
+  Potion_Poison.prototype.onQuaff = function(user) {
+    let realUser = BattleUtils.getRealTarget(user);
+    realUser.status.poisonCount = 10;
+    TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 59));
+    TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '中毒'));
+    if ($gameVariables[$gameMap._mapId].mapData[user._x][user._y].isVisible) {
+      let msg = String.format(Message.display('poison'), LogUtils.getCharName(realUser));
       ItemUtils.identifyObject(this);
       LogUtils.addLog(msg);
     }

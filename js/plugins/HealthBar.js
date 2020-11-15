@@ -83,25 +83,35 @@
             status += '昏厥 ';
         }
         // draw buff/debuff
+        let debuffColor = '#FF0000';
+        let buffColor = '#00FF23';
         if ($gameActors._data[1].status.blindCount > 0) {
-            this.changeTextColor('#FF0000');
+            this.changeTextColor(debuffColor);
             status += '失明 ';
         }
         if ($gameActors._data[1].status.paralyzeCount > 0) {
-            this.changeTextColor('#FF0000');
+            this.changeTextColor(debuffColor);
             status += '麻痺 ';
         }
         if ($gameActors._data[1].status.sleepCount > 0) {
-            this.changeTextColor('#FF0000');
+            this.changeTextColor(debuffColor);
             status += '昏睡 ';
         }
+        if ($gameActors._data[1].status.poisonCount > 0) {
+            this.changeTextColor(debuffColor);
+            status += '中毒 ';
+        }
         if ($gameActors._data[1].status.speedUpCount > 0) {
-            this.changeTextColor('#FF0000');
+            this.changeTextColor(buffColor);
             status += '加速 ';
         }
         if ($gameActors._data[1].status.invisibleCount > 0) {
-            this.changeTextColor('#FF0000');
+            this.changeTextColor(buffColor);
             status += '隱形 ';
+        }
+        if ($gameActors._data[1].status.seeInvisibleCount > 0) {
+            this.changeTextColor(buffColor);
+            status += '偵測隱形 ';
         }
         var width = this.textWidth(status);
         this.drawText(status, x, y, width);
