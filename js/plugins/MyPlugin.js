@@ -95,8 +95,8 @@
   // room parameters
   var roomNum = 3, minRoomSize = 4, maxRoomSize = 16;
   var roomPercentage = 0.6;
-  var doorPercentage = 1;
-  var secretDoorPercentage = 1;
+  var doorPercentage = 0.5;
+  var secretDoorPercentage = 0.5;
 
   // word attached
   var groundWord = '(地上)';
@@ -280,7 +280,8 @@
       poison: '{0}中毒了!',
       recoverFromPoison: '{0}從毒素中恢復了.',
       poisonDamage: '{0}受到了{1}點毒素傷害.',
-      somebody: '某人'
+      somebody: '某人',
+      secretDoorDiscovered: '你發現了一扇隱藏的門!'
     },
     display: function(msgName) {
       switch (Message.language) {
@@ -794,9 +795,12 @@
   var showObjsOnMap = function() {
     // check non-blocking message
     let event = ItemUtils.findMapItemPileEvent($gamePlayer._x, $gamePlayer._y);
+    let msg = '';
     if (event) {
-      MapUtils.displayMessageNonBlocking(ItemUtils.displayObjStack(event.itemPile.objectStack));
+      msg = ItemUtils.displayObjStack(event.itemPile.objectStack);
     }
+    // always show msg box, to avoid window lag (don't know why)
+    MapUtils.displayMessageNonBlocking(msg);
   }
 
   MapUtils.translateMap = function (rawData, mapId) {
@@ -809,38 +813,16 @@
     }
 
     // deal with tile IDs
-    var north, south, east, west;
     for (var j = 0; j < rawData[0].length; j++) {
       for (var i = 0; i < rawData.length; i++) {
         if (rawData[i][j] == FLOOR) {
           // skip the floor tunning
           continue;
         } else if (rawData[i][j] == WALL) {
-          // // deal with ceiling
-          // north = false, south = false, east = false, west = false;
-          // // check east
-          // if (i + 1 < rawData.length && rawData[i + 1][j] != WALL) {
-          //   east = true;
-          // }
-          // // check west
-          // if (i - 1 >= 0 && rawData[i - 1][j] != WALL) {
-          //   west = true;
-          // }
-          // // check north
-          // if (j - 1 >= 0 && rawData[i][j - 1] != WALL) {
-          //   north = true;
-          // }
-          // // check south
-          // if (j + 1 < rawData.length && rawData[i][j + 1] != WALL) {
-          //   south = true;
-          // }
-
-          // now decide tile type
-          // mapData[i][j].base = refineMapTile(east, west, south, north, ceilingCenter);
-          mapData[i][j].base = refineMapTile(rawData, i, j, ceilingCenter);
+          mapData[i][j].base = ceilingCenter;
         } else if (rawData[i][j] == DOOR) {
           if ($gameVariables[mapId].secretBlocks[i + ',' + j]) {
-            mapData[i][j].base = refineMapTile(rawData, i, j, ceilingCenter);
+            mapData[i][j].base = ceilingCenter;
           } else {
             new Game_Door(i, j);
           }
@@ -3034,6 +3016,24 @@
           break;
         case 'r': // read scroll
           SceneManager.push(Scene_ReadScroll);
+          break;
+        case 's': // search environment
+          for (let i = 0; i < 8; i++) {
+            let coordinate = MapUtils.getNearbyCoordinate($gamePlayer._x, $gamePlayer._y, i);
+            if ($gameVariables[$gameMap._mapId].secretBlocks[coordinate.x + ',' + coordinate.y]
+              && !$gameVariables[$gameMap._mapId].secretBlocks[coordinate.x + ',' + coordinate.y].isRevealed) {
+              // TODO: implement search success probability
+              if (Math.random() < 0.2) {
+                $gameVariables[$gameMap._mapId].secretBlocks[coordinate.x + ',' + coordinate.y].isRevealed = true;
+                if ($gameVariables[$gameMap._mapId].mapData[coordinate.x][coordinate.y].originalTile == DOOR) {
+                  $gameVariables[$gameMap._mapId].mapData[coordinate.x][coordinate.y].base = floorCenter;
+                  new Game_Door(coordinate.x, coordinate.y);
+                  LogUtils.addLog(Message.display('secretDoorDiscovered'));
+                }
+              }
+            }
+          }
+          TimeUtils.afterPlayerMoved();
           break;
       }
     }
