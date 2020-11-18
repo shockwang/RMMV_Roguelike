@@ -51,6 +51,7 @@
     this.generateRandom = false;
     this.stairDownNum = 1;
     this.stairList = [];
+    this.secretBlocks = {};
   }
 
   var Coordinate = function (x, y) {
@@ -94,6 +95,8 @@
   // room parameters
   var roomNum = 3, minRoomSize = 4, maxRoomSize = 16;
   var roomPercentage = 0.6;
+  var doorPercentage = 1;
+  var secretDoorPercentage = 1;
 
   // word attached
   var groundWord = '(地上)';
@@ -587,9 +590,12 @@
   }
 
   // used to judge visible/walkable tiles
-  MapUtils.isTilePassable = function (tile) {
+  MapUtils.isTilePassable = function (mapId, x, y, tile) {
     if (tile == FLOOR || tile == DOOR) {
-      return true;
+      if (!$gameVariables[mapId].secretBlocks[x + ',' + y]
+         || $gameVariables[mapId].secretBlocks[x + ',' + y].isRevealed) {
+        return true;
+      }
     }
     return false;
   }
@@ -608,7 +614,7 @@
   // this function should be called twice (src must be a Game_Event)
   function updateVisible(src, distance, x, y, mapData) {
     var visible = false;
-    if (Math.abs(src._x - x) <= distance && Math.abs(src._y - y) <= distance) {
+    if (MapUtils.getDistance(src._x, src._y, x, y) <= distance) {
       // around player, check visibility
       visible = true;
       if (src._x != x) {
@@ -645,7 +651,8 @@
         for (var i = 0; i < path.length; i++) {
           // does not count the (x, y) point
           if (!(path[i].x == x && path[i].y == y)) {
-            if (!MapUtils.isTilePassable(mapData[path[i].x][path[i].y].originalTile)) {
+            if (!MapUtils.isTilePassable($gameMap._mapId, path[i].x, path[i].y
+              , mapData[path[i].x][path[i].y].originalTile)) {
               visible = false;
               break;
             } else {
@@ -666,7 +673,7 @@
 
         // start to check if vision blocked
         for (var i = start + 1; i < end; i++) {
-          if (!MapUtils.isTilePassable(mapData[x][i].originalTile)) {
+          if (!MapUtils.isTilePassable($gameMap._mapId, x, i, mapData[x][i].originalTile)) {
             visible = false;
             break;
           } else {
@@ -682,8 +689,8 @@
         }
       }
 
-      // other ceiling check
-      if (!visible && mapData[x][y].originalTile == WALL) {
+      // side wall/door check
+      if (!visible && (mapData[x][y].originalTile == WALL || mapData[x][y].originalTile == DOOR)) {
         var xVisible = false, yVisible = false;
         if ((x - 1 >= 0 && mapData[x - 1][y].isVisible) || (x + 1 < mapData.length && mapData[x + 1][y].isVisible)) {
           xVisible = true;
@@ -701,7 +708,24 @@
     mapData[x][y].isVisible = visible;
   }
 
-  function refineMapTile(east, west, south, north, centerTile) {
+  function refineMapTile(rawData, x, y, centerTile) {
+    let east = false, west = false, south = false, north = false;
+    // check east
+    if (x + 1 < rawData.length && rawData[x + 1][y] != WALL) {
+      east = true;
+    }
+    // check west
+    if (x - 1 >= 0 && rawData[x - 1][y] != WALL) {
+      west = true;
+    }
+    // check north
+    if (y - 1 >= 0 && rawData[x][y - 1] != WALL) {
+      north = true;
+    }
+    // check south
+    if (y + 1 < rawData.length && rawData[x][y + 1] != WALL) {
+      south = true;
+    }
     var result = centerTile;
     if (east) {
       if (west) {
@@ -775,7 +799,7 @@
     }
   }
 
-  MapUtils.translateMap = function (rawData) {
+  MapUtils.translateMap = function (rawData, mapId) {
     var mapData = new Array(rawData.length);
     for (var i = 0; i < mapData.length; i++) {
       mapData[i] = new Array(rawData[0].length);
@@ -792,29 +816,34 @@
           // skip the floor tunning
           continue;
         } else if (rawData[i][j] == WALL) {
-          // deal with ceiling
-          north = false, south = false, east = false, west = false;
-          // check east
-          if (i + 1 < rawData.length && rawData[i + 1][j] != WALL) {
-            east = true;
-          }
-          // check west
-          if (i - 1 >= 0 && rawData[i - 1][j] != WALL) {
-            west = true;
-          }
-          // check north
-          if (j - 1 >= 0 && rawData[i][j - 1] != WALL) {
-            north = true;
-          }
-          // check south
-          if (j + 1 < rawData.length && rawData[i][j + 1] != WALL) {
-            south = true;
-          }
+          // // deal with ceiling
+          // north = false, south = false, east = false, west = false;
+          // // check east
+          // if (i + 1 < rawData.length && rawData[i + 1][j] != WALL) {
+          //   east = true;
+          // }
+          // // check west
+          // if (i - 1 >= 0 && rawData[i - 1][j] != WALL) {
+          //   west = true;
+          // }
+          // // check north
+          // if (j - 1 >= 0 && rawData[i][j - 1] != WALL) {
+          //   north = true;
+          // }
+          // // check south
+          // if (j + 1 < rawData.length && rawData[i][j + 1] != WALL) {
+          //   south = true;
+          // }
 
           // now decide tile type
-          mapData[i][j].base = refineMapTile(east, west, south, north, ceilingCenter);
+          // mapData[i][j].base = refineMapTile(east, west, south, north, ceilingCenter);
+          mapData[i][j].base = refineMapTile(rawData, i, j, ceilingCenter);
         } else if (rawData[i][j] == DOOR) {
-          new Game_Door(i, j);
+          if ($gameVariables[mapId].secretBlocks[i + ',' + j]) {
+            mapData[i][j].base = refineMapTile(rawData, i, j, ceilingCenter);
+          } else {
+            new Game_Door(i, j);
+          }
         }
       }
     }
@@ -1009,7 +1038,7 @@
       occupied = true;
     }
     var tileAvailable = false;
-    if (MapUtils.isTilePassable($gameVariables[mapId].mapData[x][y].originalTile)) {
+    if (MapUtils.isTilePassable(mapId, x, y, $gameVariables[mapId].mapData[x][y].originalTile)) {
       tileAvailable = true;
     }
     return !occupied && tileAvailable;
@@ -1145,7 +1174,7 @@
         var north;
         if (genMap[i][j].northWall) {
           north = WALL;
-        } else if (genMap[i][j].northDoor) {
+        } else if (genMap[i][j].northDoor && Math.random() < doorPercentage) {
           north = DOOR;
         } else {
           north = FLOOR;
@@ -1155,7 +1184,7 @@
         var east;
         if (genMap[i][j].eastWall) {
           east = WALL;
-        } else if (genMap[i][j].eastDoor) {
+        } else if (genMap[i][j].eastDoor && Math.random() < doorPercentage) {
           east = DOOR;
         } else {
           east = FLOOR;
@@ -1693,7 +1722,8 @@
     // first load map
     console.log("first load map: " + mapId);
     var rawMap = MapUtils.generateMapData(genMapRoomsFullMaze, 9, 9);
-    var newMapData = MapUtils.translateMap(rawMap);
+    MapUtils.setupSecretDoor(mapId, rawMap);
+    var newMapData = MapUtils.translateMap(rawMap, mapId);
     $dataMap.width = rawMap.length;
     $dataMap.height = rawMap[0].length;
     $dataMap.data = new Array(newMapData.length * newMapData[0].length * 6);
@@ -1726,6 +1756,18 @@
       }
     }
     return floors;
+  }
+
+  MapUtils.setupSecretDoor = function(mapId, rawMap) {
+    for (let j = 0; j < rawMap[0].length; j++) {
+      for (let i = 0; i < rawMap.length; i++) {
+        if (rawMap[i][j] == DOOR && Math.random() < secretDoorPercentage) {
+          $gameVariables[mapId].secretBlocks[i + ',' + j] = {
+            isRevealed: false
+          }
+        }
+      }
+    }
   }
 
   //-----------------------------------------------------------------------------------
@@ -1994,7 +2036,7 @@
     var y2 = $gameMap.roundYWithDirection(y, vert);
     if ($gameVariables[$gameMap.mapId()].mapData) { // map generated
       var mapData = $gameVariables[$gameMap.mapId()].mapData;
-      if (MapUtils.isTilePassable(mapData[x2][y2].originalTile)) {
+      if (MapUtils.isTilePassable($gameMap.mapId(), x2, y2, mapData[x2][y2].originalTile)) {
         // check if there's event on target tile which priority is as same as player
         var canPass = true;
         for (var i = 0; i < $gameMap.events().length; i++) {
@@ -2039,7 +2081,8 @@
           y--;
           break;
       }
-      if (MapUtils.isTilePassable($gameVariables[$gameMap.mapId()].mapData[x][y].originalTile)) {
+      if (MapUtils.isTilePassable($gameMap.mapId(), x, y
+        , $gameVariables[$gameMap.mapId()].mapData[x][y].originalTile)) {
         return true;
       }
       return false;
@@ -2176,7 +2219,8 @@
     var nowDistance = MapUtils.getDistance(this._x, this._y, character._x, character._y);
     for (var i = 0; i < 8; i++) {
       var coordinate = MapUtils.getNearbyCoordinate(this._x, this._y, i);
-      if (!MapUtils.isTilePassable(mapData[coordinate.x][coordinate.y].originalTile)) {
+      if (!MapUtils.isTilePassable($gameMap.mapId(), coordinate.x, coordinate.y
+        , mapData[coordinate.x][coordinate.y].originalTile)) {
         continue;
       }
       var distance = MapUtils.getDistance(coordinate.x, coordinate.y, character._x, character._y);
@@ -2233,7 +2277,8 @@
     var nowDistance = MapUtils.getDistance(this._x, this._y, character._x, character._y);
     for (var i = 0; i < 8; i++) {
       var coordinate = MapUtils.getNearbyCoordinate(this._x, this._y, i);
-      if (!MapUtils.isTilePassable(mapData[coordinate.x][coordinate.y].originalTile)) {
+      if (!MapUtils.isTilePassable($gameMap.mapId(), coordinate.x, coordinate.y
+        , mapData[coordinate.x][coordinate.y].originalTile)) {
         continue;
       }
       var distance = MapUtils.getDistance(coordinate.x, coordinate.y, character._x, character._y);
@@ -3207,33 +3252,38 @@
     }
     // calculate the damage
     var skillBonus = 0;
-    if (realSrc._equips && realSrc._equips[0].itemId() != 0 && realSrc._skills) {
-      var weapon = $dataWeapons[realSrc._equips[0].itemId()];
-      switch (weapon.wtypeId) {
-        case 2: // sword
-          for (var id in realSrc._skills) {
-            var skillId = realSrc._skills[id];
-            if ($dataSkills[skillId].name == "劍術") {
-              var prop = JSON.parse($dataSkills[skillId].note);
-              if (!$gameActors._data[1].skillExp[skillId]) {
-                $gameActors._data[1].skillExp[skillId] = {};
-                $gameActors._data[1].skillExp[skillId].lv = 1;
-                $gameActors._data[1].skillExp[skillId].exp = 1;
-              }
-              var index = $gameActors._data[1].skillExp[skillId].lv - 1;
-              skillBonus = prop.effect[index].atk;
-              $gameActors._data[1].skillExp[skillId].exp++;
-              if (prop.effect[index].levelUp != -1 && $gameActors._data[1].skillExp[skillId].exp >= prop.effect[index].levelUp) {
-                $gameMessage.add('你的' + $dataSkills[skillId].name + '更加熟練了!');
-                $gameActors._data[1].skillExp[skillId].lv++;
-                $gameActors._data[1].skillExp[skillId].exp = 0;
-              }
-            }
-          }
-          break;
+    if (src == $gamePlayer) {
+      let skillClass;
+      if (realSrc._equips && realSrc._equips[0].itemId() != 0) {
+        var weapon = $dataWeapons[realSrc._equips[0].itemId()];
+        switch (weapon.wtypeId) {
+          case 2: // long sword
+            skillClass = Skill_LongSword;
+            break;
+        }
+      } else { // martial art
+        skillClass = Skill_MartialArt;
+      }
+
+      let skillId = skillClass.getSkillId();
+      if (realSrc._skills.includes(skillId)) {
+        var prop = JSON.parse($dataSkills[skillId].note);
+        var index = $gameActors._data[1].skillExp[skillId].lv;
+        skillBonus = prop.effect[index].atk;
+        $gameActors._data[1].skillExp[skillId].exp++;
+        if (prop.effect[index].levelUp != -1 && $gameActors._data[1].skillExp[skillId].exp >= prop.effect[index].levelUp) {
+          $gameMessage.add('你的' + $dataSkills[skillId].name + '更加熟練了!');
+          $gameActors._data[1].skillExp[skillId].lv++;
+          $gameActors._data[1].skillExp[skillId].exp = 0;
+        }
+      } else {
+        $gameActors._data[1]._skills.push(skillId);
+        $gameActors._data[1].skillExp[skillId] = {};
+        $gameActors._data[1].skillExp[skillId].lv = 0;
+        $gameActors._data[1].skillExp[skillId].exp = 1;
       }
     }
-    var max = Math.round(realSrc.param(2) + realSrc.param(10) - realTarget.param(8));
+    var max = Math.round(realSrc.param(2) + realSrc.param(10) - realTarget.param(8)) + skillBonus;
     max = (max > 0) ? max : 1;
     var min = Math.round(max / 3);
     min = (min > 0) ? min : 1;
@@ -4370,6 +4420,32 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Skill_MartialArt
+  //
+  // skill id 11
+
+  Skill_MartialArt = function() {
+    throw new Error('This is a static class');
+  }
+
+  Skill_MartialArt.getSkillId = function() {
+    return 11;
+  }
+
+    //-----------------------------------------------------------------------------------
+  // Skill_LongSword
+  //
+  // skill id 12
+
+  Skill_LongSword = function() {
+    throw new Error('This is a static class');
+  }
+
+  Skill_LongSword.getSkillId = function() {
+    return 12;
+  }
+
+  //-----------------------------------------------------------------------------------
   // Window_GetDropItemList
   //
   // class for items on the map, inherit from Window_ItemList
@@ -4692,11 +4768,26 @@
   Window_SkillList.prototype.drawItemName = function (item, x, y, width) {
     width = width || 312;
     if (item) {
-      var skillLv = ($gameActors._data[1].skillExp[item.id]) ?$gameActors._data[1].skillExp[item.id].lv : 1;
+      var skillLv = $gameActors._data[1].skillExp[item.id].lv;
       var iconBoxWidth = Window_Base._iconWidth + 4;
       this.resetTextColor();
       this.drawIcon(item.iconIndex, x + 2, y + 2);
       this.drawText(item.name + 'Lv' + skillLv, x + iconBoxWidth, y, width - iconBoxWidth);
+    }
+  };
+
+  // do not show lv0 skills
+  Window_SkillList.prototype.makeItemList = function() {
+    if (this._actor) {
+      this._data = this._actor.skills().filter(function(item) {
+        let show = true;
+        if (this._actor.skillExp[item.id].lv == 0) {
+          show = false;
+        }
+        return this.includes(item) && show;
+      }, this);
+    } else {
+      this._data = [];
     }
   };
 
