@@ -97,6 +97,7 @@
   var roomPercentage = 0.6;
   var doorPercentage = 0.5;
   var secretDoorPercentage = 0.5;
+  var removeDeadEndPercentage = 0.5;
 
   // word attached
   var groundWord = '(地上)';
@@ -593,12 +594,16 @@
   // used to judge visible/walkable tiles
   MapUtils.isTilePassable = function (mapId, x, y, tile) {
     if (tile == FLOOR || tile == DOOR) {
-      if (!$gameVariables[mapId].secretBlocks[x + ',' + y]
-         || $gameVariables[mapId].secretBlocks[x + ',' + y].isRevealed) {
+      if (!$gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(x, y)]
+         || $gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(x, y)].isRevealed) {
         return true;
       }
     }
     return false;
+  }
+
+  MapUtils.getTileIndex = function(x, y) {
+    return x + ',' + y;
   }
 
   function getRandomInt(max) {
@@ -687,21 +692,6 @@
               }
             }
           }
-        }
-      }
-
-      // side wall/door check
-      if (!visible && (mapData[x][y].originalTile == WALL || mapData[x][y].originalTile == DOOR)) {
-        var xVisible = false, yVisible = false;
-        if ((x - 1 >= 0 && mapData[x - 1][y].isVisible) || (x + 1 < mapData.length && mapData[x + 1][y].isVisible)) {
-          xVisible = true;
-        }
-        if ((y - 1 >= 0 && mapData[x][y - 1].isVisible) || (y + 1 < mapData[0].length && mapData[x][y + 1].isVisible)) {
-          yVisible = true;
-        }
-        if (xVisible && yVisible) {
-          // corner case
-          visible = true;
         }
       }
     }
@@ -821,7 +811,7 @@
         } else if (rawData[i][j] == WALL) {
           mapData[i][j].base = ceilingCenter;
         } else if (rawData[i][j] == DOOR) {
-          if ($gameVariables[mapId].secretBlocks[i + ',' + j]) {
+          if ($gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(i, j)]) {
             mapData[i][j].base = ceilingCenter;
           } else {
             new Game_Door(i, j);
@@ -843,7 +833,7 @@
       mapArray[i] = 0;
     }
 
-    // first time update visibility
+    // update visibility
     for (var j = 0; j < mapData[0].length; j++) {
       for (var i = 0; i < mapData.length; i++) {
         updateVisible($gamePlayer, viewDistance, i, j, mapData);
@@ -856,8 +846,6 @@
     var itemOffset = mapSize * 3;
     for (var j = 0; j < mapData[0].length; j++) {
       for (var i = 0; i < mapData.length; i++) {
-        // second time update visibility
-        updateVisible($gamePlayer, viewDistance, i, j, mapData);
         if (mapData[i][j].isVisible || mapData[i][j].isExplored) {
           mapArray[index] = mapData[i][j].base;
           mapData[i][j].isExplored = true;
@@ -1586,6 +1574,41 @@
     return mapPixel;
   }
 
+  MapUtils.removeDeadEnds = function(mapPixel) {
+    for (let j = 0; j < mapPixel[0].length; j++) {
+      for (let i = 0; i < mapPixel.length; i++) {
+        if (mapPixel[i][j] == WALL) {
+          continue;
+        }
+        let done, tempI = i, tempJ = j;
+        let remove = (Math.random() < removeDeadEndPercentage);
+        do {
+          done = true;
+          let links = [];
+          for (let k = 0; k < 8; k++) {
+            if (k % 2 == 1) {
+              continue;
+            }
+            let coor = MapUtils.getNearbyCoordinate(tempI, tempJ, k);
+            if ((coor.x >= 0 && coor.x < mapPixel.length) && (coor.y >= 0 && coor.y < mapPixel[0].length)
+              && mapPixel[coor.x][coor.y] != WALL) {
+              links.push(coor);
+            }
+          }
+          if (links.length == 1 && remove) {
+            // remove this deadend
+            mapPixel[tempI][tempJ] = WALL;
+            if (links.length == 1) {
+              done = false;
+              tempI = links[0].x, tempJ = links[0].y;
+            }
+          }
+        } while (!done);
+      }
+    }
+    return mapPixel;
+  }
+
   MapUtils.getNearbyCoordinate = function (x, y, index) {
     var result = new Coordinate(x, y);
     switch (index) { // check path clock-wise
@@ -1703,7 +1726,8 @@
   MapUtils.setupNewMap = function (mapId) {
     // first load map
     console.log("first load map: " + mapId);
-    var rawMap = MapUtils.generateMapData(genMapRoomsFullMaze, 9, 9);
+    var rawMap = MapUtils.generateMapData(genMapRoomsFullMaze, 10, 10);
+    rawMap = MapUtils.removeDeadEnds(rawMap);
     MapUtils.setupSecretDoor(mapId, rawMap);
     var newMapData = MapUtils.translateMap(rawMap, mapId);
     $dataMap.width = rawMap.length;
@@ -1744,7 +1768,7 @@
     for (let j = 0; j < rawMap[0].length; j++) {
       for (let i = 0; i < rawMap.length; i++) {
         if (rawMap[i][j] == DOOR && Math.random() < secretDoorPercentage) {
-          $gameVariables[mapId].secretBlocks[i + ',' + j] = {
+          $gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(i, j)] = {
             isRevealed: false
           }
         }
@@ -3020,11 +3044,11 @@
         case 's': // search environment
           for (let i = 0; i < 8; i++) {
             let coordinate = MapUtils.getNearbyCoordinate($gamePlayer._x, $gamePlayer._y, i);
-            if ($gameVariables[$gameMap._mapId].secretBlocks[coordinate.x + ',' + coordinate.y]
-              && !$gameVariables[$gameMap._mapId].secretBlocks[coordinate.x + ',' + coordinate.y].isRevealed) {
+            if ($gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(coordinate.x, coordinate.y)]
+              && !$gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(coordinate.x, coordinate.y)].isRevealed) {
               // TODO: implement search success probability
               if (Math.random() < 0.2) {
-                $gameVariables[$gameMap._mapId].secretBlocks[coordinate.x + ',' + coordinate.y].isRevealed = true;
+                $gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(coordinate.x, coordinate.y)].isRevealed = true;
                 if ($gameVariables[$gameMap._mapId].mapData[coordinate.x][coordinate.y].originalTile == DOOR) {
                   $gameVariables[$gameMap._mapId].mapData[coordinate.x][coordinate.y].base = floorCenter;
                   new Game_Door(coordinate.x, coordinate.y);
@@ -3926,16 +3950,19 @@
 
   Potion_LevelUp.prototype.onQuaff = function(user) {
     let realUser = BattleUtils.getRealTarget(user);
-    CharUtils.levelUp(realUser);
     TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 46));
     TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '升級'));
     if ($gameVariables[$gameMap._mapId].mapData[user._x][user._y].isVisible) {
-      let msg = String.format(Message.display('levelUp'), LogUtils.getCharName(realUser));
       ItemUtils.identifyObject(this);
-      LogUtils.addLog(msg);
+      if (user != $gamePlayer) {
+        let msg = String.format(Message.display('levelUp'), LogUtils.getCharName(realUser));
+        LogUtils.addLog(msg);
+      }
     }
     if (user == $gamePlayer) {
-      realUser.changeLevel(realUser._level + 1, true);
+      realUser.levelUp();
+    } else {
+      CharUtils.levelUp(realUser);
     }
   }
 
@@ -5370,6 +5397,23 @@
     }
     LogUtils.addLog(msg);
     return true;
+  };
+
+  Game_Actor.prototype.levelUp = function() {
+    this._level++;
+    CharUtils.levelUp(this);
+    let msg = String.format(Message.display('levelUp'), LogUtils.getCharName(this));
+    LogUtils.addLog(msg);
+    this.currentClass().learnings.forEach(function(learning) {
+      if (learning.level === this._level) {
+        this.learnSkill(learning.skillId);
+      }
+    }, this);
+  };
+
+  Game_Actor.prototype.levelDown = function() {
+    this._level--;
+    // TODO: implement level down mechanism
   };
 
   //-----------------------------------------------------------------------------
