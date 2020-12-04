@@ -282,7 +282,8 @@
       recoverFromPoison: '{0}從毒素中恢復了.',
       poisonDamage: '{0}受到了{1}點毒素傷害.',
       somebody: '某人',
-      secretDoorDiscovered: '你發現了一扇隱藏的門!'
+      secretDoorDiscovered: '你發現了一扇隱藏的門!',
+      absorbSoul: '你從{0}身上吸收了{1}!'
     },
     display: function(msgName) {
       switch (Message.language) {
@@ -438,6 +439,17 @@
       return false;
     }
     return true;
+  }
+
+  CharUtils.updateHpMp = function(target) {
+    // get hpAddFactor & hpMultiplyFactor, mpAddFactor, mpMultiplyFactor
+    let hpAddFactor = (target.hpAddFactor) ? target.hpAddFactor : 0;
+    let hpMultiplyFactor = (target.hpMultiplyFactor) ? target.hpMultiplyFactor : 0;
+    let mpAddFactor = (target.mpAddFactor) ? target.mpAddFactor : 0;
+    let mpMultiplyFactor = (target.mpMultiplyFactor) ? target.mpMultiplyFactor : 0;
+    // setup HP & MP
+    target._hp = Math.round(((35 + target.level * 5) * (1 + target.param(3) / 100) + hpAddFactor) * (1 + hpMultiplyFactor));
+    target._mp = Math.round((35 * (1 + target.param(5) / 100) + mpAddFactor) * (1 + mpMultiplyFactor));
   }
 
   //-----------------------------------------------------------------------------------
@@ -1745,7 +1757,7 @@
         let floor = floors[Math.randomInt(floors.length)];
         if (MapUtils.isTileAvailableForMob(mapId, floor.x, floor.y)) {
           // TODO: implement mob generating method
-          new Bat(floor.x, floor.y);
+          new Chick(floor.x, floor.y);
           break;
         }
       }
@@ -2357,6 +2369,37 @@
   Game_Mob.prototype.looting = function () {
     // implement in mob instances
   }
+
+  Game_Mob.prototype.initAttribute = function() {
+    let prop = JSON.parse(this.mob.enemy().note);
+    for (let id in prop) {
+      this.mob[id] = prop[id];
+    }
+    CharUtils.updateHpMp(this.mob);
+  }
+
+  // soul related
+  Game_Mob.prototype.dropSoul = function(soulId) {
+    let souls = $gameParty._items.filter(function(item) {
+      return item.itypeId && item.itypeId == 2;
+    })
+    let obtained = false;
+    for (let id in souls) {
+      if (souls[id].id == soulId) {
+        obtained = true;
+        break;
+      }
+    }
+    if (!obtained) {
+      $gameParty._items.push($dataItems[soulId]);
+      TimeUtils.animeQueue.push(new AnimeObject($gamePlayer, 'ANIME', 58));
+      let msg = String.format(Message.display('absorbSoul'), LogUtils.getCharName(this.mob), $dataItems[soulId].name);
+      LogUtils.addLog(msg);
+      setTimeout(function() {
+        MapUtils.displayMessage(msg);
+      }, 100);
+    }
+  }
   
   //-----------------------------------------------------------------------------------
   // Bat
@@ -2375,6 +2418,7 @@
     this.setImage('Monster', 0);
     this.mob.awareDistance = 8;
     this.mob.mobClass = 'Bat';
+    this.initAttribute();
   }
 
   Bat.prototype.looting = function () {
@@ -2387,6 +2431,42 @@
 
     for (var id in lootings) {
       ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Chick
+  //
+  // Game_Mob id 11
+
+  Chick = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Chick.prototype = Object.create(Game_Mob.prototype);
+  Chick.prototype.constructor = Chick;
+
+  Chick.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData);
+    this.setImage('Chick', 0);
+    this.mob.awareDistance = 8;
+    this.mob.mobClass = 'Chick';
+    this.initAttribute();
+  }
+
+  Chick.prototype.looting = function () {
+    var lootings = [];
+    // corpse left
+    var corpse = cloneObject($dataItems[11]);
+    corpse.name = this.mob.name() + "的" + corpse.name;
+    corpse.nutrition = 100;
+    lootings.push(corpse);
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(101);
     }
   }
 
@@ -3247,7 +3327,8 @@
       } else {
         target.looting();
         if (realSrc) {
-          realSrc.gainExp(realTarget.exp());
+          let exp = $gameParty.hasSoul(101) ? Math.round(realTarget.exp() * 1.05) : realTarget.exp();
+          realSrc.gainExp(exp);
         }
         // remove target event from $dataMap.events
         // NOTE: Do not remove it from $gameMap._events! will cause crash
@@ -3307,11 +3388,10 @@
         $gameActors._data[1].skillExp[skillId].exp = 1;
       }
     }
-    var max = Math.round(realSrc.param(2) + realSrc.param(10) - realTarget.param(8)) + skillBonus;
-    max = (max > 0) ? max : 1;
-    var min = Math.round(max / 3);
-    min = (min > 0) ? min : 1;
-    var value = getRandomIntRange(min, max);
+    // TODO: calculate melee attack damage
+    let weaponDamage = (realSrc.param(10) + skillBonus) * (1 + realSrc.param(2) / 200);
+    let attrDamage = 2 * (realSrc.level / 4 + realSrc.param(2) + realSrc.param(7) / 3);
+    let value = Math.round(((weaponDamage + attrDamage) - realTarget.param(8)) * getRandomIntRange(80, 121) / 100);
     TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
     LogUtils.addLog(String.format(Message.display('meleeAttack'), LogUtils.getCharName(realSrc)
       , LogUtils.getCharName(realTarget), value));
@@ -3462,7 +3542,7 @@
         } else {
           return false;
         }
-      case 'FOOD': case 'SKILL':
+      case 'FOOD': case 'SKILL': case 'SOUL':
         // no need to identify
         return true;
       default:
@@ -4396,7 +4476,7 @@
       }
       if (targetFloor) {
         // TODO: implement mob generating method
-        new Bat(targetFloor.x, targetFloor.y);
+        new Chick(targetFloor.x, targetFloor.y);
         MapUtils.refreshMap();
         msg = Message.display('scrollCreateMonsterRead');
         ItemUtils.identifyObject(this);
@@ -4857,6 +4937,7 @@
 
   Game_Party.prototype.gainItem = function (item, amount, includeEquip) {
     var container = this.itemContainer(item);
+    console.log(container);
     if (container) {
       if (amount > 0) {
         // only deal with +1
@@ -4874,12 +4955,21 @@
     }
   };
 
+  Game_Party.prototype.hasSoul = function(soulId) {
+    for (let id in this._items) {
+      if (this._items[id].id == soulId) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   //-----------------------------------------------------------------------------------
   // DataManager
   //
   // override this to implement item instances
   DataManager.isItem = function (item) {
-    return item && item.itypeId && item.itypeId == 1;
+    return item && item.itypeId;
   };
 
   DataManager.isWeapon = function (item) {
