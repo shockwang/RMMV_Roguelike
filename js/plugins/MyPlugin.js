@@ -283,7 +283,11 @@
       poisonDamage: '{0}受到了{1}點毒素傷害.',
       somebody: '某人',
       secretDoorDiscovered: '你發現了一扇隱藏的門!',
-      absorbSoul: '你從{0}身上吸收了{1}!'
+      absorbSoul: '你從{0}身上吸收了{1}!',
+      damageSkillPerformed: '{0}對{1}使出了{2}, 造成{3}點傷害!',
+      bleeding: '{0}出血了!',
+      recoverFromBleeding: '{0}的出血停止了.',
+      attackOutOfEnergy: '{0}想發動攻擊, 但是沒有足夠的體力!'
     },
     display: function(msgName) {
       switch (Message.language) {
@@ -331,6 +335,8 @@
   CharUtils = function () {
     throw new Error('This is a static class');
   };
+
+  CharUtils.baseHp = 35;
 
   // initialize character status map
   CharUtils.initStatus = function() {
@@ -448,8 +454,35 @@
     let mpAddFactor = (target.mpAddFactor) ? target.mpAddFactor : 0;
     let mpMultiplyFactor = (target.mpMultiplyFactor) ? target.mpMultiplyFactor : 0;
     // setup HP & MP
-    target._hp = Math.round(((35 + target.level * 5) * (1 + target.param(3) / 100) + hpAddFactor) * (1 + hpMultiplyFactor));
-    target._mp = Math.round((35 * (1 + target.param(5) / 100) + mpAddFactor) * (1 + mpMultiplyFactor));
+    target._hp = Math.round(((CharUtils.baseHp + target.level * 5) * (1 + target.param(3) / 100) + hpAddFactor) * (1 + hpMultiplyFactor));
+    target._paramPlus[0] = target._hp - target.param(0);
+    target._mp = Math.round((CharUtils.baseHp * (1 + target.param(5) / 100) + mpAddFactor) * (1 + mpMultiplyFactor));
+    target._paramPlus[1] = target._mp - target.param(1);
+  }
+
+  CharUtils.regenerate = function(target) {
+    let realTarget = BattleUtils.getRealTarget(target);
+    // regenerate HP
+    var regenValue = Math.round(1 + realTarget.param(3) / 3);
+    regenValue = getRandomIntRange(1, regenValue);
+    realTarget.gainHp(regenValue);
+
+    // regenerate MP
+    regenValue = Math.round(1 + realTarget.param(5) / 3);
+    regenValue = getRandomIntRange(1, regenValue);
+    realTarget.gainMp(regenValue);
+  }
+
+  CharUtils.updateTp = function(target) {
+    let realTarget = BattleUtils.getRealTarget(target);
+    if (realTarget.attacked) {
+      // huge movement, do nothing
+    } else if (realTarget.moved) {
+      realTarget.gainTp(3);
+    } else {
+      // target rest
+      realTarget.gainTp(6);
+    }
   }
 
   //-----------------------------------------------------------------------------------
@@ -490,6 +523,8 @@
     $gameActors._data[1].nutrition = 900;
     $gameActors._data[1].status = CharUtils.initStatus();
     $gameActors._data[1].originalViewDistance = viewDistance;
+    $gameActors._data[1].moved = false;
+    $gameActors._data[1].attacked = false;
     // initialize template events
     $gameVariables[0].templateEvents = {
       monster: $dataMap.events[3],
@@ -507,6 +542,9 @@
     $gameVariables[0].fireProjectileInfo = {
       item: null
     }
+
+    // initialize player HP & MP
+    CharUtils.updateHpMp($gameActors._data[1]);
 
     for (let i = 0; i < 10; i++) {
       $gameParty.gainItem(new Sword(), 1);
@@ -1757,7 +1795,7 @@
         let floor = floors[Math.randomInt(floors.length)];
         if (MapUtils.isTileAvailableForMob(mapId, floor.x, floor.y)) {
           // TODO: implement mob generating method
-          new Chick(floor.x, floor.y);
+          new Dog(floor.x, floor.y);
           break;
         }
       }
@@ -2191,13 +2229,19 @@
     } else {
       // new mob instance from mobId
       this.mob = new Game_Enemy(mobId, x, y);
+      this.mob._tp = 100;
       this.mob.awareDistance = 5;
       this.mob.status = CharUtils.initStatus();
+      this.mob._skills = [];
+      this.mob.skillExp = {};
+      this.mob.moved = false;
+      this.mob.attacked = false;
       // find empty space for new event
       var eventId = MapUtils.findEmptyFromList($dataMap.events);
       $dataMap.events[eventId] = newDataMapEvent($gameVariables[0].templateEvents.monster, eventId, x, y);
       this.initStatus($dataMap.events[eventId]);
       this.initStatus(this);
+      this.initAttribute();
     }
     // store new events back to map variable
     $gameVariables[$gameMap.mapId()].rmDataMap = $dataMap;
@@ -2206,6 +2250,9 @@
   };
 
   Game_Mob.prototype.action = function () {
+    // reset move check
+    this.mob.moved = false;
+    this.mob.attacked = false;
     // check if player is nearby
     let distance = MapUtils.getDistance(this._x, this._y, $gamePlayer._x, $gamePlayer._y);
     if (distance < 20) {
@@ -2219,7 +2266,11 @@
         // do nothing
       } else if (distance < 2) {
         this.turnTowardCharacter($gamePlayer);
-        BattleUtils.meleeAttack(this, $gamePlayer);
+        if (this.meleeAction($gamePlayer)) {
+          this.mob.attacked = true;
+        } else {
+          LogUtils.addLog(String.format(Message.display('attackOutOfEnergy'), LogUtils.getCharName(this.mob)));
+        }
       } else if (distance < this.mob.awareDistance) {
         this.moveTowardCharacter($gamePlayer);
       } else {
@@ -2228,6 +2279,11 @@
       // store data back to $dataMap
       this.updateDataMap();
     }
+  }
+
+  // define melee action
+  Game_Mob.prototype.meleeAction = function(target) {
+    return BattleUtils.meleeAttack(this, target);
   }
 
   // Override moveTowardCharacter() function so mobs can move diagonally
@@ -2352,11 +2408,13 @@
     var moveType = Math.randomInt(2);
     if (moveType == 0) { // straight
       Game_Event.prototype.moveRandom.call(this);
+      this.mob.moved = true;
     } else { // diagonal
       var horz = 4 + Math.randomInt(2) * 2;
       var vert = 2 + Math.randomInt(2) * 6;
       if (this.canPassDiagonally(this.x, this.y, horz, vert)) {
         this.moveDiagonally(horz, vert);
+        this.mob.moved = true;
       }
     }
   }
@@ -2416,9 +2474,10 @@
   Bat.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, 1, fromData);
     this.setImage('Monster', 0);
-    this.mob.awareDistance = 8;
-    this.mob.mobClass = 'Bat';
-    this.initAttribute();
+    if (!fromData) {
+      this.mob.awareDistance = 8;
+      this.mob.mobClass = 'Bat';
+    }
   }
 
   Bat.prototype.looting = function () {
@@ -2449,9 +2508,10 @@
   Chick.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, 11, fromData);
     this.setImage('Chick', 0);
-    this.mob.awareDistance = 8;
-    this.mob.mobClass = 'Chick';
-    this.initAttribute();
+    if (!fromData) {
+      this.mob.awareDistance = 8;
+      this.mob.mobClass = 'Chick';
+    }
   }
 
   Chick.prototype.looting = function () {
@@ -2467,6 +2527,52 @@
     }
     if (getRandomInt(100) < 10) {
       this.dropSoul(101);
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Dog
+  //
+  // Game_Mob id 12
+
+  Dog = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Dog.prototype = Object.create(Game_Mob.prototype);
+  Dog.prototype.constructor = Dog;
+
+  Dog.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 12, fromData);
+    this.setImage('Nature', 0);
+    if (!fromData) {
+      this.mob.awareDistance = 8;
+      this.mob.mobClass = 'Dog';
+    }
+  }
+
+  Dog.prototype.looting = function () {
+    var lootings = [];
+    // corpse left
+    var corpse = cloneObject($dataItems[11]);
+    corpse.name = this.mob.name() + "的" + corpse.name;
+    corpse.nutrition = 100;
+    lootings.push(corpse);
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+  }
+
+  Dog.prototype.meleeAction = function(target) {
+    let skillSuccess = false;
+    if (getRandomInt(100) < 30) {
+      skillSuccess = Skill_Bite.action(this, target);
+    }
+    if (skillSuccess) {
+      return true;
+    } else {
+      return BattleUtils.meleeAttack(this, target);
     }
   }
 
@@ -2804,6 +2910,7 @@
 
   //-----------------------------------------------------------------------------------
   // FireBall extends Game_Projectile
+
   FireBall = function () {
     this.initialize.apply(this, arguments);
   }
@@ -3099,7 +3206,7 @@
             SceneManager.push(Scene_Item);
           }
           break;
-        case 'W': case 'w': // open equipment window
+        case 'w': // open equipment window
           SceneManager.push(Scene_Equip);
           break;
         case 'e': // eat food
@@ -3241,16 +3348,14 @@
         tempTimeSpent -= updateTime;
         $gameVariables[0].gameTime += updateTime;
         var gameTurn = Math.floor($gameVariables[0].gameTime / $gameVariables[0].gameTimeAmp);
-        if (gameTurn % 20 == 0) {
-          // regenerate HP
-          var regenValue = Math.round(1 + player.param(3) / 3);
-          regenValue = getRandomIntRange(1, regenValue);
-          player.gainHp(regenValue);
-
-          // regenerate MP
-          regenValue = Math.round(1 + player.param(5) / 3);
-          regenValue = getRandomIntRange(1, regenValue);
-          player.gainMp(regenValue);
+        if (gameTurn % 10 == 0) {
+          // player & mob regen
+          CharUtils.regenerate($gamePlayer);
+          for (let i = 0; i < $gameMap._events.length; i++) {
+            if (event && !event._erased && event.type == 'MOB') {
+              CharUtils.regenerate(event);
+            }
+          }
         }
         // update all mobs & items
         let done;
@@ -3272,6 +3377,7 @@
               event.mob.lastTimeMoved += CharUtils.getActionTime(event.mob);
               event.action();
               CharUtils.updateStatus(event);
+              CharUtils.updateTp(event);
             }
           }
         } while (!done);
@@ -3328,7 +3434,7 @@
         target.looting();
         if (realSrc) {
           let exp = $gameParty.hasSoul(101) ? Math.round(realTarget.exp() * 1.05) : realTarget.exp();
-          realSrc.gainExp(exp);
+          realSrc.gainExpLvGap(realTarget, exp);
         }
         // remove target event from $dataMap.events
         // NOTE: Do not remove it from $gameMap._events! will cause crash
@@ -3344,38 +3450,52 @@
     }
   }
 
+  BattleUtils.calcPhysicalDamage = function(realSrc, realTarget, weaponBonus, skillAmplify) {
+    // calculate attack damage
+    let weaponDamage = (realSrc.param(10) + weaponBonus) * (1 + realSrc.param(2) / 200);
+    let attrDamage = 2 * (realSrc.level / 4 + realSrc.param(2) + realSrc.param(7) / 3);
+    let attrDef = (realTarget.level + realTarget.param(3)) / 2 + realTarget.param(6) / 5;
+    let equipDef = (4000 + realTarget.param(8)) / (4000 + realTarget.param(8) * 10);
+    return Math.round(((weaponDamage + attrDamage) * skillAmplify * equipDef - attrDef) / 4 * getRandomIntRange(80, 121) / 100);
+  }
+
+  BattleUtils.getWeaponClass = function(realSrc) {
+    let skillClass;
+    if (realSrc._equips && realSrc._equips[0].itemId() != 0) {
+      var weapon = $dataWeapons[realSrc._equips[0].itemId()];
+      switch (weapon.wtypeId) {
+        case 2: // long sword
+          skillClass = Skill_LongSword;
+          break;
+      }
+    } else { // martial art
+      skillClass = Skill_MartialArt;
+    }
+    return skillClass;
+  }
+
   BattleUtils.meleeAttack = function (src, target) {
     var realSrc = BattleUtils.getRealTarget(src);
     var realTarget = BattleUtils.getRealTarget(target);
-    if (src == $gamePlayer) {
-      if (realSrc._tp < 5) {
+    if (realSrc._tp < 5) {
+      if (src == $gamePlayer) {
         MapUtils.displayMessage('你氣喘吁吁, 沒有足夠的體力攻擊!');
-        return;
-      } else {
-        realSrc.gainTp(-5);
       }
+      return false;
+    } else {
+      realSrc.gainTp(-5);
     }
-    // calculate the damage
-    var skillBonus = 0;
-    if (src == $gamePlayer) {
-      let skillClass;
-      if (realSrc._equips && realSrc._equips[0].itemId() != 0) {
-        var weapon = $dataWeapons[realSrc._equips[0].itemId()];
-        switch (weapon.wtypeId) {
-          case 2: // long sword
-            skillClass = Skill_LongSword;
-            break;
-        }
-      } else { // martial art
-        skillClass = Skill_MartialArt;
-      }
 
+    // calculate the damage
+    let weaponBonus = 0;
+    if (realSrc == $gameActors._data[1]) {
+      let skillClass = BattleUtils.getWeaponClass(realSrc);
       let skillId = skillClass.getSkillId();
       if (realSrc._skills.includes(skillId)) {
-        var prop = JSON.parse($dataSkills[skillId].note);
-        var index = $gameActors._data[1].skillExp[skillId].lv;
-        skillBonus = prop.effect[index].atk;
-        $gameActors._data[1].skillExp[skillId].exp++;
+        let prop = JSON.parse($dataSkills[skillId].note);
+        let index = $gameActors._data[1].skillExp[skillId].lv;
+        weaponBonus = prop.effect[index].atk;
+        $gameActors._data[1].skillExp[skillId].exp += ($gameParty.hasSoul(101)) ? 1.05 : 1;
         if (prop.effect[index].levelUp != -1 && $gameActors._data[1].skillExp[skillId].exp >= prop.effect[index].levelUp) {
           $gameMessage.add('你的' + $dataSkills[skillId].name + '更加熟練了!');
           $gameActors._data[1].skillExp[skillId].lv++;
@@ -3388,10 +3508,8 @@
         $gameActors._data[1].skillExp[skillId].exp = 1;
       }
     }
-    // TODO: calculate melee attack damage
-    let weaponDamage = (realSrc.param(10) + skillBonus) * (1 + realSrc.param(2) / 200);
-    let attrDamage = 2 * (realSrc.level / 4 + realSrc.param(2) + realSrc.param(7) / 3);
-    let value = Math.round(((weaponDamage + attrDamage) - realTarget.param(8)) * getRandomIntRange(80, 121) / 100);
+
+    let value = BattleUtils.calcPhysicalDamage(realSrc, realTarget, weaponBonus, 1);
     TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
     LogUtils.addLog(String.format(Message.display('meleeAttack'), LogUtils.getCharName(realSrc)
       , LogUtils.getCharName(realTarget), value));
@@ -3404,6 +3522,7 @@
       playerAttacked = true;
       TimeUtils.afterPlayerMoved();
     }
+    return true;
   }
 
   BattleUtils.playerDied = function (msg) {
@@ -4527,6 +4646,23 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // SkillUtils
+  //
+  // Skill related methods
+
+  SkillUtils = function() {
+    throw new Error('This is a static class');
+  }
+
+  SkillUtils.meleeDamage = function(realSrc, realTarget, skillAmplify) {
+    // get weapon bonus
+    let skillId = BattleUtils.getWeaponClass(realSrc).getSkillId();
+    let prop = JSON.parse($dataSkills[skillId].note);
+    let weaponBonus = realSrc.skillExp[skillId] ? prop.effect[realSrc.skillExp[skillId].lv].atk : 0;
+    return BattleUtils.calcPhysicalDamage(realSrc, realTarget, weaponBonus, skillAmplify);
+  }
+
+  //-----------------------------------------------------------------------------------
   // Skill_MartialArt
   //
   // skill id 11
@@ -4539,7 +4675,7 @@
     return 11;
   }
 
-    //-----------------------------------------------------------------------------------
+  //-----------------------------------------------------------------------------------
   // Skill_LongSword
   //
   // skill id 12
@@ -4550,6 +4686,42 @@
 
   Skill_LongSword.getSkillId = function() {
     return 12;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Skill_Bite
+  //
+  // skill id 21
+
+  Skill_Bite = function() {
+    throw new Error('This is a static class');
+  }
+
+  Skill_Bite.getSkillId = function() {
+    return 21;
+  }
+
+  Skill_Bite.action = function(src, target) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    let skill = $dataSkills[Skill_Bite.getSkillId()];
+    if (realSrc._mp < skill.mpCost || realSrc._tp < skill.tpCost) {
+      if (src == $gamePlayer) {
+        MapUtils.displayMessage('你氣喘吁吁, 沒有足夠的體力攻擊!');
+      }
+      return false;
+    }
+    realSrc._mp -= skill.mpCost;
+    realSrc._tp -= skill.tpCost;
+    let realTarget = BattleUtils.getRealTarget(target);
+    let skillName = $dataSkills[Skill_Bite.getSkillId()].name;
+    let value = SkillUtils.meleeDamage(realSrc, realTarget, 1.3);
+    TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 12));
+    TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
+    LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)
+      , LogUtils.getCharName(realTarget), skillName, value));
+    realTarget._hp -= value;
+    BattleUtils.checkTargetAlive(realSrc, realTarget, target);
+    return true;
   }
 
   //-----------------------------------------------------------------------------------
@@ -4937,7 +5109,6 @@
 
   Game_Party.prototype.gainItem = function (item, amount, includeEquip) {
     var container = this.itemContainer(item);
-    console.log(container);
     if (container) {
       if (amount > 0) {
         // only deal with +1
@@ -5505,6 +5676,17 @@
     this._level--;
     // TODO: implement level down mechanism
   };
+
+  // modify EXP according to LV gap
+  Game_Actor.prototype.gainExpLvGap = function(realTarget, exp) {
+    let modifier = realTarget.level - this.level;
+    if (modifier > 5) {
+      modifier = 5;
+    } else if (modifier < -5) {
+      modifier = -5;
+    }
+    this.gainExp(exp * (1 + 0.2 * modifier));
+};
 
   //-----------------------------------------------------------------------------
   // Game_Item
