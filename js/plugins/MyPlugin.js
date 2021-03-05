@@ -2450,6 +2450,7 @@
     }
     if (!obtained) {
       $gameParty._items.push($dataItems[soulId]);
+      Soul_Obtained_Action.learnSkill(soulId);
       TimeUtils.animeQueue.push(new AnimeObject($gamePlayer, 'ANIME', 58));
       let msg = String.format(Message.display('absorbSoul'), LogUtils.getCharName(this.mob), $dataItems[soulId].name);
       LogUtils.addLog(msg);
@@ -2548,6 +2549,8 @@
     if (!fromData) {
       this.mob.awareDistance = 8;
       this.mob.mobClass = 'Dog';
+      this.mob.skillExp = {};
+      this.mob.skillExp[21] = {lv: 1};
     }
   }
 
@@ -2561,6 +2564,9 @@
 
     for (var id in lootings) {
       ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 100) {
+      this.dropSoul(102);
     }
   }
 
@@ -3028,36 +3034,42 @@
     // do nothing
   };
 
-  Input.getNextCoordinate = function(src, key) {
+  Input.getNextCoordinate = function(src, code) {
     let x = src._x, y = src._y;
-    switch (key) {
-      case 'ArrowUp': case '8':
+    switch (code) {
+      case 'Numpad8': case 'ArrowUp': case '8':
         y--;
         break;
-      case 'ArrowDown': case '2':
+      case 'Numpad2': case 'ArrowDown': case '2':
         y++;
         break;
-      case 'ArrowLeft': case '4':
+      case 'Numpad4': case 'ArrowLeft': case '4':
         x--;
         break;
-      case 'ArrowRight': case '6':
+      case 'Numpad6': case 'ArrowRight': case '6':
         x++;
         break;
-      case '1': case 'End':
+      case 'Numpad1': case 'End': case '1':
         x--;
         y++;
         break;
-      case '3': case 'PageDown':
+      case 'Numpad3': case 'PageDown': case '3':
         x++;
         y++;
         break;
-      case '7': case 'Home':
+      case 'Numpad7': case 'Home': case '7':
         x--;
         y--;
         break;
-      case '9': case 'PageUp':
+      case 'Numpad9': case 'PageUp': case '9':
         x++;
         y--;
+        break;
+      case 'Escape': case 'Numpad0': case 'Insert': case '0':
+        // remove message window
+        $gameVariables[0].messageFlag = false;
+        SceneManager._scene.removeChild(messageWindow);
+        SceneManager._scene.removeChild(logWindow);
         break;
       default:
         MapUtils.updateMessage('這不是一個方向.');
@@ -3072,7 +3084,7 @@
       && SceneManager.isCurrentSceneStarted()) {
       if ($gameVariables[0].directionalFlag) {
         // choose direction mode
-        let coordinate = Input.getNextCoordinate($gamePlayer, event.key);
+        let coordinate = Input.getNextCoordinate($gamePlayer, event.code);
         let x = coordinate.x, y = coordinate.y;
         if (!(x == $gamePlayer._x && y == $gamePlayer._y)) {
           playerMoved = $gameVariables[0].directionalAction($gamePlayer, x, y);
@@ -3091,31 +3103,38 @@
         SceneManager._scene.removeChild(logWindow);
         return;
       }
-      switch (event.key) {
-        case 'ArrowUp': case '8':
+      // classify by code
+      switch (event.code) {
+        case 'Numpad8': case 'ArrowUp':
           $gamePlayer.moveStraight(8);
           break;
-        case 'ArrowDown': case '2':
+        case 'Numpad2': case 'ArrowDown':
           $gamePlayer.moveStraight(2);
           break;
-        case 'ArrowLeft': case '4':
+        case 'Numpad4': case 'ArrowLeft':
           $gamePlayer.moveStraight(4);
           break;
-        case 'ArrowRight': case '6':
+        case 'Numpad6': case 'ArrowRight':
           $gamePlayer.moveStraight(6);
           break;
-        case '7': case 'Home':
+        case 'Numpad7': case 'Home':
           $gamePlayer.moveDiagonally(4, 8);
           break;
-        case '9': case 'PageUp':
+        case 'Numpad9': case 'PageUp':
           $gamePlayer.moveDiagonally(6, 8);
           break;
-        case '1': case 'End':
+        case 'Numpad1': case 'End':
           $gamePlayer.moveDiagonally(4, 2);
           break;
-        case '3': case 'PageDown':
+        case 'Numpad3': case 'PageDown':
           $gamePlayer.moveDiagonally(6, 2);
           break;
+        case 'Numpad5': case 'Clear': // wait action
+          TimeUtils.afterPlayerMoved();
+          break;
+      }
+      // classify by key
+      switch (event.key) {
         case 'Enter': // quick action
           // check stairs
           var stair = null;
@@ -3135,9 +3154,6 @@
             }
             playerMoved = true;
           }
-          break;
-        case '.': case '5': case 'Clear': // wait action
-          TimeUtils.afterPlayerMoved();
           break;
         case '>': // go down
           var stair = null;
@@ -4662,6 +4678,27 @@
     return BattleUtils.calcPhysicalDamage(realSrc, realTarget, weaponBonus, skillAmplify);
   }
 
+  SkillUtils.canPerform = function(realSrc, skill) {
+    if (realSrc._mp < skill.mpCost || realSrc._tp < skill.tpCost) {
+      if (realSrc == $gameActors._data[1]) {
+        MapUtils.displayMessage('你氣喘吁吁, 沒有足夠的體力攻擊!');
+      }
+      return false;
+    }
+    return true;
+  }
+
+  SkillUtils.gainSkillExp = function(realSrc, skillId, prop) {
+    if (realSrc == $gameActors._data[1]) {
+      realSrc.skillExp[skillId].exp++;
+      if (prop.effect[index].levelUp != -1 && realSrc.skillExp[skillId].exp >= prop.effect[index].levelUp) {
+        $gameMessage.add('你的' + $dataSkills[skillId].name + '更加熟練了!');
+        $gameActors._data[1].skillExp[skillId].lv++;
+        $gameActors._data[1].skillExp[skillId].exp = 0;
+      }
+    }
+  }
+
   //-----------------------------------------------------------------------------------
   // Skill_MartialArt
   //
@@ -4704,24 +4741,50 @@
   Skill_Bite.action = function(src, target) {
     let realSrc = BattleUtils.getRealTarget(src);
     let skill = $dataSkills[Skill_Bite.getSkillId()];
-    if (realSrc._mp < skill.mpCost || realSrc._tp < skill.tpCost) {
-      if (src == $gamePlayer) {
-        MapUtils.displayMessage('你氣喘吁吁, 沒有足夠的體力攻擊!');
-      }
+    if (!SkillUtils.canPerform(realSrc, skill)) {
       return false;
     }
     realSrc._mp -= skill.mpCost;
     realSrc._tp -= skill.tpCost;
     let realTarget = BattleUtils.getRealTarget(target);
     let skillName = $dataSkills[Skill_Bite.getSkillId()].name;
-    let value = SkillUtils.meleeDamage(realSrc, realTarget, 1.3);
+    let skillId = Skill_Bite.getSkillId();
+    let prop = JSON.parse($dataSkills[skillId].note);
+    let index = realSrc.skillExp[skillId].lv;
+    let skillBonus = prop.effect[index].atkPercentage;
+    let value = SkillUtils.meleeDamage(realSrc, realTarget, 1 + skillBonus);
     TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 12));
     TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
     LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)
       , LogUtils.getCharName(realTarget), skillName, value));
     realTarget._hp -= value;
+    SkillUtils.gainSkillExp(realSrc, skillId, prop);
     BattleUtils.checkTargetAlive(realSrc, realTarget, target);
     return true;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Soul_Obtained_Action
+  //
+  // actions for souls obtained
+
+  Soul_Obtained_Action = function() {
+    throw new Error('This is a static class');
+  }
+
+  Soul_Obtained_Action.learnSkill = function(soulId) {
+    let skillId = -1;
+    switch (soulId) {
+      case 102: // Bite
+        skillId = 21;
+        break;
+      default:
+        console.log("ERROR: no related skill for soulId: " + soulId);
+        break;
+    }
+    $gameActors._data[1].learnSkill(skillId);
+    $gameActors._data[1].skillExp[skillId] = {};
+    $gameActors._data[1].skillExp[skillId].lv = 1;
   }
 
   //-----------------------------------------------------------------------------------
