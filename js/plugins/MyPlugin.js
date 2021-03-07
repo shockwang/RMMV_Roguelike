@@ -287,7 +287,11 @@
       damageSkillPerformed: '{0}對{1}使出了{2}, 造成{3}點傷害!',
       bleeding: '{0}出血了!',
       recoverFromBleeding: '{0}的出血停止了.',
-      attackOutOfEnergy: '{0}想發動攻擊, 但是沒有足夠的體力!'
+      attackOutOfEnergy: '{0}想發動攻擊, 但是沒有足夠的體力!',
+      askDirection: '往哪個方向?',
+      attackAir: '{0}對空氣發動了{1}.',
+      self: '自己',
+      player: '你'
     },
     display: function(msgName) {
       switch (Message.language) {
@@ -540,15 +544,18 @@
 
     // temp data for projectile
     $gameVariables[0].fireProjectileInfo = {
-      item: null
+      item: null,
+      skillId: null
     }
 
     // initialize player HP & MP
     CharUtils.updateHpMp($gameActors._data[1]);
 
+    // initialize hotkeys
+    $gameVariables[0].hotkeys = new Array(10);
+
+    // for test
     for (let i = 0; i < 10; i++) {
-      $gameParty.gainItem(new Sword(), 1);
-      $gameParty.gainItem(new Shield(), 1);
       $gameParty.gainItem(new Scroll_Identify(), 1);
       $gameParty.gainItem(new Scroll_EnchantArmor(), 1);
       $gameParty.gainItem(new Scroll_EnchantWeapon(), 1);
@@ -570,6 +577,11 @@
       $gameParty.gainItem(new Potion_Acid(), 1);
       $gameParty.gainItem(new Potion_Poison(), 1);
     }
+    $gameParty.gainItem(new Dog_Tooth(), 1);
+    $gameParty.gainItem(new Dog_Skin(), 1);
+
+    $gameParty._items.push($dataItems[102]);
+    Soul_Obtained_Action.learnSkill(102);
   }
 
   // message window defined here, because it can't be assigned to $gameVariables, will cause save/load crash
@@ -612,11 +624,18 @@
     },
     getCharName: function(target) {
       if (target == $gameActors._data[1]) {
-        return '你';
+        return Message.display('player');
       } else if (!CharUtils.canSee($gameActors._data[1], target)) {
         return Message.display('somebody');
       } else {
         return target.name();
+      }
+    },
+    getPerformedTargetName: function(src, target) {
+      if (src == target) {
+        return Message.display('self');
+      } else {
+        return this.getCharName(target);
       }
     }
   };
@@ -2556,11 +2575,19 @@
 
   Dog.prototype.looting = function () {
     var lootings = [];
-    // corpse left
-    var corpse = cloneObject($dataItems[11]);
-    corpse.name = this.mob.name() + "的" + corpse.name;
-    corpse.nutrition = 100;
-    lootings.push(corpse);
+    if (getRandomInt(10) < 3) {
+      // corpse left
+      var corpse = cloneObject($dataItems[11]);
+      corpse.name = this.mob.name() + "的" + corpse.name;
+      corpse.nutrition = 100;
+      lootings.push(corpse);
+    }
+    if (getRandomInt(10) < 3) {
+      lootings.push(new Dog_Skin());
+    }
+    if (getRandomInt(10) < 3) {
+      lootings.push(new Dog_Tooth());
+    }
 
     for (var id in lootings) {
       ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
@@ -3065,6 +3092,9 @@
         x++;
         y--;
         break;
+      case 'Numpad5':
+        // same coordinate
+        break;
       case 'Escape': case 'Numpad0': case 'Insert': case '0':
         // remove message window
         $gameVariables[0].messageFlag = false;
@@ -3073,6 +3103,7 @@
         break;
       default:
         MapUtils.updateMessage('這不是一個方向.');
+        x = -1, y = -1;
         break;
     }
     return new Coordinate(x, y);
@@ -3080,13 +3111,24 @@
 
   // override this function for user-defined key detected (only on Scene_Map)
   Input._onKeyDown = function (event) {
+    // setup hotkeys
+    if (SceneManager._scene instanceof Scene_WarSkill && SceneManager.isCurrentSceneStarted()) {
+      let prefix = 'Digit';
+      for (let i = 0; i < 10; i++) {
+        if (prefix + i == event.code) {
+          console.log('hotkey detected: ' + event.code);
+          break;
+        }
+      }
+    }
+    // normal moves
     if (SceneManager._scene instanceof Scene_Map && !$gameMessage.isBusy() && $gamePlayer.canMove()
       && SceneManager.isCurrentSceneStarted()) {
       if ($gameVariables[0].directionalFlag) {
         // choose direction mode
         let coordinate = Input.getNextCoordinate($gamePlayer, event.code);
         let x = coordinate.x, y = coordinate.y;
-        if (!(x == $gamePlayer._x && y == $gamePlayer._y)) {
+        if (!(x == -1 && y == -1)) {
           playerMoved = $gameVariables[0].directionalAction($gamePlayer, x, y);
         }
         // check if player moved
@@ -3129,7 +3171,7 @@
         case 'Numpad3': case 'PageDown':
           $gamePlayer.moveDiagonally(6, 2);
           break;
-        case 'Numpad5': case 'Clear': // wait action
+        case 'Numpad5': case 'Period': // wait action
           TimeUtils.afterPlayerMoved();
           break;
       }
@@ -3191,7 +3233,7 @@
           break;
         case 'g': // pick things up from the ground
           if (ItemUtils.findMapItemPileEvent($gamePlayer._x, $gamePlayer._y)) {
-            SceneManager.push(Scene_OnMapItem);
+            SceneManager.push(Scene_GetItem);
           } else {
             MapUtils.displayMessage("這裡沒有東西可以撿.");
           }
@@ -3261,6 +3303,12 @@
             }
           }
           TimeUtils.afterPlayerMoved();
+          break;
+        case 'W': // war skill
+          SceneManager.push(Scene_WarSkill);
+          break;
+        case 'C': // cast magic
+          SceneManager.push(Scene_CastMagic);
           break;
       }
     }
@@ -3701,10 +3749,10 @@
           displayName = $gameVariables[0].itemImageData.items[item.id].name;
           break;
         case 'WEAPON':
-          displayName = $gameVariables[0].itemImageData.weapons[item.id].name;
+          displayName = $dataWeapons[item.id].name;
           break;
         case 'ARMOR':
-          displayName = $gameVariables[0].itemImageData.armors[item.id].name;
+          displayName = $dataArmors[item.id].name;
           break;
       }
     }
@@ -3900,45 +3948,47 @@
   };
 
   //-----------------------------------------------------------------------------------
-  // Sword
+  // Dog_Tooth
   //
-  // weapon id 1
+  // weapon id 11
 
-  Sword = function() {
+  Dog_Tooth = function() {
     this.initialize.apply(this, arguments);
   }
 
-  Sword.prototype = Object.create(ItemTemplate.prototype);
-  Sword.prototype.constructor = Sword;
+  Dog_Tooth.prototype = Object.create(ItemTemplate.prototype);
+  Dog_Tooth.prototype.constructor = Dog_Tooth;
 
-  Sword.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataWeapons[1]);
+  Dog_Tooth.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataWeapons[11]);
     // randomize attributes
-    let modifier = getRandomIntRange(0, 5);
-    ItemUtils.modifyAttr(this.traits[1], modifier);
+    let modifier = getRandomIntRange(1, 4);
+    ItemUtils.modifyAttr(this.traits[2], modifier);
     ItemUtils.updateEquipDescription(this);
     // randomize bucState
     this.bucState = getRandomIntRange(-1, 2);
     ItemUtils.updateEquipName(this);
-  };
+  }
 
   //-----------------------------------------------------------------------------------
-  // Shield
+  // Dog_Skin
   //
-  // armor id 1
+  // armor id 11
 
-  Shield = function() {
+  Dog_Skin = function() {
     this.initialize.apply(this, arguments);
   }
 
-  Shield.prototype = Object.create(ItemTemplate.prototype);
-  Shield.prototype.constructor = Shield;
+  Dog_Skin.prototype = Object.create(ItemTemplate.prototype);
+  Dog_Skin.prototype.constructor = Dog_Skin;
 
-  Shield.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataArmors[1]);
+  Dog_Skin.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataArmors[11]);
     // randomize attributes
-    let modifier = getRandomIntRange(-1, 2);
+    let modifier = getRandomIntRange(0, 3);
     ItemUtils.modifyAttr(this.traits[0], modifier);
+    modifier = getRandomIntRange(0, 2);
+    ItemUtils.modifyAttr(this.traits[1], modifier);
     ItemUtils.updateEquipDescription(this);
   };
 
@@ -4670,6 +4720,8 @@
     throw new Error('This is a static class');
   }
 
+  SkillUtils.skillList = []; // save all skills
+
   SkillUtils.meleeDamage = function(realSrc, realTarget, skillAmplify) {
     // get weapon bonus
     let skillId = BattleUtils.getWeaponClass(realSrc).getSkillId();
@@ -4681,22 +4733,40 @@
   SkillUtils.canPerform = function(realSrc, skill) {
     if (realSrc._mp < skill.mpCost || realSrc._tp < skill.tpCost) {
       if (realSrc == $gameActors._data[1]) {
-        MapUtils.displayMessage('你氣喘吁吁, 沒有足夠的體力攻擊!');
+        setTimeout(function() {
+          MapUtils.displayMessage('你氣喘吁吁, 沒有足夠的體力攻擊!');
+        }, 100);
       }
       return false;
     }
     return true;
   }
 
-  SkillUtils.gainSkillExp = function(realSrc, skillId, prop) {
+  SkillUtils.gainSkillExp = function(realSrc, skillId, prop, skillLv) {
     if (realSrc == $gameActors._data[1]) {
       realSrc.skillExp[skillId].exp++;
-      if (prop.effect[index].levelUp != -1 && realSrc.skillExp[skillId].exp >= prop.effect[index].levelUp) {
+      if (prop.effect[skillLv].levelUp != -1 && realSrc.skillExp[skillId].exp >= prop.effect[skillLv].levelUp) {
         $gameMessage.add('你的' + $dataSkills[skillId].name + '更加熟練了!');
         $gameActors._data[1].skillExp[skillId].lv++;
         $gameActors._data[1].skillExp[skillId].exp = 0;
       }
     }
+  }
+  SkillUtils.performAction = function(src, x, y) {
+    let target = null;
+    let events = $gameMap.eventsXy(x, y);
+    for (let id in events) {
+      if (events[id].mob) {
+        target = events[id];
+      }
+    }
+    if ($gamePlayer._x == x && $gamePlayer._y == y) {
+      target = $gamePlayer;
+    }
+
+    SkillUtils.skillList[$gameVariables[0].fireProjectileInfo.skillId].action(src, target);
+    $gameVariables[0].messageFlag = false;
+    return true;
   }
 
   //-----------------------------------------------------------------------------------
@@ -4712,6 +4782,8 @@
     return 11;
   }
 
+  SkillUtils.skillList[11] = Skill_MartialArt;
+
   //-----------------------------------------------------------------------------------
   // Skill_LongSword
   //
@@ -4724,6 +4796,8 @@
   Skill_LongSword.getSkillId = function() {
     return 12;
   }
+
+  SkillUtils.skillList[12] = Skill_LongSword;
 
   //-----------------------------------------------------------------------------------
   // Skill_Bite
@@ -4746,22 +4820,30 @@
     }
     realSrc._mp -= skill.mpCost;
     realSrc._tp -= skill.tpCost;
-    let realTarget = BattleUtils.getRealTarget(target);
+
     let skillName = $dataSkills[Skill_Bite.getSkillId()].name;
-    let skillId = Skill_Bite.getSkillId();
-    let prop = JSON.parse($dataSkills[skillId].note);
-    let index = realSrc.skillExp[skillId].lv;
-    let skillBonus = prop.effect[index].atkPercentage;
-    let value = SkillUtils.meleeDamage(realSrc, realTarget, 1 + skillBonus);
-    TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 12));
-    TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
-    LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)
-      , LogUtils.getCharName(realTarget), skillName, value));
-    realTarget._hp -= value;
-    SkillUtils.gainSkillExp(realSrc, skillId, prop);
-    BattleUtils.checkTargetAlive(realSrc, realTarget, target);
+    if (target) {
+      let realTarget = BattleUtils.getRealTarget(target);
+      let skillId = Skill_Bite.getSkillId();
+      let prop = JSON.parse($dataSkills[skillId].note);
+      let index = realSrc.skillExp[skillId].lv;
+      let skillBonus = prop.effect[index].atkPercentage;
+      let value = SkillUtils.meleeDamage(realSrc, realTarget, 1 + skillBonus);
+      TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 12));
+      TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
+      LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)
+        , LogUtils.getPerformedTargetName(realSrc, realTarget), skillName, value));
+      realTarget._hp -= value;
+      SkillUtils.gainSkillExp(realSrc, skillId, prop, index);
+      BattleUtils.checkTargetAlive(realSrc, realTarget, target);
+    } else {
+      LogUtils.addLog(String.format(Message.display('attackAir'), LogUtils.getCharName(realSrc)
+        , skillName));
+    }
     return true;
   }
+
+  SkillUtils.skillList[21] = Skill_Bite;
 
   //-----------------------------------------------------------------------------------
   // Soul_Obtained_Action
@@ -4808,17 +4890,17 @@
   };
 
   //-----------------------------------------------------------------------------------
-  // Scene_OnMapItem
+  // Scene_GetItem
   //
   // handle the action when trying to pick up item from the ground
-  Scene_OnMapItem = function () {
+  Scene_GetItem = function () {
     this.initialize.apply(this, arguments);
   }
 
-  Scene_OnMapItem.prototype = Object.create(Scene_Item.prototype);
-  Scene_OnMapItem.prototype.constructor = Scene_OnMapItem;
+  Scene_GetItem.prototype = Object.create(Scene_Item.prototype);
+  Scene_GetItem.prototype.constructor = Scene_GetItem;
 
-  Scene_OnMapItem.prototype.initialize = function () {
+  Scene_GetItem.prototype.initialize = function () {
     Scene_Item.prototype.initialize.call(this);
     // indicates if player really moved
     this.moved = false;
@@ -4836,7 +4918,7 @@
   };
 
   // override this function so it creates Window_GetDropItemList window
-  Scene_OnMapItem.prototype.createItemWindow = function () {
+  Scene_GetItem.prototype.createItemWindow = function () {
     var wy = this._categoryWindow.y + this._categoryWindow.height;
     var wh = Graphics.boxHeight - wy;
     this._itemWindow = new Window_GetDropItemList(0, wy, Graphics.boxWidth, wh);
@@ -4848,7 +4930,7 @@
   };
 
   // override this, so we can change $gameParty items back when popScene
-  Scene_OnMapItem.prototype.createCategoryWindow = function () {
+  Scene_GetItem.prototype.createCategoryWindow = function () {
     this._categoryWindow = new Window_ItemCategory();
     this._categoryWindow.setHelpWindow(this._helpWindow);
     this._helpWindow.drawTextEx('請選擇要撿起的物品.', 0, 0);
@@ -4859,12 +4941,12 @@
   };
 
   // override this to show hint message
-  Scene_OnMapItem.prototype.onItemCancel = function () {
+  Scene_GetItem.prototype.onItemCancel = function () {
     Scene_Item.prototype.onItemCancel.call(this);
     this._helpWindow.drawTextEx('請選擇要撿起的物品.', 0, 0);
   }
 
-  Scene_OnMapItem.prototype.popSceneAndRestoreItems = function () {
+  Scene_GetItem.prototype.popSceneAndRestoreItems = function () {
     // restore $gameParty items
     $gameParty._items = this.tempItems;
     $gameParty._weapons = this.tempWeapons;
@@ -4877,7 +4959,7 @@
     }
   }
 
-  Scene_OnMapItem.prototype.onItemOk = function () {
+  Scene_GetItem.prototype.onItemOk = function () {
     $gameParty.setLastItem(this.item());
     if (this.item()) {
       this.moved = true;
@@ -4970,6 +5052,136 @@
       setTimeout('TimeUtils.afterPlayerMoved();', 100);
     }
   }
+
+  //-----------------------------------------------------------------------------------
+  // Window_WarSkill
+  //
+  // window for displaying war skill
+  function Window_WarSkill() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_WarSkill.prototype = Object.create(Window_SkillList.prototype);
+  Window_WarSkill.prototype.constructor = Window_WarSkill;
+
+  Window_WarSkill.prototype.initialize = function (x, y, width, height) {
+    Window_SkillList.prototype.initialize.call(this, x, y, width, height);
+    this.setActor($gameActors._data[1]);
+    this.setStypeId(2);
+  };
+
+  Window_WarSkill.prototype.isEnabled = function(item) {
+    return item;
+  };
+
+  //-----------------------------------------------------------------------------------
+  // Scene_WarSkill
+  //
+  // scene for trying to perfom war skill
+
+  function Scene_WarSkill() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Scene_WarSkill.prototype = Object.create(Scene_Skill.prototype);
+  Scene_WarSkill.prototype.constructor = Scene_WarSkill;
+
+  Scene_WarSkill.prototype.initialize = function() {
+    Scene_Skill.prototype.initialize.call(this);
+  };
+
+  Scene_WarSkill.prototype.create = function() {
+    Scene_ItemBase.prototype.create.call(this);
+    this.createHelpWindow();
+    this.createItemWindow();
+    this.createActorWindow();
+  };
+
+  Scene_WarSkill.prototype.createItemWindow = function() {
+    var wx = 0;
+    var wy = this._helpWindow.height;
+    var ww = Graphics.boxWidth;
+    var wh = Graphics.boxHeight - wy;
+    this._itemWindow = new Window_WarSkill(wx, wy, ww, wh);
+    this._itemWindow.setHelpWindow(this._helpWindow);
+    this._itemWindow.setHandler('ok',     this.onItemOk.bind(this));
+    this._itemWindow.setHandler('cancel', this.popScene.bind(this));
+    this.addWindow(this._itemWindow);
+    this._itemWindow.activate();
+    this._itemWindow.selectLast();
+  };
+
+  Scene_WarSkill.prototype.refreshActor = function() {
+    var actor = this.actor();
+    this._itemWindow.setActor(actor);
+  };
+
+  Scene_WarSkill.prototype.onItemOk = function() {
+    let prop = JSON.parse(this.item().note);
+    if (prop.subType == 'DIRECTIONAL') {
+      let skillId = this.item().id;
+      if (SkillUtils.canPerform(this.actor(), $dataSkills[skillId])) {
+        $gameVariables[0].fireProjectileInfo.skillId = skillId;
+        $gameVariables[0].directionalAction = SkillUtils.performAction;
+        $gameVariables[0].directionalFlag = true;
+        setTimeout(function() {
+          MapUtils.displayMessage(Message.display('askDirection'));
+        }, 100);
+      }
+    }
+    this.popScene();
+  };
+
+    //-----------------------------------------------------------------------------------
+  // Window_CastMagic
+  //
+  // window for displaying magic skill
+  function Window_CastMagic() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_CastMagic.prototype = Object.create(Window_SkillList.prototype);
+  Window_CastMagic.prototype.constructor = Window_CastMagic;
+
+  Window_CastMagic.prototype.initialize = function (x, y, width, height) {
+    Window_SkillList.prototype.initialize.call(this, x, y, width, height);
+    this.setActor($gameActors._data[1]);
+    this.setStypeId(1);
+  };
+
+  Window_CastMagic.prototype.isEnabled = function(item) {
+    return item;
+  };
+
+  //-----------------------------------------------------------------------------------
+  // Scene_CastMagic
+  //
+  // scene for trying to cast magic
+
+  function Scene_CastMagic() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Scene_CastMagic.prototype = Object.create(Scene_WarSkill.prototype);
+  Scene_CastMagic.prototype.constructor = Scene_CastMagic;
+
+  Scene_CastMagic.prototype.initialize = function() {
+    Scene_WarSkill.prototype.initialize.call(this);
+  };
+
+  Scene_CastMagic.prototype.createItemWindow = function() {
+    var wx = 0;
+    var wy = this._helpWindow.height;
+    var ww = Graphics.boxWidth;
+    var wh = Graphics.boxHeight - wy;
+    this._itemWindow = new Window_CastMagic(wx, wy, ww, wh);
+    this._itemWindow.setHelpWindow(this._helpWindow);
+    this._itemWindow.setHandler('ok',     this.onItemOk.bind(this));
+    this._itemWindow.setHandler('cancel', this.popScene.bind(this));
+    this.addWindow(this._itemWindow);
+    this._itemWindow.activate();
+    this._itemWindow.selectLast();
+  };
 
   //-----------------------------------------------------------------------------------
   // Scene_Item
@@ -5077,6 +5289,31 @@
   // Scene_Equip
   // 
   // override this to judge if player really changed equipment, then update time
+
+  Scene_Equip.prototype.create = function() {
+    Scene_MenuBase.prototype.create.call(this);
+    this.createHelpWindow();
+    this.createStatusWindow();
+    this.createSlotWindow();
+    this.createItemWindow();
+    this.refreshActor();
+  };
+
+  Scene_Equip.prototype.createSlotWindow = function() {
+    var wx = this._statusWindow.width;
+    var wy = this._helpWindow.height;
+    var ww = Graphics.boxWidth - this._statusWindow.width;
+    var wh = this._statusWindow.height;
+    this._slotWindow = new Window_EquipSlot(wx, wy, ww, wh);
+    this._slotWindow.setHelpWindow(this._helpWindow);
+    this._slotWindow.setStatusWindow(this._statusWindow);
+    this._slotWindow.setHandler('ok',       this.onSlotOk.bind(this));
+    this._slotWindow.setHandler('cancel',   this.popScene.bind(this));
+    this.addWindow(this._slotWindow);
+    this._slotWindow.activate();
+    this._slotWindow.select(0);
+  };
+
   Scene_Equip.prototype.onItemOk = function () {
     let success = this.actor().changeEquip(this._slotWindow.index(), this._itemWindow.item());
     if (success) {
@@ -5331,34 +5568,25 @@
     }
   };
 
+  Scene_EatFood.prototype.create = function() {
+    Scene_ItemBase.prototype.create.call(this);
+    this.createHelpWindow();
+    this.createItemWindow();
+    this.createActorWindow();
+  };
+
   // override this function so it creates Window_GetDropItemList window
   Scene_EatFood.prototype.createItemWindow = function () {
-    var wy = this._categoryWindow.y + this._categoryWindow.height;
+    var wy = this._helpWindow.y + this._helpWindow.height;
     var wh = Graphics.boxHeight - wy;
     this._itemWindow = new Window_FoodList(0, wy, Graphics.boxWidth, wh);
     this._itemWindow.setHelpWindow(this._helpWindow);
     this._itemWindow.setHandler('ok', this.onItemOk.bind(this));
-    this._itemWindow.setHandler('cancel', this.onItemCancel.bind(this));
+    this._itemWindow.setHandler('cancel', this.popScene.bind(this));
     this.addWindow(this._itemWindow);
-    this._categoryWindow.setItemWindow(this._itemWindow);
+    this.activateItemWindow();
+    this._itemWindow.selectLast();
   };
-
-  // override this to show hint message
-  Scene_EatFood.prototype.createCategoryWindow = function () {
-    this._categoryWindow = new Window_ItemCategory();
-    this._categoryWindow.setHelpWindow(this._helpWindow);
-    this._helpWindow.drawTextEx('你想吃什麼?', 0, 0);
-    this._categoryWindow.y = this._helpWindow.height;
-    this._categoryWindow.setHandler('ok', this.onCategoryOk.bind(this));
-    this._categoryWindow.setHandler('cancel', this.popScene.bind(this));
-    this.addWindow(this._categoryWindow);
-  };
-
-  // override this to show hint message
-  Scene_EatFood.prototype.onItemCancel = function () {
-    Scene_Item.prototype.onItemCancel.call(this);
-    this._helpWindow.drawTextEx('你想吃什麼?', 0, 0);
-  }
 
   Scene_EatFood.prototype.onItemOk = function () {
     $gameParty.setLastItem(this.item());
@@ -5442,34 +5670,24 @@
     Scene_Item.prototype.initialize.call(this);
   };
 
-  // override this function so it creates Window_GetDropItemList window
+  Scene_QuaffPotion.prototype.create = function() {
+    Scene_ItemBase.prototype.create.call(this);
+    this.createHelpWindow();
+    this.createItemWindow();
+    this.createActorWindow();
+  };
+
   Scene_QuaffPotion.prototype.createItemWindow = function () {
-    var wy = this._categoryWindow.y + this._categoryWindow.height;
+    var wy = this._helpWindow.y + this._helpWindow.height;
     var wh = Graphics.boxHeight - wy;
     this._itemWindow = new Window_PotionList(0, wy, Graphics.boxWidth, wh);
     this._itemWindow.setHelpWindow(this._helpWindow);
     this._itemWindow.setHandler('ok', this.onItemOk.bind(this));
-    this._itemWindow.setHandler('cancel', this.onItemCancel.bind(this));
+    this._itemWindow.setHandler('cancel', this.popScene.bind(this));
     this.addWindow(this._itemWindow);
-    this._categoryWindow.setItemWindow(this._itemWindow);
+    this.activateItemWindow();
+    this._itemWindow.selectLast();
   };
-
-  // override this to show hint message
-  Scene_QuaffPotion.prototype.createCategoryWindow = function () {
-    this._categoryWindow = new Window_ItemCategory();
-    this._categoryWindow.setHelpWindow(this._helpWindow);
-    this._helpWindow.drawTextEx('你想喝什麼?', 0, 0);
-    this._categoryWindow.y = this._helpWindow.height;
-    this._categoryWindow.setHandler('ok', this.onCategoryOk.bind(this));
-    this._categoryWindow.setHandler('cancel', this.popScene.bind(this));
-    this.addWindow(this._categoryWindow);
-  };
-
-  // override this to show hint message
-  Scene_QuaffPotion.prototype.onItemCancel = function () {
-    Scene_Item.prototype.onItemCancel.call(this);
-    this._helpWindow.drawTextEx('你想喝什麼?', 0, 0);
-  }
 
   Scene_QuaffPotion.prototype.onItemOk = function () {
     $gameParty.setLastItem(this.item());
@@ -5539,34 +5757,25 @@
     Scene_Item.prototype.initialize.call(this);
   };
 
+  Scene_ReadScroll.prototype.create = function() {
+    Scene_ItemBase.prototype.create.call(this);
+    this.createHelpWindow();
+    this.createItemWindow();
+    this.createActorWindow();
+  };
+
   // override this function so it creates Window_GetDropItemList window
   Scene_ReadScroll.prototype.createItemWindow = function () {
-    var wy = this._categoryWindow.y + this._categoryWindow.height;
+    var wy = this._helpWindow.y + this._helpWindow.height;
     var wh = Graphics.boxHeight - wy;
     this._itemWindow = new Window_ScrollList(0, wy, Graphics.boxWidth, wh);
     this._itemWindow.setHelpWindow(this._helpWindow);
     this._itemWindow.setHandler('ok', this.onItemOk.bind(this));
-    this._itemWindow.setHandler('cancel', this.onItemCancel.bind(this));
+    this._itemWindow.setHandler('cancel', this.popScene.bind(this));
     this.addWindow(this._itemWindow);
-    this._categoryWindow.setItemWindow(this._itemWindow);
+    this.activateItemWindow();
+    this._itemWindow.selectLast();
   };
-
-  // override this to show hint message
-  Scene_ReadScroll.prototype.createCategoryWindow = function () {
-    this._categoryWindow = new Window_ItemCategory();
-    this._categoryWindow.setHelpWindow(this._helpWindow);
-    this._helpWindow.drawTextEx('你想朗誦什麼?', 0, 0);
-    this._categoryWindow.y = this._helpWindow.height;
-    this._categoryWindow.setHandler('ok', this.onCategoryOk.bind(this));
-    this._categoryWindow.setHandler('cancel', this.popScene.bind(this));
-    this.addWindow(this._categoryWindow);
-  };
-
-  // override this to show hint message
-  Scene_ReadScroll.prototype.onItemCancel = function () {
-    Scene_Item.prototype.onItemCancel.call(this);
-    this._helpWindow.drawTextEx('你想朗誦什麼?', 0, 0);
-  }
 
   Scene_ReadScroll.prototype.onItemOk = function () {
     $gameParty.setLastItem(this.item());
@@ -5636,34 +5845,25 @@
     Scene_Item.prototype.initialize.call(this);
   };
 
+  Scene_FireProjectile.prototype.create = function() {
+    Scene_ItemBase.prototype.create.call(this);
+    this.createHelpWindow();
+    this.createItemWindow();
+    this.createActorWindow();
+  };
+
   // override this function so it creates Window_GetDropItemList window
   Scene_FireProjectile.prototype.createItemWindow = function () {
-    var wy = this._categoryWindow.y + this._categoryWindow.height;
+    var wy = this._helpWindow.y + this._helpWindow.height;
     var wh = Graphics.boxHeight - wy;
     this._itemWindow = new Window_PotionList(0, wy, Graphics.boxWidth, wh);
     this._itemWindow.setHelpWindow(this._helpWindow);
     this._itemWindow.setHandler('ok', this.onItemOk.bind(this));
-    this._itemWindow.setHandler('cancel', this.onItemCancel.bind(this));
+    this._itemWindow.setHandler('cancel', this.popScene.bind(this));
     this.addWindow(this._itemWindow);
-    this._categoryWindow.setItemWindow(this._itemWindow);
+    this.activateItemWindow();
+    this._itemWindow.selectLast();
   };
-
-  // override this to show hint message
-  Scene_FireProjectile.prototype.createCategoryWindow = function () {
-    this._categoryWindow = new Window_ItemCategory();
-    this._categoryWindow.setHelpWindow(this._helpWindow);
-    this._helpWindow.drawTextEx('你想投擲什麼?', 0, 0);
-    this._categoryWindow.y = this._helpWindow.height;
-    this._categoryWindow.setHandler('ok', this.onCategoryOk.bind(this));
-    this._categoryWindow.setHandler('cancel', this.popScene.bind(this));
-    this.addWindow(this._categoryWindow);
-  };
-
-  // override this to show hint message
-  Scene_FireProjectile.prototype.onItemCancel = function () {
-    Scene_Item.prototype.onItemCancel.call(this);
-    this._helpWindow.drawTextEx('你想投擲什麼?', 0, 0);
-  }
 
   Scene_FireProjectile.prototype.onItemOk = function () {
     $gameParty.setLastItem(this.item());
