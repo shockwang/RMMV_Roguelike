@@ -291,7 +291,8 @@
       askDirection: '往哪個方向?',
       attackAir: '{0}對空氣發動了{1}.',
       self: '自己',
-      player: '你'
+      player: '你',
+      hotkeyUndefined: '未定義的熱鍵.'
     },
     display: function(msgName) {
       switch (Message.language) {
@@ -552,7 +553,10 @@
     CharUtils.updateHpMp($gameActors._data[1]);
 
     // initialize hotkeys
-    $gameVariables[0].hotkeys = new Array(10);
+    $gameVariables[0].hotkeys = [];
+    for (let i = 0; i < 10; i++) {
+      $gameVariables[0].hotkeys[i] = null;
+    }
 
     // for test
     for (let i = 0; i < 10; i++) {
@@ -3096,6 +3100,7 @@
         // same coordinate
         break;
       case 'Escape': case 'Numpad0': case 'Insert': case '0':
+        x = -1, y = -1;
         // remove message window
         $gameVariables[0].messageFlag = false;
         SceneManager._scene.removeChild(messageWindow);
@@ -3109,19 +3114,29 @@
     return new Coordinate(x, y);
   }
 
-  // override this function for user-defined key detected (only on Scene_Map)
+  // override this function for user-defined key detected
   Input._onKeyDown = function (event) {
-    // setup hotkeys
+    // setup hotkeys (on skill scenes)
     if (SceneManager._scene instanceof Scene_WarSkill && SceneManager.isCurrentSceneStarted()) {
       let prefix = 'Digit';
       for (let i = 0; i < 10; i++) {
         if (prefix + i == event.code) {
-          console.log('hotkey detected: ' + event.code);
+          let skillId = SceneManager._scene.item().id;
+          if ($gameVariables[0].hotkeys[i] == skillId) {
+            $gameVariables[0].hotkeys[i] = null;
+          } else {
+            let oldHotkey = SkillUtils.getHotKey(skillId);
+            if (oldHotkey != null) {
+              $gameVariables[0].hotkeys[oldHotkey] = null;
+            }
+            $gameVariables[0].hotkeys[i] = skillId;
+          }
+          SceneManager._scene._itemWindow.refresh();
           break;
         }
       }
     }
-    // normal moves
+    // normal moves (on Scene_Map)
     if (SceneManager._scene instanceof Scene_Map && !$gameMessage.isBusy() && $gamePlayer.canMove()
       && SceneManager.isCurrentSceneStarted()) {
       if ($gameVariables[0].directionalFlag) {
@@ -3135,6 +3150,9 @@
         if (playerMoved) {
           // use async strategy, because $gameSelfSwitches needs time to update to event
           setTimeout('TimeUtils.afterPlayerMoved();', 100);
+          $gameVariables[0].messageFlag = false;
+          SceneManager._scene.removeChild(messageWindow);
+          SceneManager._scene.removeChild(logWindow);
         }
         $gameVariables[0].directionalFlag = false;
         return;
@@ -3174,6 +3192,18 @@
         case 'Numpad5': case 'Period': // wait action
           TimeUtils.afterPlayerMoved();
           break;
+      }
+      // check hotkeys
+      let prefix = 'Digit';
+      for (let i = 0; i < 10; i++) {
+        if (event.code == prefix + i) {
+          if ($gameVariables[0].hotkeys[i]) {
+            SkillUtils.performSkill($gameVariables[0].hotkeys[i]);
+          } else {
+            MapUtils.displayMessage(Message.display('hotkeyUndefined'));
+          }
+          break;
+        }
       }
       // classify by key
       switch (event.key) {
@@ -3847,9 +3877,19 @@
     if (DataManager.isItem(obj)) {
       imageData = $gameVariables[0].itemImageData.items[obj.id];
     } else if (DataManager.isWeapon(obj)) {
-      imageData = $gameVariables[0].itemImageData.weapons[obj.id];
+      let prop = JSON.parse(obj.note);
+      switch (prop.subType) {
+        case 'TOOTH':
+          imageData = new ImageData('Collections3', 1, 2, 6);
+          break;
+      }
     } else if (DataManager.isArmor(obj)) {
-      imageData = $gameVariables[0].itemImageData.armors[obj.id];
+      let prop = JSON.parse(obj.note);
+      switch (prop.subType) {
+        case 'SKIN':
+          imageData = new ImageData('Collections3', 0, 1, 6);
+          break;
+      }
     } else {
       console.log('ERROR: ItemUtils.updateItemPile: no such type!');
     }
@@ -4752,6 +4792,8 @@
       }
     }
   }
+
+  // for directional skill
   SkillUtils.performAction = function(src, x, y) {
     let target = null;
     let events = $gameMap.eventsXy(x, y);
@@ -4767,6 +4809,30 @@
     SkillUtils.skillList[$gameVariables[0].fireProjectileInfo.skillId].action(src, target);
     $gameVariables[0].messageFlag = false;
     return true;
+  }
+
+  // for hotkeys usage
+  SkillUtils.performSkill = function(skillId) {
+    let prop = JSON.parse($dataSkills[skillId].note);
+    if (prop.subType == 'DIRECTIONAL') {
+      if (SkillUtils.canPerform($gameActors.actor(1), $dataSkills[skillId])) {
+        $gameVariables[0].fireProjectileInfo.skillId = skillId;
+        $gameVariables[0].directionalAction = SkillUtils.performAction;
+        $gameVariables[0].directionalFlag = true;
+        setTimeout(function() {
+          MapUtils.displayMessage(Message.display('askDirection'));
+        }, 100);
+      }
+    }
+  }
+
+  SkillUtils.getHotKey = function(skillId) {
+    for (let i = 0; i < 10; i++) {
+      if ($gameVariables[0].hotkeys[i] == skillId) {
+        return i;
+      }
+    }
+    return null;
   }
 
   //-----------------------------------------------------------------------------------
@@ -5117,18 +5183,7 @@
   };
 
   Scene_WarSkill.prototype.onItemOk = function() {
-    let prop = JSON.parse(this.item().note);
-    if (prop.subType == 'DIRECTIONAL') {
-      let skillId = this.item().id;
-      if (SkillUtils.canPerform(this.actor(), $dataSkills[skillId])) {
-        $gameVariables[0].fireProjectileInfo.skillId = skillId;
-        $gameVariables[0].directionalAction = SkillUtils.performAction;
-        $gameVariables[0].directionalFlag = true;
-        setTimeout(function() {
-          MapUtils.displayMessage(Message.display('askDirection'));
-        }, 100);
-      }
-    }
+    SkillUtils.performSkill(this.item().id);
     this.popScene();
   };
 
@@ -5351,7 +5406,9 @@
       var iconBoxWidth = Window_Base._iconWidth + 4;
       this.resetTextColor();
       this.drawIcon(item.iconIndex, x + 2, y + 2);
-      this.drawText(item.name + 'Lv' + skillLv, x + iconBoxWidth, y, width - iconBoxWidth);
+      let hotkey = SkillUtils.getHotKey(item.id);
+      let postfix = (hotkey != null) ? (' {' + hotkey + '}') : '';
+      this.drawText(item.name + 'Lv' + skillLv + postfix, x + iconBoxWidth, y, width - iconBoxWidth);
     }
   };
 
