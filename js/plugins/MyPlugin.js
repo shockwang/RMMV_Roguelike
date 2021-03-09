@@ -293,7 +293,11 @@
       self: '自己',
       player: '你',
       hotkeyUndefined: '未定義的熱鍵.',
-      spikeTrapTriggered: '{0}一腳踩上尖刺陷阱, 受到{1}點傷害!'
+      spikeTrapTriggered: '{0}一腳踩上尖刺陷阱, 受到{1}點傷害!',
+      teleportTrapTriggered: '{0}一腳踩上了傳送陷阱.',
+      seeTeleportAway: '{0}突然從你眼前消失了!',
+      seeTeleportAppear: '{0}突然出現在你面前!',
+      secretTrapDiscovered: '你找到了一個隱藏的{0}.'
     },
     display: function(msgName) {
       switch (Message.language) {
@@ -1092,7 +1096,8 @@
     var occupied = false;
     var exists = MapUtils.findEventsXyFromDataMap($gameVariables[mapId].rmDataMap, x, y);
     for (var i in exists) {
-      if (exists[i].type == 'MOB' || (exists[i].type == 'DOOR' && exists[i].status != 2)) {
+      if (exists[i].type == 'MOB' || (exists[i].type == 'DOOR' && exists[i].status != 2)
+        || exists[i].type == 'TRAP') {
         occupied = true;
       }
     }
@@ -1830,8 +1835,7 @@
     $gameVariables[mapId].rmDataMap = $dataMap;
   }
 
-  MapUtils.generateNewMapMobs = function (mapId) {
-    var floors = MapUtils.findMapDataFloor($gameVariables[mapId].mapData);
+  MapUtils.generateNewMapMobs = function (mapId, floors) {
     let mobCounts = Math.floor(floors.length * 0.02);
     for (let i = 0; i < mobCounts; i++) {
       while (true) {
@@ -1962,7 +1966,9 @@
             // new mobs in map
             var setupEvents = function (nowMapId, targetMapId, nowStair) {
               if (SceneManager.isCurrentSceneStarted()) {
-                MapUtils.generateNewMapMobs(targetMapId);
+                let floors = MapUtils.findMapDataFloor($gameVariables[targetMapId].mapData);
+                MapUtils.generateNewMapMobs(targetMapId, floors);
+                TrapUtils.generateTraps(targetMapId, floors);
                 MapUtils.drawEvents($gameVariables[targetMapId].mapData);
                 SceneManager.goto(Scene_Map);
               } else {
@@ -2205,8 +2211,11 @@
         } else if ($dataMap.events[i].type == 'ITEM_PILE') {
           this._events[i] = new Game_ItemPile($dataMap.events[i].x, $dataMap.events[i].y, $dataMap.events[i]);
           ItemUtils.updateItemPile(this._events[i]);
-        }
-        else {
+        } else if ($dataMap.events[i].type == 'TRAP') {
+          this._events[i] = new window[$dataMap.events[i].trap.trapClass]($dataMap.events[i].x
+            , $dataMap.events[i].y, $dataMap.events[i]);
+          TrapUtils.drawTrap(this._events[i]);
+        } else {
           this._events[i] = new Game_Event(this._mapId, i);
         }
       }
@@ -3067,8 +3076,22 @@
     throw new Error('This is a static class');
   }
 
-  TrapUtils.generateTraps = function(mapId) {
+  TrapUtils.trapTemplates = [];
+
+  TrapUtils.generateTraps = function(mapId, floors) {
     // TODO: implement trap generating mechanism
+    let trapCounts = Math.floor(floors.length * 0.005);
+    for (let i = 0; i < trapCounts; i++) {
+      while (true) {
+        let floor = floors[Math.randomInt(floors.length)];
+        if (MapUtils.isTileAvailableForMob(mapId, floor.x, floor.y)
+          && TrapUtils.canPlaceTrap(mapId, floor.x, floor.y)) {
+          let trapType = TrapUtils.trapTemplates[Math.randomInt(TrapUtils.trapTemplates.length)];
+          new trapType(floor.x, floor.y);
+          break;
+        }
+      }
+    }
   }
 
   TrapUtils.checkTrapStepped = function(target) {
@@ -3076,6 +3099,9 @@
     for (let id in evts) {
       let evt = evts[id];
       if (evt.type == 'TRAP' && evt.trap.lastTriggered != target) {
+        if ($gameVariables[$gameMap._mapId].mapData[evt._x][evt._y].isVisible) {
+          evt.trap.isRevealed = true;
+        }
         evt.triggered(target);
         break;
       }
@@ -3106,14 +3132,31 @@
   }
 
   TrapUtils.drawTrap = function(event) {
-    let imageData = event.trap.imageData;
-    let opacity;
-    if ($gameVariables[$gameMap._mapId].mapData[event._x][event._y].isVisible) {
-      opacity = 255;
-    } else {
-      opacity = 128;
+    if (event.trap.isRevealed) {
+      let imageData = event.trap.imageData;
+      let opacity;
+      if ($gameVariables[$gameMap._mapId].mapData[event._x][event._y].isVisible) {
+        opacity = 255;
+      } else {
+        opacity = 128;
+      }
+      MapUtils.drawImage(event, imageData, opacity);
     }
-    MapUtils.drawImage(event, imageData, opacity);
+    event.updateDataMap();
+  }
+
+  TrapUtils.canPlaceTrap = function(mapId, x, y) {
+    let neighbors = MapUtils.findAdjacentBlocks({_x: x, _y: y});
+    let floors = 0;
+    for (let i in neighbors) {
+      if (MapUtils.isTilePassable(mapId, x, y, $gameVariables[mapId].mapData[x][y].originalTile)) {
+        floors++;
+      }
+    }
+    if (floors > 2) {
+      return true;
+    }
+    return false;
   }
 
   //-----------------------------------------------------------------------------------
@@ -3138,6 +3181,7 @@
     event.type = 'TRAP';
     event.trap = {};
     event.trap.lastTriggered = null;
+    event.trap.isRevealed = false;
   }
 
   Game_Trap.prototype.updateDataMap = function () {
@@ -3185,7 +3229,9 @@
 
   Trap_Spike.prototype.initStatus = function (event) {
     Game_Trap.prototype.initStatus.call(this, event);
+    this.trap.trapClass = 'Trap_Spike';
     this.trap.imageData = new ImageData('Collections3', 6, 1, 8);
+    this.trap.name = '尖刺陷阱';
   }
 
   Trap_Spike.prototype.triggered = function(target) {
@@ -3198,6 +3244,37 @@
       , LogUtils.getCharName(realTarget), damage));
     BattleUtils.checkTargetAlive(null, realTarget, target);
   }
+
+  //-----------------------------------------------------------------------------------
+  // Trap_Teleport
+  //
+  // class for teleport trap
+
+  Trap_Teleport = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Trap_Teleport.prototype = Object.create(Game_Trap.prototype);
+  Trap_Teleport.prototype.constructor = Trap_Teleport;
+
+  Trap_Teleport.prototype.initStatus = function (event) {
+    Game_Trap.prototype.initStatus.call(this, event);
+    this.trap.trapClass = 'Trap_Teleport';
+    this.trap.imageData = new ImageData('Collections3', 5, 2, 8);
+    this.trap.name = '傳送陷阱';
+  }
+
+  Trap_Teleport.prototype.triggered = function(target) {
+    // TODO: check if target able to teleport
+    let scroll = new Scroll_Teleport();
+    let realTarget = BattleUtils.getRealTarget(target);
+    LogUtils.addLog(String.format(Message.display('teleportTrapTriggered'), LogUtils.getCharName(realTarget)));
+    scroll.onRead(target);
+  }
+
+  // put all trap templates into list
+  TrapUtils.trapTemplates[0] = Trap_Spike;
+  TrapUtils.trapTemplates[1] = Trap_Teleport;
 
   //-----------------------------------------------------------------------------------
   // Input
@@ -3484,6 +3561,7 @@
         case 's': // search environment
           for (let i = 0; i < 8; i++) {
             let coordinate = MapUtils.getNearbyCoordinate($gamePlayer._x, $gamePlayer._y, i);
+            // search for secret door
             if ($gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(coordinate.x, coordinate.y)]
               && !$gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(coordinate.x, coordinate.y)].isRevealed) {
               // TODO: implement search success probability
@@ -3494,6 +3572,15 @@
                   new Game_Door(coordinate.x, coordinate.y);
                   LogUtils.addLog(Message.display('secretDoorDiscovered'));
                 }
+              }
+            }
+            // search for traps
+            let evts = $gameMap.eventsXy(coordinate.x, coordinate.y);
+            for (let id in evts) {
+              let evt = evts[id];
+              if (evt.type == 'TRAP' && Math.random() < 0.2) {
+                evt.trap.isRevealed = true;
+                LogUtils.addLog(String.format(Message.display('secretTrapDiscovered'), evt.trap.name));
               }
             }
           }
@@ -4583,7 +4670,7 @@
   }
 
   Scroll_Identify.prototype.onRead = function(user) {
-    if (user == $gameParty) {
+    if (user == $gamePlayer) {
       let items = $gameParty.allItems().filter(function(item){
         return !ItemUtils.checkItemIdentified(item) && item.name != '鑑定卷軸';
       });
@@ -4619,7 +4706,7 @@
   }
 
   Scroll_EnchantArmor.prototype.onRead = function(user) {
-    if (user == $gameParty) {
+    if (user == $gamePlayer) {
       let equips = $gameActors._data[1].equips().filter(function(item) {
         if (item) {
           let prop = JSON.parse(item.note);
@@ -4674,7 +4761,7 @@
   }
 
   Scroll_EnchantWeapon.prototype.onRead = function(user) {
-    if (user == $gameParty) {
+    if (user == $gamePlayer) {
       let equips = $gameActors._data[1].equips().filter(function(item) {
         if (item) {
           let prop = JSON.parse(item.note);
@@ -4729,7 +4816,7 @@
   }
 
   Scroll_RemoveCurse.prototype.onRead = function(user) {
-    if (user == $gameParty) {
+    if (user == $gamePlayer) {
       let equips = $gameActors._data[1].equips().filter(function(item) {
         if (item) {
           return item.bucState == -1;
@@ -4768,26 +4855,40 @@
   }
 
   Scroll_Teleport.prototype.onRead = function(user) {
-    if (user == $gameParty) {
-      let floors = MapUtils.findMapDataFloor($gameVariables[$gameMap._mapId].mapData);
-      while (true) {
-        let floor = floors[Math.randomInt(floors.length)];
-        if (MapUtils.isTileAvailableForMob($gameMap._mapId, floor.x, floor.y) && (floor.x != $gamePlayer._x && floor.y != $gamePlayer._y)) {
-          $gamePlayer.setPosition(floor.x, floor.y);
-          let screenX = ($gamePlayer._x - 10.125 < 0) ? 0 : $gamePlayer._x - 10.125;
-          screenX = (screenX + 20 > $gameMap.width()) ? $gameMap.width() - 20 : screenX;
-          let screenY = ($gamePlayer._y - 7.75 < 0) ? 0 : $gamePlayer._y - 7.75;
-          screenY = (screenY + 17 > $gameMap.height()) ? $gameMap.height() - 17 : screenY;
-          $gameMap._displayX = screenX;
-          $gameMap._displayY = screenY;
-          AudioManager.playSe({name: "Run", pan: 0, pitch: 100, volume: 100});
-          MapUtils.refreshMap();
-          break;
-        }
+    let floors = MapUtils.findMapDataFloor($gameVariables[$gameMap._mapId].mapData);
+    let floor = null;
+    while (true) {
+      floor = floors[Math.randomInt(floors.length)];
+      if (MapUtils.isTileAvailableForMob($gameMap._mapId, floor.x, floor.y) && (floor.x != user._x && floor.y != user._y)) {
+        break;
       }
-      LogUtils.addLog(Message.display('scrollTeleportRead'));
-      ItemUtils.identifyObject(this);
     }
+    let realUser = BattleUtils.getRealTarget(user);
+    // disappear
+    if (user != $gamePlayer && $gameVariables[$gameMap._mapId].mapData[user._x][user._y].isVisible) {
+      LogUtils.addLog(String.format(Message.display('seeTeleportAway'), LogUtils.getCharName(realUser)));
+    }
+    if ($gameVariables[$gameMap._mapId].mapData[user._x][user._y].isVisible) {
+      AudioManager.playSe({name: "Run", pan: 0, pitch: 100, volume: 100});
+    }
+
+    user.setPosition(floor.x, floor.y);
+    if (user == $gamePlayer) {
+      let screenX = ($gamePlayer._x - 10.125 < 0) ? 0 : $gamePlayer._x - 10.125;
+      screenX = (screenX + 20 > $gameMap.width()) ? $gameMap.width() - 20 : screenX;
+      let screenY = ($gamePlayer._y - 7.75 < 0) ? 0 : $gamePlayer._y - 7.75;
+      screenY = (screenY + 17 > $gameMap.height()) ? $gameMap.height() - 17 : screenY;
+      $gameMap._displayX = screenX;
+      $gameMap._displayY = screenY;
+      LogUtils.addLog(Message.display('scrollTeleportRead'));
+    }
+    MapUtils.refreshMap();
+
+    // appear
+    if (user != $gamePlayer && $gameVariables[$gameMap._mapId].mapData[user._x][user._y].isVisible) {
+      LogUtils.addLog(String.format(Message.display('seeTeleportAppear'), LogUtils.getCharName(realUser)));
+    }
+    ItemUtils.identifyObject(this);
   }
 
   //-----------------------------------------------------------------------------------
@@ -4807,7 +4908,7 @@
   }
 
   Scroll_DestroyArmor.prototype.onRead = function(user) {
-    if (user == $gameParty) {
+    if (user == $gamePlayer) {
       let equips = $gameActors._data[1].equips().filter(function(item) {
         if (item) {
           let prop = JSON.parse(item.note);
@@ -4851,7 +4952,7 @@
   }
 
   Scroll_CreateMonster.prototype.onRead = function(user) {
-    if (user == $gameParty) {
+    if (user == $gamePlayer) {
       let blocks = MapUtils.findAdjacentBlocks($gamePlayer);
       let msg, targetFloor;
       while (blocks.length > 0) {
@@ -4895,7 +4996,7 @@
   }
 
   Scroll_ScareMonster.prototype.onRead = function(user) {
-    if (user == $gameParty) {
+    if (user == $gamePlayer) {
       let msg = Message.display('scrollScareMonsterRead');
       LogUtils.addLog(msg);
       let seeMonsterScared = false;
@@ -5120,6 +5221,24 @@
     return true;
   };
 
+  //-----------------------------------------------------------------------------
+  // Window_GetDropItemCategory
+  //
+  // The window for selecting a category of items get/drop
+
+  function Window_GetDropItemCategory() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_GetDropItemCategory.prototype = Object.create(Window_ItemCategory.prototype);
+  Window_GetDropItemCategory.prototype.constructor = Window_GetDropItemCategory;
+
+  Window_GetDropItemCategory.prototype.makeCommandList = function() {
+    this.addCommand(TextManager.item,    'item');
+    this.addCommand(TextManager.weapon,  'weapon');
+    this.addCommand(TextManager.armor,   'armor');
+  };
+
   //-----------------------------------------------------------------------------------
   // Scene_GetItem
   //
@@ -5162,7 +5281,7 @@
 
   // override this, so we can change $gameParty items back when popScene
   Scene_GetItem.prototype.createCategoryWindow = function () {
-    this._categoryWindow = new Window_ItemCategory();
+    this._categoryWindow = new Window_GetDropItemCategory();
     this._categoryWindow.setHelpWindow(this._helpWindow);
     this._helpWindow.drawTextEx('請選擇要撿起的物品.', 0, 0);
     this._categoryWindow.y = this._helpWindow.height;
@@ -5246,7 +5365,7 @@
 
   // override this to show hint message
   Scene_DropItem.prototype.createCategoryWindow = function () {
-    this._categoryWindow = new Window_ItemCategory();
+    this._categoryWindow = new Window_GetDropItemCategory();
     this._categoryWindow.setHelpWindow(this._helpWindow);
     this._helpWindow.drawTextEx('請選擇要丟下的物品.', 0, 0);
     this._categoryWindow.y = this._helpWindow.height;
@@ -6009,7 +6128,7 @@
       this.popScene();
       var func = function (item) {
         LogUtils.addLog(String.format(Message.display('readScroll'), ItemUtils.getItemDisplayName(item)));
-        item.onRead($gameParty);
+        item.onRead($gamePlayer);
         var func2 = function() {
           if (!$gameVariables[0].messageFlag) {
             TimeUtils.afterPlayerMoved();
