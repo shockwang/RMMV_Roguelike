@@ -292,7 +292,8 @@
       attackAir: '{0}對空氣發動了{1}.',
       self: '自己',
       player: '你',
-      hotkeyUndefined: '未定義的熱鍵.'
+      hotkeyUndefined: '未定義的熱鍵.',
+      spikeTrapTriggered: '{0}一腳踩上尖刺陷阱, 受到{1}點傷害!'
     },
     display: function(msgName) {
       switch (Message.language) {
@@ -535,7 +536,8 @@
       monster: $dataMap.events[3],
       door: $dataMap.events[4],
       projectile: $dataMap.events[5],
-      itemPile: $dataMap.events[6]
+      itemPile: $dataMap.events[6],
+      trap: $dataMap.events[7]
     }
     // define data images mapping
     $gameVariables[0].itemImageData = generateImageData();
@@ -682,6 +684,14 @@
   function getRandomInt(max) {
     return Math.floor(Math.random() * Math.floor(max));
   };
+
+  function dice(number, face) {
+    let result = 0;
+    for (let i = 0; i < number; i++) {
+      result += getRandomInt(face) + 1;
+    }
+    return result;
+  }
 
   function getRandomIntRange(min, max) {
     if (min == max) {
@@ -896,6 +906,14 @@
     return mapData;
   };
 
+  MapUtils.drawImage = function(event, imageData, opacity) {
+    event._originalPattern = imageData.pattern;
+    event.setPattern(imageData.pattern);
+    event.setDirection(imageData.direction);
+    event.setImage(imageData.image, imageData.imageIndex);
+    event.setOpacity(opacity);
+  }
+
   MapUtils.drawMap = function (mapData, mapArray) {
     var mapSize = mapData.length * mapData[0].length;
     // do not update item piles & doors
@@ -984,6 +1002,8 @@
       var event = $gameMap.events()[i];
       if (event.type == 'ITEM_PILE') {
         ItemUtils.updateItemPile(event);
+      } else if (event.type == 'TRAP') {
+        TrapUtils.drawTrap(event);
       } else if (event._x > 0 && event._y > 0 && mapData[event._x][event._y].isVisible) {
         if (event.mob) {
           MapUtils.drawMob(mapData, event);
@@ -2832,18 +2852,22 @@
         break;
       }
       this.moveFunc(this.param1, this.param2);
-      let events = $gameMap.eventsXy(this._x, this._y);
-      for (let id in events) {
-        let evt = events[id];
-        if (evt.type == 'MOB' || evt == $gamePlayer) { // hit character
-          vanish = this.hitCharacter(this, evt);
-        } else if (evt.type == 'DOOR' && evt.status != 2) { // hit closed door
-          vanish = this.hitDoor(this);
+      if ($gamePlayer.pos(this._x, this._y)) {
+        vanish = this.hitCharacter(this, evt);
+      } else {
+        let events = $gameMap.eventsXy(this._x, this._y);
+        for (let id in events) {
+          let evt = events[id];
+          if (evt.type == 'MOB') { // hit character
+            vanish = this.hitCharacter(this, evt);
+          } else if (evt.type == 'DOOR' && evt.status != 2) { // hit closed door
+            vanish = this.hitDoor(this);
+          }
         }
       }
       // hit wall
       if ($gameVariables[$gameMap._mapId].mapData[this._x][this._y].originalTile == WALL) {
-          vanish = this.hitWall(this);
+        vanish = this.hitWall(this);
       }
     }
     if (!vanish) {
@@ -3033,6 +3057,147 @@
     Game_Event.prototype.initialize.call(this, $gameVariables[0].transferInfo.toMapId, eventId);
     $gameMap._events[eventId] = this;
   };
+
+  //-----------------------------------------------------------------------------------
+  // TrapUtils
+  //
+  // Utility for Traps
+
+  TrapUtils = function() {
+    throw new Error('This is a static class');
+  }
+
+  TrapUtils.generateTraps = function(mapId) {
+    // TODO: implement trap generating mechanism
+  }
+
+  TrapUtils.checkTrapStepped = function(target) {
+    let evts = $gameMap.eventsXy(target._x, target._y);
+    for (let id in evts) {
+      let evt = evts[id];
+      if (evt.type == 'TRAP' && evt.trap.lastTriggered != target) {
+        evt.triggered(target);
+        break;
+      }
+    }
+  }
+
+  TrapUtils.updateLastTriggered = function() {
+    let mapEvts = $gameMap.events();
+    for (let id in mapEvts) {
+      let mapEvt = mapEvts[id];
+      if (mapEvt.type == 'TRAP') {
+        let target = null;
+        if ($gamePlayer.pos(mapEvt._x, mapEvt._y)) {
+          target = $gamePlayer;
+        } else {
+          let evts = $gameMap.eventsXy(mapEvt._x, mapEvt._y);
+          for (let id in evts) {
+            let evt = evts[id];
+            if (evt.type == 'MOB') {
+              target = evt;
+              break;
+            }
+          }
+        }
+        mapEvt.trap.lastTriggered = target;
+      }
+    }
+  }
+
+  TrapUtils.drawTrap = function(event) {
+    let imageData = event.trap.imageData;
+    let opacity;
+    if ($gameVariables[$gameMap._mapId].mapData[event._x][event._y].isVisible) {
+      opacity = 255;
+    } else {
+      opacity = 128;
+    }
+    MapUtils.drawImage(event, imageData, opacity);
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Game_Trap
+  //
+  // The game object class for a trap on map, inherit from Game_Event
+  Game_Trap = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Game_Trap.prototype = Object.create(Game_Event.prototype);
+  Game_Trap.prototype.constructor = Game_Trap;
+
+  Game_Trap.prototype.fromEvent = function (src, target) {
+    target.type = src.type;
+    target.x = src.x;
+    target.y = src.y;
+    target.trap = src.trap;
+  }
+
+  Game_Trap.prototype.initStatus = function (event) {
+    event.type = 'TRAP';
+    event.trap = {};
+    event.trap.lastTriggered = null;
+  }
+
+  Game_Trap.prototype.updateDataMap = function () {
+    Game_Trap.prototype.fromEvent(this, $dataMap.events[this._eventId]);
+  }
+
+  Game_Trap.prototype.initialize = function (x, y, fromData) {
+    var eventId = -1;
+    if (fromData) {
+      for (var i = 1; i < $dataMap.events.length; i++) {
+        if ($dataMap.events[i] && $dataMap.events[i] == fromData) {
+          eventId = i;
+          Game_Trap.prototype.fromEvent($dataMap.events[i], this);
+          break;
+        }
+      }
+    } else {
+      // add new event at the bottom of list
+      eventId = $dataMap.events.length;
+      $dataMap.events.push(newDataMapEvent($gameVariables[0].templateEvents.trap, eventId, x, y));
+      Game_Trap.prototype.initStatus($dataMap.events[$dataMap.events.length - 1]);
+      this.initStatus(this);
+    }
+    // store new events back to map variable
+    $gameVariables[$gameVariables[0].transferInfo.toMapId].rmDataMap = $dataMap;
+    Game_Event.prototype.initialize.call(this, $gameVariables[0].transferInfo.toMapId, eventId);
+    $gameMap._events[eventId] = this;
+  };
+
+  Game_Trap.prototype.triggered = function(target) {
+    // implement by each traps
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Trap_Spike
+  //
+  // class for spike trap
+
+  Trap_Spike = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Trap_Spike.prototype = Object.create(Game_Trap.prototype);
+  Trap_Spike.prototype.constructor = Trap_Spike;
+
+  Trap_Spike.prototype.initStatus = function (event) {
+    Game_Trap.prototype.initStatus.call(this, event);
+    this.trap.imageData = new ImageData('Collections3', 6, 1, 8);
+  }
+
+  Trap_Spike.prototype.triggered = function(target) {
+    let damage = dice(2, 6);
+    let realTarget = BattleUtils.getRealTarget(target);
+    realTarget._hp -= damage;
+    TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 11));
+    TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
+    LogUtils.addLog(String.format(Message.display('spikeTrapTriggered')
+      , LogUtils.getCharName(realTarget), damage));
+    BattleUtils.checkTargetAlive(null, realTarget, target);
+  }
 
   //-----------------------------------------------------------------------------------
   // Input
@@ -3434,6 +3599,9 @@
       timeSpent = CharUtils.getActionTime(player);
     }
 
+    // check trap
+    TrapUtils.checkTrapStepped($gamePlayer);
+
     do {
       player.lastTimeMoved += timeSpent;
       let tempTimeSpent = timeSpent;
@@ -3470,11 +3638,16 @@
               done = false;
               event.mob.lastTimeMoved += CharUtils.getActionTime(event.mob);
               event.action();
+              // check trap
+              TrapUtils.checkTrapStepped(event);
               CharUtils.updateStatus(event);
               CharUtils.updateTp(event);
             }
           }
         } while (!done);
+        // update trap record
+        TrapUtils.updateLastTriggered();
+
         // play queued anime
         CharUtils.updateStatus($gamePlayer);
         TimeUtils.playAnime();
@@ -3907,21 +4080,13 @@
         let obj = event.itemPile.objectStack[event.itemPile.objectStack.length - 1];
         let imageData = ItemUtils.getImageData(obj);
         // setup image
-        event._originalPattern = imageData.pattern;
-        event.setPattern(imageData.pattern);
-        event.setDirection(imageData.direction);
-        event.setImage(imageData.image, imageData.imageIndex);
-        event.setOpacity(255);
+        MapUtils.drawImage(event, imageData, 255);
         // setup last image
         event.itemPile.lastImage = imageData;
       }
     } else if (event.itemPile.lastImage.image) {
       // show last image player saw
-      event._originalPattern = event.itemPile.lastImage.pattern;
-      event.setPattern(event.itemPile.lastImage.pattern);
-      event.setDirection(event.itemPile.lastImage.direction);
-      event.setImage(event.itemPile.lastImage.image, event.itemPile.lastImage.imageIndex);
-      event.setOpacity(128);
+      MapUtils.drawImage(event, event.itemPile.lastImage, 128);
     }
     if (!erased) {
       event.updateDataMap();
@@ -5365,8 +5530,10 @@
     this._slotWindow.setHandler('ok',       this.onSlotOk.bind(this));
     this._slotWindow.setHandler('cancel',   this.popScene.bind(this));
     this.addWindow(this._slotWindow);
-    this._slotWindow.activate();
-    this._slotWindow.select(0);
+    setTimeout(function(vm) {
+      vm._slotWindow.activate();
+      vm._slotWindow.select(0);
+    }, 100, this);
   };
 
   Scene_Equip.prototype.onItemOk = function () {
