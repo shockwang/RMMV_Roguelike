@@ -119,8 +119,6 @@
 
   // TP designed for energy, attack/martial skills will decrease it, and will
   // auto recover when not doing attack actions
-  var playerAttacked = false;
-  var playerMoved = false;
   var playerDashed = false;
 
   // add format function to String
@@ -294,10 +292,14 @@
       player: '你',
       hotkeyUndefined: '未定義的熱鍵.',
       spikeTrapTriggered: '{0}一腳踩上尖刺陷阱, 受到{1}點傷害!',
-      teleportTrapTriggered: '{0}一腳踩上了傳送陷阱.',
+      teleportTrapTriggered: '{0}一腳踩入了傳送陷阱.',
       seeTeleportAway: '{0}突然從你眼前消失了!',
       seeTeleportAppear: '{0}突然出現在你面前!',
-      secretTrapDiscovered: '你找到了一個隱藏的{0}.'
+      secretTrapDiscovered: '你找到了一個隱藏的{0}.',
+      groundHoleTrapTriggered: '{0}失足掉入地洞陷阱, 受到{1}點傷害!',
+      climbOutFailed: '{0}嘗試爬出地洞, 但是失敗了.',
+      climbOutSuccess: '{0}爬出了地洞.',
+      magicTrapTriggered: '{0}觸動了魔法陷阱!'
     },
     display: function(msgName) {
       switch (Message.language) {
@@ -351,14 +353,15 @@
   // initialize character status map
   CharUtils.initStatus = function() {
     var result = {
-      afraidCount: 0,
       blindCount: 0,
       paralyzeCount: 0,
       sleepCount: 0,
+      poisonCount: 0,
       speedUpCount: 0,
       invisibleCount: 0,
       seeInvisibleCount: 0,
-      poisonCount: 0,
+      afraidCount: 0,
+      groundHoleTrapped: false
     }
     return result;
   }
@@ -366,7 +369,7 @@
   CharUtils.updateStatus = function(event) {
     let target = BattleUtils.getRealTarget(event);
     for (let id in target.status) {
-      if (target.status[id] > 0) {
+      if (Number.isInteger(target.status[id]) && target.status[id] > 0) {
         target.status[id]--;
         if (id == 'poisonCount') {
           let value = 3;
@@ -455,6 +458,16 @@
       return false;
     }
     return true;
+  }
+
+  CharUtils.playerCanSeeChar = function(target) {
+    if (target == $gamePlayer) {
+      return true;
+    } else if ($gameVariables[$gameMap._mapId].mapData[target._x][target._y].isVisible
+      && CharUtils.canSee($gameActors.actor(1), BattleUtils.getRealTarget(target))) {
+      return true;
+    }
+    return false;
   }
 
   CharUtils.updateHpMp = function(target) {
@@ -2008,22 +2021,37 @@
   //
   // handle map change when player moved
   Game_Player.prototype.moveStraight = function (d) {
+    let actor = $gameActors.actor(1);
     var moved = false;
-    var timeSpent = CharUtils.getActionTime($gameActors._data[1]);
-    if (this.canPass(this.x, this.y, d)) {
+    let positionChanged = true;
+    var timeSpent = CharUtils.getActionTime(actor);
+    // check trap
+    if (actor.status.groundHoleTrapped) {
+      positionChanged = false;
+      moved = true;
+      $gamePlayer.setDirection(d);
+      if (Math.random() < 0.3) {
+        LogUtils.addLog(String.format(Message.display('climbOutSuccess')
+          , LogUtils.getCharName(actor)));
+        actor.status.groundHoleTrapped = false;
+      } else {
+        LogUtils.addLog(String.format(Message.display('climbOutFailed')
+          , LogUtils.getCharName(actor)));
+      }
+    } else if (this.canPass(this.x, this.y, d)) {
       if (Input.isPressed('shift')) {
-        if ($gameActors._data[1]._tp < 10) {
+        if (actor._tp < 10) {
           MapUtils.displayMessage('你跑不動了...');
           return;
         } else {
-          $gameActors._data[1].gainTp(-10);
+          actor.gainTp(-10);
           timeSpent /= 2;
           playerDashed = true;
         }
       }
       this._followers.updateMove();
       moved = true;
-    } else if ($gameActors._data[1].status.blindCount > 0) {
+    } else if (actor.status.blindCount > 0) {
       let coordinate = Input.getNextCoordinate($gamePlayer, d.toString());
       if (!$gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].isExplored) {
         $gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].isExplored = true;
@@ -2039,30 +2067,47 @@
         moved = true;
       }
     }
-    Game_Character.prototype.moveStraight.call(this, d);
+    if (positionChanged) {
+      Game_Character.prototype.moveStraight.call(this, d);
+    }
     if (moved) {
-      playerMoved = true;
+      actor.moved = true;
       TimeUtils.afterPlayerMoved(timeSpent);
     }
   };
 
   Game_Player.prototype.moveDiagonally = function (horz, vert) {
+    let actor = $gameActors.actor(1);
     var moved = false;
-    var timeSpent = CharUtils.getActionTime($gameActors._data[1]);
-    if (this.canPassDiagonally(this.x, this.y, horz, vert)) {
+    let positionChanged = true;
+    var timeSpent = CharUtils.getActionTime(actor);
+    // check trap
+    if (actor.status.groundHoleTrapped) {
+      positionChanged = false;
+      moved = true;
+      $gamePlayer.setDirection(horz);
+      if (Math.random() < 0.3) {
+        LogUtils.addLog(String.format(Message.display('climbOutSuccess')
+          , LogUtils.getCharName(actor)));
+        actor.status.groundHoleTrapped = false;
+      } else {
+        LogUtils.addLog(String.format(Message.display('climbOutFailed')
+          , LogUtils.getCharName(actor)));
+      }
+    } else if (this.canPassDiagonally(this.x, this.y, horz, vert)) {
       if (Input.isPressed('shift')) {
-        if ($gameActors._data[1]._tp < 10) {
+        if (actor._tp < 10) {
           MapUtils.displayMessage('你跑不動了...');
           return;
         } else {
-          $gameActors._data[1].gainTp(-10);
+          actor.gainTp(-10);
           timeSpent /= 2;
           playerDashed = true;
         }
       }
       this._followers.updateMove();
       moved = true;
-    } else if ($gameActors._data[1].status.blindCount > 0) {
+    } else if (actor.status.blindCount > 0) {
       let d;
       if (horz == 4) {
         if (vert == 8) {
@@ -2091,9 +2136,11 @@
         moved = true;
       }
     }
-    Game_Character.prototype.moveDiagonally.call(this, horz, vert);
+    if (positionChanged) {
+      Game_Character.prototype.moveDiagonally.call(this, horz, vert);
+    }
     if (moved) {
-      playerMoved = true;
+      actor.moved = true;
       TimeUtils.afterPlayerMoved(timeSpent);
     }
   };
@@ -2307,26 +2354,42 @@
     this.mob.attacked = false;
     // check if player is nearby
     let distance = MapUtils.getDistance(this._x, this._y, $gamePlayer._x, $gamePlayer._y);
-    if (distance < 20) {
-      // only update mobs in distance (for performance issue)
-      if (this.mob.status.afraidCount > 0) {
-        this.moveAwayFromCharacter($gamePlayer);
-      } else if (!CharUtils.canSee(this.mob, $gameActors._data[1])) {
-        // TODO: mob can attack when blind and try to walk into a character
-        this.moveRandom();
-      } else if (this.mob.status.paralyzeCount > 0 || this.mob.status.sleepCount > 0) {
-        // do nothing
-      } else if (distance < 2) {
-        this.turnTowardCharacter($gamePlayer);
-        if (this.meleeAction($gamePlayer)) {
-          this.mob.attacked = true;
+    if (distance < 20) { // only update mobs in distance (for performance issue)
+      // check trap
+      if (this.mob.status.groundHoleTrapped) {
+        this.mob.moved = true;
+        if (Math.random() < 0.3) {
+          if (CharUtils.playerCanSeeChar(this)) {
+            LogUtils.addLog(String.format(Message.display('climbOutSuccess')
+              , LogUtils.getCharName(this.mob)));
+          }
+          this.mob.status.groundHoleTrapped = false;
         } else {
-          LogUtils.addLog(String.format(Message.display('attackOutOfEnergy'), LogUtils.getCharName(this.mob)));
+          if (CharUtils.playerCanSeeChar(this)) {
+            LogUtils.addLog(String.format(Message.display('climbOutFailed')
+              , LogUtils.getCharName(this.mob)));
+          }
         }
-      } else if (distance < this.mob.awareDistance) {
-        this.moveTowardCharacter($gamePlayer);
       } else {
-        this.moveRandom();
+        if (this.mob.status.afraidCount > 0) {
+          this.moveAwayFromCharacter($gamePlayer);
+        } else if (!CharUtils.canSee(this.mob, $gameActors._data[1])) {
+          // TODO: mob can attack when blind and try to walk into a character
+          this.moveRandom();
+        } else if (this.mob.status.paralyzeCount > 0 || this.mob.status.sleepCount > 0) {
+          // do nothing
+        } else if (distance < 2) {
+          this.turnTowardCharacter($gamePlayer);
+          if (this.meleeAction($gamePlayer)) {
+            this.mob.attacked = true;
+          } else if (CharUtils.playerCanSeeChar(this)) {
+            LogUtils.addLog(String.format(Message.display('attackOutOfEnergy'), LogUtils.getCharName(this.mob)));
+          }
+        } else if (distance < this.mob.awareDistance) {
+          this.moveTowardCharacter($gamePlayer);
+        } else {
+          this.moveRandom();
+        }
       }
       // store data back to $dataMap
       this.updateDataMap();
@@ -3080,7 +3143,7 @@
 
   TrapUtils.generateTraps = function(mapId, floors) {
     // TODO: implement trap generating mechanism
-    let trapCounts = Math.floor(floors.length * 0.005);
+    let trapCounts = Math.round(floors.length * 0.01);
     for (let i = 0; i < trapCounts; i++) {
       while (true) {
         let floor = floors[Math.randomInt(floors.length)];
@@ -3099,7 +3162,7 @@
     for (let id in evts) {
       let evt = evts[id];
       if (evt.type == 'TRAP' && evt.trap.lastTriggered != target) {
-        if ($gameVariables[$gameMap._mapId].mapData[evt._x][evt._y].isVisible) {
+        if (CharUtils.playerCanSeeChar(target)) {
           evt.trap.isRevealed = true;
         }
         evt.triggered(target);
@@ -3146,17 +3209,13 @@
   }
 
   TrapUtils.canPlaceTrap = function(mapId, x, y) {
-    let neighbors = MapUtils.findAdjacentBlocks({_x: x, _y: y});
-    let floors = 0;
-    for (let i in neighbors) {
-      if (MapUtils.isTilePassable(mapId, x, y, $gameVariables[mapId].mapData[x][y].originalTile)) {
-        floors++;
-      }
+    if ((!MapUtils.isTilePassable(mapId, x - 1, y, $gameVariables[mapId].mapData[x - 1][y].originalTile)
+      && !MapUtils.isTilePassable(mapId, x + 1, y, $gameVariables[mapId].mapData[x + 1][y].originalTile))
+      || (!MapUtils.isTilePassable(mapId, x, y - 1, $gameVariables[mapId].mapData[x][y - 1].originalTile)
+      && !MapUtils.isTilePassable(mapId, x, y + 1, $gameVariables[mapId].mapData[x][y + 1].originalTile))) {
+      return false;
     }
-    if (floors > 2) {
-      return true;
-    }
-    return false;
+    return true;
   }
 
   //-----------------------------------------------------------------------------------
@@ -3230,7 +3289,7 @@
   Trap_Spike.prototype.initStatus = function (event) {
     Game_Trap.prototype.initStatus.call(this, event);
     this.trap.trapClass = 'Trap_Spike';
-    this.trap.imageData = new ImageData('Collections3', 6, 1, 8);
+    this.trap.imageData = new ImageData('!Other1', 4, 1, 8);
     this.trap.name = '尖刺陷阱';
   }
 
@@ -3238,10 +3297,12 @@
     let damage = dice(2, 6);
     let realTarget = BattleUtils.getRealTarget(target);
     realTarget._hp -= damage;
-    TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 11));
-    TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
-    LogUtils.addLog(String.format(Message.display('spikeTrapTriggered')
-      , LogUtils.getCharName(realTarget), damage));
+    if (CharUtils.playerCanSeeChar(target)) {
+      TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 11));
+      TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
+      LogUtils.addLog(String.format(Message.display('spikeTrapTriggered')
+        , LogUtils.getCharName(realTarget), damage));
+    }
     BattleUtils.checkTargetAlive(null, realTarget, target);
   }
 
@@ -3268,13 +3329,77 @@
     // TODO: check if target able to teleport
     let scroll = new Scroll_Teleport();
     let realTarget = BattleUtils.getRealTarget(target);
-    LogUtils.addLog(String.format(Message.display('teleportTrapTriggered'), LogUtils.getCharName(realTarget)));
+    if (CharUtils.playerCanSeeChar(target)) {
+      LogUtils.addLog(String.format(Message.display('teleportTrapTriggered'), LogUtils.getCharName(realTarget)));
+    }
     scroll.onRead(target);
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Trap_GroundHole
+  //
+  // class for ground hole trap
+
+  Trap_GroundHole = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Trap_GroundHole.prototype = Object.create(Game_Trap.prototype);
+  Trap_GroundHole.prototype.constructor = Trap_GroundHole;
+
+  Trap_GroundHole.prototype.initStatus = function (event) {
+    Game_Trap.prototype.initStatus.call(this, event);
+    this.trap.trapClass = 'Trap_GroundHole';
+    this.trap.imageData = new ImageData('!Door2', 1, 0, 4);
+    this.trap.name = '地洞陷阱';
+  }
+
+  Trap_GroundHole.prototype.triggered = function(target) {
+    let damage = dice(1, 5);
+    let realTarget = BattleUtils.getRealTarget(target);
+    realTarget._hp -= damage;
+    realTarget.status.groundHoleTrapped = true;
+    if (CharUtils.playerCanSeeChar(target)) {
+      TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
+      LogUtils.addLog(String.format(Message.display('groundHoleTrapTriggered')
+        , LogUtils.getCharName(realTarget), damage));
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Trap_MagicEffect
+  //
+  // class for magic effect trap, can give various effects by several turns
+
+  Trap_MagicEffect = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Trap_MagicEffect.prototype = Object.create(Game_Trap.prototype);
+  Trap_MagicEffect.prototype.constructor = Trap_MagicEffect;
+
+  Trap_MagicEffect.prototype.initStatus = function (event) {
+    Game_Trap.prototype.initStatus.call(this, event);
+    this.trap.trapClass = 'Trap_MagicEffect';
+    this.trap.imageData = new ImageData('!Door2', 4, 0, 6);
+    this.trap.name = '魔法陷阱';
+  }
+
+  Trap_MagicEffect.prototype.triggered = function(target) {
+    if (CharUtils.playerCanSeeChar(target)) {
+      let realTarget = BattleUtils.getRealTarget(target);
+      LogUtils.addLog(String.format(Message.display('magicTrapTriggered')
+        , LogUtils.getCharName(realTarget)));
+    }
+    let effectPotion = new ItemUtils.potionTemplates[getRandomInt(5)]();
+    effectPotion.onQuaff(target);
   }
 
   // put all trap templates into list
   TrapUtils.trapTemplates[0] = Trap_Spike;
   TrapUtils.trapTemplates[1] = Trap_Teleport;
+  TrapUtils.trapTemplates[2] = Trap_GroundHole;
+  TrapUtils.trapTemplates[3] = Trap_MagicEffect;
 
   //-----------------------------------------------------------------------------------
   // Input
@@ -3381,15 +3506,16 @@
     // normal moves (on Scene_Map)
     if (SceneManager._scene instanceof Scene_Map && !$gameMessage.isBusy() && $gamePlayer.canMove()
       && SceneManager.isCurrentSceneStarted()) {
+      let player = $gameActors.actor(1);
       if ($gameVariables[0].directionalFlag) {
         // choose direction mode
         let coordinate = Input.getNextCoordinate($gamePlayer, event.code);
         let x = coordinate.x, y = coordinate.y;
         if (!(x == -1 && y == -1)) {
-          playerMoved = $gameVariables[0].directionalAction($gamePlayer, x, y);
+          player.moved = $gameVariables[0].directionalAction($gamePlayer, x, y);
         }
         // check if player moved
-        if (playerMoved) {
+        if (player.moved) {
           // use async strategy, because $gameSelfSwitches needs time to update to event
           setTimeout('TimeUtils.afterPlayerMoved();', 100);
           $gameVariables[0].messageFlag = false;
@@ -3466,7 +3592,7 @@
             } else {
               LogUtils.addLog(Message.display('goUpstair'));
             }
-            playerMoved = true;
+            player.moved = true;
           }
           break;
         case '>': // go down
@@ -3481,7 +3607,7 @@
           if (stair) {
             MapUtils.transferCharacter($gamePlayer);
             LogUtils.addLog(Message.display('goDownstair'));
-            playerMoved = true;
+            player.moved = true;
           } else {
             MapUtils.displayMessage("這裡沒有往下的樓梯.");
           }
@@ -3498,7 +3624,7 @@
           if (stair) {
             MapUtils.transferCharacter($gamePlayer);
             LogUtils.addLog(Message.display('goUpstair'));
-            playerMoved = true;
+            player.moved = true;
           } else {
             MapUtils.displayMessage("這裡沒有往上的樓梯.");
           }
@@ -3591,6 +3717,9 @@
           break;
         case 'C': // cast magic
           SceneManager.push(Scene_CastMagic);
+          break;
+        case 'S': // call save/load menu
+          SceneManager.push(Scene_Save);
           break;
       }
     }
@@ -3739,9 +3868,9 @@
         CharUtils.updateStatus($gamePlayer);
         TimeUtils.playAnime();
         // deal with energy calculation
-        if (playerDashed || playerAttacked) {
+        if (playerDashed || player.attacked) {
           // huge movement, do nothing
-        } else if (playerMoved) {
+        } else if (player.moved) {
           player.gainTp(3);
         } else {
           // player rest
@@ -3749,8 +3878,8 @@
         }
         MapUtils.refreshMap();
 
-        playerAttacked = false;
-        playerMoved = false;
+        player.attacked = false;
+        player.moved = false;
         playerDashed = false;
       }
     } while (player.status.paralyzeCount > 0 || player.status.sleepCount > 0); // check if player unable to move
@@ -3873,7 +4002,7 @@
     TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 16));
     BattleUtils.checkTargetAlive(realSrc, realTarget, target);
     if (src == $gamePlayer) {
-      playerAttacked = true;
+      $gameActors.actor(1).attacked = true;
       TimeUtils.afterPlayerMoved();
     }
     return true;
@@ -3899,6 +4028,8 @@
   ItemUtils = function () {
     throw new Error('This is a static class');
   }
+
+  ItemUtils.potionTemplates = [];
 
   ItemUtils.tempObjStack = []; // for get/drop items log
   ItemUtils.displayObjStack = function(stack) {
@@ -4653,6 +4784,22 @@
     }
   }
 
+  // store all potion templates
+  // harmful potions
+  ItemUtils.potionTemplates[0] = Potion_Blind;
+  ItemUtils.potionTemplates[1] = Potion_Paralyze;
+  ItemUtils.potionTemplates[2] = Potion_Sleep;
+  ItemUtils.potionTemplates[3] = Potion_Acid;
+  ItemUtils.potionTemplates[4] = Potion_Poison;
+  // non-harmful potions
+  ItemUtils.potionTemplates[5] = Potion_Heal;
+  ItemUtils.potionTemplates[6] = Potion_Mana;
+  ItemUtils.potionTemplates[7] = Potion_Speed;
+  ItemUtils.potionTemplates[8] = Potion_Growth;
+  ItemUtils.potionTemplates[9] = Potion_LevelUp;
+  ItemUtils.potionTemplates[10] = Potion_Invisible;
+  ItemUtils.potionTemplates[11] = Potion_SeeInvisible;
+
   //-----------------------------------------------------------------------------------
   // Scroll_Identify
   //
@@ -4865,7 +5012,7 @@
     }
     let realUser = BattleUtils.getRealTarget(user);
     // disappear
-    if (user != $gamePlayer && $gameVariables[$gameMap._mapId].mapData[user._x][user._y].isVisible) {
+    if (user != $gamePlayer && CharUtils.playerCanSeeChar(user)) {
       LogUtils.addLog(String.format(Message.display('seeTeleportAway'), LogUtils.getCharName(realUser)));
     }
     if ($gameVariables[$gameMap._mapId].mapData[user._x][user._y].isVisible) {
@@ -4885,7 +5032,7 @@
     MapUtils.refreshMap();
 
     // appear
-    if (user != $gamePlayer && $gameVariables[$gameMap._mapId].mapData[user._x][user._y].isVisible) {
+    if (user != $gamePlayer && CharUtils.playerCanSeeChar(user)) {
       LogUtils.addLog(String.format(Message.display('seeTeleportAppear'), LogUtils.getCharName(realUser)));
     }
     ItemUtils.identifyObject(this);
@@ -5150,6 +5297,7 @@
     if (!SkillUtils.canPerform(realSrc, skill)) {
       return false;
     }
+    realSrc.attacked = true;
     realSrc._mp -= skill.mpCost;
     realSrc._tp -= skill.tpCost;
 
