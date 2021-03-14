@@ -3350,7 +3350,7 @@
   Trap_GroundHole.prototype.initStatus = function (event) {
     Game_Trap.prototype.initStatus.call(this, event);
     this.trap.trapClass = 'Trap_GroundHole';
-    this.trap.imageData = new ImageData('!Door2', 1, 0, 4);
+    this.trap.imageData = new ImageData('Outside_B1', 4, 1, 4);
     this.trap.name = '地洞陷阱';
   }
 
@@ -3934,9 +3934,31 @@
     }
   }
 
+  BattleUtils.rollWeaponDamage = function(formula) {
+    if (Number.isInteger(formula)) {
+      return formula;
+    }
+    let temps = formula.split('d');
+    if (temps.length == 1) {
+      // no dice
+      return Number.parseInt(formula);
+    }
+    let splitter = (temps[1].includes('+')) ? '+' : '-';
+    let temps2 = temps[1].split(splitter);
+    let bonus = (temps2[1]) ? Number.parseInt(temps2[1]) : 0;
+    if (splitter == '-') {
+      bonus *= -1;
+    }
+    let result = dice(Number.parseInt(temps[0]), Number.parseInt(temps2[0])) + bonus;
+    if (result < 0) {
+      result = 0;
+    }
+    return result;
+  }
+
   BattleUtils.calcPhysicalDamage = function(realSrc, realTarget, weaponBonus, skillAmplify) {
     // calculate attack damage
-    let weaponDamage = (realSrc.param(10) + weaponBonus) * (1 + realSrc.param(2) / 200);
+    let weaponDamage = (BattleUtils.rollWeaponDamage(realSrc.param(10)) + weaponBonus) * (1 + realSrc.param(2) / 200);
     let attrDamage = 2 * (realSrc.level / 4 + realSrc.param(2) + realSrc.param(7) / 3);
     let attrDef = (realTarget.level + realTarget.param(3)) / 2 + realTarget.param(6) / 5;
     let equipDef = (4000 + realTarget.param(8)) / (4000 + realTarget.param(8) * 10);
@@ -4240,9 +4262,12 @@
             break;
           case 2:
             result += '武器威力';
+            result += attr.value + ' ';
             break;
         }
-        result += ItemUtils.showNumberWithSign(Math.round(attr.value * 100)) + ' ';
+        if (attr.dataId != 2) {
+          result += ItemUtils.showNumberWithSign(Math.round(attr.value * 100)) + ' ';
+        }
       }
     }
     item.description = item.description.split('\n')[0] + result;
@@ -4342,11 +4367,17 @@
       let toCheck = equip.traits[id];
       if (toCheck.code == 22) {
         if (prop.type == 'WEAPON' && toCheck.dataId == 2) {
-          ItemUtils.modifyAttr(toCheck, value);
+          let weaponBonus = ItemUtils.getEnchantment({name: toCheck.value});
+          weaponBonus += value;
+          toCheck.value =  toCheck.value.split(/\+|-/)[0];
+          if (weaponBonus > 0) {
+            toCheck.value += '+' + weaponBonus;
+          } else if (weaponBonus < 0) {
+            toCheck.value += weaponBonus;
+          }
         } else if (prop.type == 'ARMOR' && toCheck.dataId == 0) {
           ItemUtils.modifyAttr(toCheck, value);
         }
-        break;
       }
     }
     ItemUtils.updateEquipDescription(equip);
@@ -4386,8 +4417,11 @@
   Dog_Tooth.prototype.initialize = function () {
     ItemTemplate.prototype.initialize.call(this, $dataWeapons[11]);
     // randomize attributes
-    let modifier = getRandomIntRange(1, 4);
-    ItemUtils.modifyAttr(this.traits[2], modifier);
+    let modifier = getRandomIntRange(0, 3);
+    this.traits[2].value = '1d3';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    }
     ItemUtils.updateEquipDescription(this);
     // randomize bucState
     this.bucState = getRandomIntRange(-1, 2);
@@ -5693,8 +5727,24 @@
       var minValue = this.paramMin(paramId);
       return Math.round(value.clamp(minValue, maxValue));
     } else {
-      return Math.round(this.xparam(paramId - 8) * 100);
+      let attrParamId = paramId - 8;
+      return (attrParamId == 2) ? this.xparam(attrParamId) : Math.round(this.xparam(paramId - 8) * 100);
     }
+  };
+
+  // modify this to show weapon dices
+  Game_BattlerBase.prototype.xparam = function(xparamId) {
+    if (xparamId == 2 && this.traits[2]) {
+      return this.traits(Game_BattlerBase.TRAIT_XPARAM)[2].value;
+    } else {
+      return this.traitsSum(Game_BattlerBase.TRAIT_XPARAM, xparamId);
+    }
+  };
+
+  Game_BattlerBase.prototype.traitsSum = function(code, id) {
+    return this.traitsWithId(code, id).reduce(function(r, trait) {
+      return (code == 22 && id == 2) ? trait.value : r + trait.value;
+    }, 0);
   };
 
   // add properties to Player/Mobs
