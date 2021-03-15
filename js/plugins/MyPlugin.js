@@ -170,6 +170,8 @@
     result.items = [];
     // food
     result.items[11] = new ImageData('Meat', 0, 2, 2);
+    // material
+    result.items[71] = new ImageData('Collections3', 0, 1, 2); // feather
     // potion
     result.items[31] = new ImageData('Collections1', 0, 0, 6, '紅色燒瓶');
     result.items[32] = new ImageData('Collections1', 0, 1, 6, '橙色燒瓶');
@@ -347,6 +349,7 @@
   CharUtils = function () {
     throw new Error('This is a static class');
   };
+  CharUtils.mobTemplates = []; // save all mobs
 
   CharUtils.baseHp = 35;
 
@@ -506,6 +509,21 @@
       // target rest
       realTarget.gainTp(6);
     }
+  }
+
+  CharUtils.spawnMob = function(dungeonLevel) {
+    let pool = [];
+    for (let id in CharUtils.mobTemplates) {
+      let mobClass = CharUtils.mobTemplates[id];
+      if (dungeonLevel >= mobClass.baseDungeonLevel
+        && (getRandomInt(100) > (dungeonLevel - mobClass.baseDungeonLevel) * 10)) {
+        pool.push(mobClass);
+      }
+    }
+    if (pool.length > 0) {
+      return pool[getRandomInt(pool.length)];
+    }
+    return null;
   }
 
   //-----------------------------------------------------------------------------------
@@ -1854,8 +1872,10 @@
       while (true) {
         let floor = floors[Math.randomInt(floors.length)];
         if (MapUtils.isTileAvailableForMob(mapId, floor.x, floor.y)) {
-          // TODO: implement mob generating method
-          new Dog(floor.x, floor.y);
+          let mobClass = CharUtils.spawnMob(mapId);
+          if (mobClass) {
+            new mobClass(floor.x, floor.y);
+          }
           break;
         }
       }
@@ -2598,11 +2618,7 @@
 
   Bat.prototype.looting = function () {
     var lootings = [];
-    // corpse left
-    var corpse = cloneObject($dataItems[11]);
-    corpse.name = this.mob.name() + "的" + corpse.name;
-    corpse.nutrition = 100;
-    lootings.push(corpse);
+    // TODO: implements Bat looting
 
     for (var id in lootings) {
       ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
@@ -2617,6 +2633,7 @@
   Chick = function () {
     this.initialize.apply(this, arguments);
   }
+  Chick.baseDungeonLevel = 1;
 
   Chick.prototype = Object.create(Game_Mob.prototype);
   Chick.prototype.constructor = Chick;
@@ -2632,11 +2649,9 @@
 
   Chick.prototype.looting = function () {
     var lootings = [];
-    // corpse left
-    var corpse = cloneObject($dataItems[11]);
-    corpse.name = this.mob.name() + "的" + corpse.name;
-    corpse.nutrition = 100;
-    lootings.push(corpse);
+    if (getRandomInt(10) < 3) {
+      lootings.push(new Chicken_Meat());
+    }
 
     for (var id in lootings) {
       ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
@@ -2645,6 +2660,7 @@
       this.dropSoul(101);
     }
   }
+  CharUtils.mobTemplates.push(Chick);
 
   //-----------------------------------------------------------------------------------
   // Dog
@@ -2654,6 +2670,7 @@
   Dog = function () {
     this.initialize.apply(this, arguments);
   }
+  Dog.baseDungeonLevel = 1;
 
   Dog.prototype = Object.create(Game_Mob.prototype);
   Dog.prototype.constructor = Dog;
@@ -2672,23 +2689,22 @@
   Dog.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(10) < 3) {
-      // corpse left
-      var corpse = cloneObject($dataItems[11]);
-      corpse.name = this.mob.name() + "的" + corpse.name;
-      corpse.nutrition = 100;
-      lootings.push(corpse);
+      lootings.push(new Dog_Meat());
     }
-    if (getRandomInt(10) < 3) {
+    if (getRandomInt(100) < 25) {
       lootings.push(new Dog_Skin());
     }
-    if (getRandomInt(10) < 3) {
+    if (getRandomInt(100) < 25) {
       lootings.push(new Dog_Tooth());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Dog_Meat());
     }
 
     for (var id in lootings) {
       ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
     }
-    if (getRandomInt(100) < 100) {
+    if (getRandomInt(100) < 10) {
       this.dropSoul(102);
     }
   }
@@ -2704,6 +2720,53 @@
       return BattleUtils.meleeAttack(this, target);
     }
   }
+  CharUtils.mobTemplates.push(Dog);
+
+  //-----------------------------------------------------------------------------------
+  // Rooster
+  //
+  // Game_Mob id 11
+
+  Rooster = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Rooster.baseDungeonLevel = 3;
+
+  Rooster.prototype = Object.create(Game_Mob.prototype);
+  Rooster.prototype.constructor = Rooster;
+
+  Rooster.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData);
+    this.setImage('Nature', 2);
+    if (!fromData) {
+      this.mob.awareDistance = 8;
+      this.mob.mobClass = 'Rooster';
+    }
+  }
+
+  Rooster.prototype.looting = function () {
+    var lootings = [];
+    if (getRandomInt(10) < 3) {
+      lootings.push(new Chicken_Meat());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Rooster_Tooth());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Rooster_Claw());
+    }
+    if (getRandomInt(100) < 50) {
+      lootings.push(new Feather());
+    }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(101);
+    }
+  }
+  CharUtils.mobTemplates.push(Rooster);
 
   //-----------------------------------------------------------------------------------
   // Game_Door
@@ -4169,7 +4232,7 @@
         } else {
           return false;
         }
-      case 'FOOD': case 'SKILL': case 'SOUL':
+      case 'FOOD': case 'SKILL': case 'SOUL': case 'MATERIAL':
         // no need to identify
         return true;
       default:
@@ -4192,11 +4255,8 @@
         case 'POTION': case 'SCROLL': case 'BOOK':
           displayName = $gameVariables[0].itemImageData.items[item.id].name;
           break;
-        case 'WEAPON':
-          displayName = $dataWeapons[item.id].name;
-          break;
-        case 'ARMOR':
-          displayName = $dataArmors[item.id].name;
+        case 'WEAPON': case 'ARMOR':
+          displayName = item.templateName;
           break;
       }
     }
@@ -4298,6 +4358,12 @@
       switch (prop.subType) {
         case 'TOOTH':
           imageData = new ImageData('Collections3', 1, 2, 6);
+          break;
+        case 'BONE':
+          imageData = new ImageData('Collections3', 0, 2, 6);
+          break;
+        case 'CLAW':
+          imageData = new ImageData('Collections3', 0, 0, 6);
           break;
       }
     } else if (DataManager.isArmor(obj)) {
@@ -4403,9 +4469,65 @@
   };
 
   //-----------------------------------------------------------------------------------
+  // Feather
+  //
+  // type: MATERIAL
+
+  Feather = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Feather.prototype = Object.create(ItemTemplate.prototype);
+  Feather.prototype.constructor = Feather;
+
+  Feather.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[71]);
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Dog_Meat
+  //
+  // type: FOOD
+
+  Dog_Meat = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Dog_Meat.prototype = Object.create(ItemTemplate.prototype);
+  Dog_Meat.prototype.constructor = Dog_Meat;
+
+  Dog_Meat.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[11]);
+    this.name = '狗肉';
+    this.description = '在一些地區也算美食';
+    this.templateName = this.name;
+    this.nutrition = 150;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Chicken_Meat
+  //
+  // type: FOOD
+
+  Chicken_Meat = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Chicken_Meat.prototype = Object.create(ItemTemplate.prototype);
+  Chicken_Meat.prototype.constructor = Chicken_Meat;
+
+  Chicken_Meat.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[11]);
+    this.name = '雞肉';
+    this.description = '好吃的雞肉';
+    this.templateName = this.name;
+    this.nutrition = 200;
+  }
+
+  //-----------------------------------------------------------------------------------
   // Dog_Tooth
   //
-  // weapon id 11
+  // weapon type: TOOTH
 
   Dog_Tooth = function() {
     this.initialize.apply(this, arguments);
@@ -4416,6 +4538,9 @@
 
   Dog_Tooth.prototype.initialize = function () {
     ItemTemplate.prototype.initialize.call(this, $dataWeapons[11]);
+    this.name = '犬牙';
+    this.description = '剛長出來不久的牙齒';
+    this.templateName = this.name;
     // randomize attributes
     let modifier = getRandomIntRange(0, 3);
     this.traits[2].value = '1d3';
@@ -4429,9 +4554,93 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Rooster_Tooth
+  //
+  // weapon type: TOOTH
+
+  Rooster_Tooth = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Rooster_Tooth.prototype = Object.create(ItemTemplate.prototype);
+  Rooster_Tooth.prototype.constructor = Rooster_Tooth;
+
+  Rooster_Tooth.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataWeapons[11]);
+    this.name = '雞喙';
+    this.description = '被啄到會很痛';
+    this.templateName = this.name;
+    // randomize attributes
+    let modifier = getRandomIntRange(0, 3);
+    this.traits[2].value = '1d5';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    }
+    ItemUtils.updateEquipDescription(this);
+    // randomize bucState
+    this.bucState = getRandomIntRange(-1, 2);
+    ItemUtils.updateEquipName(this);
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Dog_Bone
+  //
+  // weapon type: BONE
+
+  Dog_Bone = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Dog_Bone.prototype = Object.create(ItemTemplate.prototype);
+  Dog_Bone.prototype.constructor = Dog_Bone;
+
+  Dog_Bone.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataWeapons[12]);
+    this.name = '犬骨';
+    this.description = '棒狀的骨頭';
+    this.templateName = this.name;
+    // randomize attributes
+    this.traits[2].value = '1';
+    // TODO: implement magic power amplifier
+    ItemUtils.updateEquipDescription(this);
+    // randomize bucState
+    this.bucState = getRandomIntRange(-1, 2);
+    ItemUtils.updateEquipName(this);
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Rooster_Claw
+  //
+  // weapon type: CLAW
+
+  Rooster_Claw = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Rooster_Claw.prototype = Object.create(ItemTemplate.prototype);
+  Rooster_Claw.prototype.constructor = Rooster_Claw;
+
+  Rooster_Claw.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataWeapons[13]);
+    this.name = '雞爪';
+    this.description = '調理後會很好吃?';
+    this.templateName = this.name;
+    // randomize attributes
+    let modifier = getRandomIntRange(0, 3);
+    this.traits[2].value = '2d2';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    }
+    ItemUtils.updateEquipDescription(this);
+    // randomize bucState
+    this.bucState = getRandomIntRange(-1, 2);
+    ItemUtils.updateEquipName(this);
+  }
+
+  //-----------------------------------------------------------------------------------
   // Dog_Skin
   //
-  // armor id 11
+  // armor type: SKIN
 
   Dog_Skin = function() {
     this.initialize.apply(this, arguments);
@@ -4442,6 +4651,9 @@
 
   Dog_Skin.prototype.initialize = function () {
     ItemTemplate.prototype.initialize.call(this, $dataArmors[11]);
+    this.name = '犬皮';
+    this.description = '髒兮兮的薄皮';
+    this.templateName = this.name;
     // randomize attributes
     let modifier = getRandomIntRange(0, 3);
     ItemUtils.modifyAttr(this.traits[0], modifier);
