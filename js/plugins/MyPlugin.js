@@ -167,29 +167,33 @@
   // generate image data mapping at first time
   function generateImageData() {
     var result = {};
+    // potion
+    result.potions = [];
+    result.potions.push(new ImageData('Collections1', 0, 0, 6, '紅色燒瓶'));
+    result.potions.push(new ImageData('Collections1', 0, 1, 6, '橙色燒瓶'));
+    result.potions.push(new ImageData('Collections1', 0, 2, 6, '黃色燒瓶'));
+    result.potions.push(new ImageData('Collections1', 1, 0, 6, '藍色燒瓶'));
+    result.potions.push(new ImageData('Collections1', 1, 1, 6, '紫色燒瓶'));
+    result.potions.push(new ImageData('Collections1', 1, 2, 6, '綠色燒瓶'));
+    result.potions.push(new ImageData('Collections1', 2, 0, 6, '灰色燒瓶'));
+    result.potions.push(new ImageData('Collections1', 2, 1, 6, '紅色試管'));
+    result.potions.push(new ImageData('Collections1', 2, 2, 6, '澄色試管'));
+    result.potions.push(new ImageData('Collections1', 3, 0, 6, '黃色試管'));
+    result.potions.push(new ImageData('Collections1', 3, 1, 6, '藍色試管'));
+    result.potions.push(new ImageData('Collections1', 3, 2, 6, '紫色試管'));
+    shuffle(result.potions, 0, result.potions.length - 1);
+
+    // scroll
+    result.scrolls = [];
+    for (let i = 0; i <= 8; i++) {
+      result.scrolls[i] = new ImageData('Collections3', 3, 1, 4, '卷軸: ' + genScrollName());
+    }
+
     result.items = [];
     // food
     result.items[11] = new ImageData('Meat', 0, 2, 2);
     // material
-    result.items[71] = new ImageData('Collections3', 0, 1, 2); // feather
-    // potion
-    result.items[31] = new ImageData('Collections1', 0, 0, 6, '紅色燒瓶');
-    result.items[32] = new ImageData('Collections1', 0, 1, 6, '橙色燒瓶');
-    result.items[33] = new ImageData('Collections1', 0, 2, 6, '黃色燒瓶');
-    result.items[34] = new ImageData('Collections1', 1, 0, 6, '藍色燒瓶');
-    result.items[35] = new ImageData('Collections1', 1, 1, 6, '紫色燒瓶');
-    result.items[36] = new ImageData('Collections1', 1, 2, 6, '綠色燒瓶');
-    result.items[37] = new ImageData('Collections1', 2, 0, 6, '灰色燒瓶');
-    result.items[38] = new ImageData('Collections1', 2, 1, 6, '紅色試管');
-    result.items[39] = new ImageData('Collections1', 2, 2, 6, '澄色試管');
-    result.items[40] = new ImageData('Collections1', 3, 0, 6, '黃色試管');
-    result.items[41] = new ImageData('Collections1', 3, 1, 6, '藍色試管');
-    result.items[42] = new ImageData('Collections1', 3, 2, 6, '紫色試管');
-    shuffle(result.items, 31, 42);
-    // scroll
-    for (let i = 51; i <= 58; i++) {
-      result.items[i] = new ImageData('Collections3', 3, 1, 4, '卷軸: ' + genScrollName());
-    }
+    result.items[12] = new ImageData('Collections3', 0, 1, 2); // feather
   
     result.weapons = [];
     // long sword
@@ -621,8 +625,8 @@
     $gameParty.gainItem(new Dog_Tooth(), 1);
     $gameParty.gainItem(new Dog_Skin(), 1);
 
-    $gameParty._items.push($dataItems[102]);
-    Soul_Obtained_Action.learnSkill(102);
+    $gameParty._items.push(new Soul_Bite());
+    Soul_Obtained_Action.learnSkill(Soul_Bite);
   }
 
   // message window defined here, because it can't be assigned to $gameVariables, will cause save/load crash
@@ -2595,26 +2599,18 @@
   }
 
   // soul related
-  Game_Mob.prototype.dropSoul = function(soulId) {
-    let souls = $gameParty._items.filter(function(item) {
-      return item.itypeId && item.itypeId == 2;
-    })
-    let obtained = false;
-    for (let id in souls) {
-      if (souls[id].id == soulId) {
-        obtained = true;
-        break;
-      }
-    }
+  Game_Mob.prototype.dropSoul = function(soulClass) {
+    let obtained = $gameParty.hasSoul(soulClass);
     if (!obtained) {
-      $gameParty._items.push($dataItems[soulId]);
-      Soul_Obtained_Action.learnSkill(soulId);
+      let soul = new soulClass();
+      $gameParty._items.push(soul);
+      Soul_Obtained_Action.learnSkill(soulClass);
       TimeUtils.animeQueue.push(new AnimeObject($gamePlayer, 'ANIME', 58));
-      let msg = String.format(Message.display('absorbSoul'), LogUtils.getCharName(this.mob), $dataItems[soulId].name);
+      let msg = String.format(Message.display('absorbSoul'), LogUtils.getCharName(this.mob), soul.name);
       LogUtils.addLog(msg);
       setTimeout(function() {
         MapUtils.displayMessage(msg);
-      }, 100);
+      }, 200);
     }
   }
   
@@ -2686,7 +2682,7 @@
       ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
     }
     if (getRandomInt(100) < 10) {
-      this.dropSoul(101);
+      this.dropSoul(Soul_Chick);
     }
   }
   CharUtils.mobTemplates.push(Chick);
@@ -2740,7 +2736,7 @@
       ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
     }
     if (getRandomInt(100) < 10) {
-      this.dropSoul(102);
+      this.dropSoul(Soul_Bite);
     }
   }
 
@@ -2804,7 +2800,7 @@
       ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
     }
     if (getRandomInt(100) < 10) {
-      this.dropSoul(101);
+      this.dropSoul(Soul_Chick);
     }
   }
   CharUtils.mobTemplates.push(Rooster);
@@ -4021,7 +4017,7 @@
       } else {
         target.looting();
         if (realSrc) {
-          let exp = $gameParty.hasSoul(101) ? Math.round(realTarget.exp() * 1.05) : realTarget.exp();
+          let exp = $gameParty.hasSoul(Soul_Chick) ? Math.round(realTarget.exp() * 1.05) : realTarget.exp();
           realSrc.gainExpLvGap(realTarget, exp);
         }
         // remove target event from $dataMap.events
@@ -4105,7 +4101,7 @@
         let prop = JSON.parse($dataSkills[skillId].note);
         let index = $gameActors.actor(1).skillExp[skillId].lv;
         weaponBonus = prop.effect[index].atk;
-        $gameActors.actor(1).skillExp[skillId].exp += ($gameParty.hasSoul(101)) ? 1.05 : 1;
+        $gameActors.actor(1).skillExp[skillId].exp += ($gameParty.hasSoul(Soul_Chick)) ? 1.05 : 1;
         if (prop.effect[index].levelUp != -1 && $gameActors.actor(1).skillExp[skillId].exp >= prop.effect[index].levelUp) {
           $gameMessage.add('你的' + $dataSkills[skillId].name + '更加熟練了!');
           $gameActors.actor(1).skillExp[skillId].lv++;
@@ -4157,6 +4153,7 @@
   }
 
   ItemUtils.potionTemplates = [];
+  ItemUtils.scrollTemplates = [];
 
   ItemUtils.tempObjStack = []; // for get/drop items log
   ItemUtils.displayObjStack = function(stack) {
@@ -4293,8 +4290,11 @@
     } else {
       let prop = JSON.parse(item.note);
       switch (prop.type) {
-        case 'POTION': case 'SCROLL': case 'BOOK':
-          displayName = $gameVariables[0].itemImageData.items[item.id].name;
+        case 'POTION':
+          displayName = $gameVariables[0].itemImageData.potions[item.id].name;
+          break;
+        case 'SCROLL':
+          displayName = $gameVariables[0].itemImageData.scrolls[item.id].name;
           break;
         case 'WEAPON': case 'ARMOR':
           displayName = item.templateName;
@@ -4392,10 +4392,20 @@
 
   ItemUtils.getImageData = function(obj) {
     let imageData;
+    let prop = JSON.parse(obj.note);
     if (DataManager.isItem(obj)) {
-      imageData = $gameVariables[0].itemImageData.items[obj.id];
+      switch (prop.type) {
+        case 'POTION':
+          imageData = $gameVariables[0].itemImageData.potions[obj.id];
+          break;
+        case 'SCROLL':
+          imageData = $gameVariables[0].itemImageData.scrolls[obj.id];
+          break;
+        default:
+          imageData = $gameVariables[0].itemImageData.items[obj.id];
+          break;
+      }
     } else if (DataManager.isWeapon(obj)) {
-      let prop = JSON.parse(obj.note);
       switch (prop.subType) {
         case 'TOOTH':
           imageData = new ImageData('Collections3', 1, 2, 6);
@@ -4408,7 +4418,6 @@
           break;
       }
     } else if (DataManager.isArmor(obj)) {
-      let prop = JSON.parse(obj.note);
       switch (prop.subType) {
         case 'SKIN':
           imageData = new ImageData('Collections3', 0, 1, 6);
@@ -4522,7 +4531,7 @@
   Feather.prototype.constructor = Feather;
 
   Feather.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataItems[71]);
+    ItemTemplate.prototype.initialize.call(this, $dataItems[12]);
   }
 
   //-----------------------------------------------------------------------------------
@@ -4716,7 +4725,10 @@
   Potion_Heal.prototype.constructor = Potion_Heal;
 
   Potion_Heal.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataItems[31]);
+    ItemTemplate.prototype.initialize.call(this, $dataItems[6]);
+    this.id = 0;
+    this.name = '治療藥水';
+    this.description = '回復些許生命力';
   }
 
   Potion_Heal.prototype.onQuaff = function(user) {
@@ -4736,7 +4748,7 @@
   //-----------------------------------------------------------------------------------
   // Potion_Mana
   //
-  // item id 32
+  // potion id 1
 
   Potion_Mana = function() {
     this.initialize.apply(this, arguments);
@@ -4746,7 +4758,10 @@
   Potion_Mana.prototype.constructor = Potion_Mana;
 
   Potion_Mana.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataItems[32]);
+    ItemTemplate.prototype.initialize.call(this, $dataItems[6]);
+    this.id = 1;
+    this.name = '魔力藥水';
+    this.description = '回復些許魔力';
   }
 
   Potion_Mana.prototype.onQuaff = function(user) {
@@ -4766,7 +4781,7 @@
   //-----------------------------------------------------------------------------------
   // Potion_Blind
   //
-  // item id 33
+  // potion id 2
 
   Potion_Blind = function() {
     this.initialize.apply(this, arguments);
@@ -4776,7 +4791,10 @@
   Potion_Blind.prototype.constructor = Potion_Blind;
 
   Potion_Blind.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataItems[33]);
+    ItemTemplate.prototype.initialize.call(this, $dataItems[6]);
+    this.id = 2;
+    this.name = '失明藥水';
+    this.description = '暫時喪失視力';
   }
 
   Potion_Blind.prototype.onQuaff = function(user) {
@@ -4797,7 +4815,7 @@
   //-----------------------------------------------------------------------------------
   // Potion_Paralyze
   //
-  // item id 34
+  // potion id 3
 
   Potion_Paralyze = function() {
     this.initialize.apply(this, arguments);
@@ -4807,7 +4825,10 @@
   Potion_Paralyze.prototype.constructor = Potion_Paralyze;
 
   Potion_Paralyze.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataItems[34]);
+    ItemTemplate.prototype.initialize.call(this, $dataItems[6]);
+    this.id = 3;
+    this.name = '麻痺藥水';
+    this.description = '暫時麻痺無法行動';
   }
 
   Potion_Paralyze.prototype.onQuaff = function(user) {
@@ -4825,7 +4846,7 @@
   //-----------------------------------------------------------------------------------
   // Potion_Sleep
   //
-  // item id 35
+  // potion id 4
 
   Potion_Sleep = function() {
     this.initialize.apply(this, arguments);
@@ -4835,7 +4856,10 @@
   Potion_Sleep.prototype.constructor = Potion_Sleep;
 
   Potion_Sleep.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataItems[35]);
+    ItemTemplate.prototype.initialize.call(this, $dataItems[6]);
+    this.id = 4;
+    this.name = '催眠藥水';
+    this.description = '陷入沉睡';
   }
 
   Potion_Sleep.prototype.onQuaff = function(user) {
@@ -4853,7 +4877,7 @@
   //-----------------------------------------------------------------------------------
   // Potion_Speed
   //
-  // item id 36
+  // potion id 5
 
   Potion_Speed = function() {
     this.initialize.apply(this, arguments);
@@ -4863,7 +4887,10 @@
   Potion_Speed.prototype.constructor = Potion_Speed;
 
   Potion_Speed.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataItems[36]);
+    ItemTemplate.prototype.initialize.call(this, $dataItems[6]);
+    this.id = 5;
+    this.name = '加速藥水';
+    this.description = '暫時提升行動速度';
   }
 
   Potion_Speed.prototype.onQuaff = function(user) {
@@ -4881,7 +4908,7 @@
   //-----------------------------------------------------------------------------------
   // Potion_Growth
   //
-  // item id 37
+  // potion id 6
 
   Potion_Growth = function() {
     this.initialize.apply(this, arguments);
@@ -4891,7 +4918,10 @@
   Potion_Growth.prototype.constructor = Potion_Growth;
 
   Potion_Growth.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataItems[37]);
+    ItemTemplate.prototype.initialize.call(this, $dataItems[6]);
+    this.id = 6;
+    this.name = '成長藥水';
+    this.description = '能力值增長';
   }
 
   Potion_Growth.prototype.onQuaff = function(user) {
@@ -4911,7 +4941,7 @@
   //-----------------------------------------------------------------------------------
   // Potion_LevelUp
   //
-  // item id 38
+  // potion id 7
 
   Potion_LevelUp = function() {
     this.initialize.apply(this, arguments);
@@ -4921,7 +4951,10 @@
   Potion_LevelUp.prototype.constructor = Potion_LevelUp;
 
   Potion_LevelUp.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataItems[38]);
+    ItemTemplate.prototype.initialize.call(this, $dataItems[6]);
+    this.id = 7;
+    this.name = '升級藥水';
+    this.description = '提升等級';
   }
 
   Potion_LevelUp.prototype.onQuaff = function(user) {
@@ -4945,7 +4978,7 @@
   //-----------------------------------------------------------------------------------
   // Potion_Invisible
   //
-  // item id 39
+  // potion id 8
 
   Potion_Invisible = function() {
     this.initialize.apply(this, arguments);
@@ -4955,7 +4988,10 @@
   Potion_Invisible.prototype.constructor = Potion_Invisible;
 
   Potion_Invisible.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataItems[39]);
+    ItemTemplate.prototype.initialize.call(this, $dataItems[6]);
+    this.id = 8;
+    this.name = '隱形藥水';
+    this.description = '暫時隱形';
   }
 
   Potion_Invisible.prototype.onQuaff = function(user) {
@@ -4976,7 +5012,7 @@
   //-----------------------------------------------------------------------------------
   // Potion_SeeInvisible
   //
-  // item id 40
+  // potion id 9
 
   Potion_SeeInvisible = function() {
     this.initialize.apply(this, arguments);
@@ -4986,7 +5022,10 @@
   Potion_SeeInvisible.prototype.constructor = Potion_SeeInvisible;
 
   Potion_SeeInvisible.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataItems[40]);
+    ItemTemplate.prototype.initialize.call(this, $dataItems[6]);
+    this.id = 9;
+    this.name = '偵測隱形藥水';
+    this.description = '暫時可看見隱形的生物';
   }
 
   Potion_SeeInvisible.prototype.onQuaff = function(user) {
@@ -5004,7 +5043,7 @@
   //-----------------------------------------------------------------------------------
   // Potion_Acid
   //
-  // item id 41
+  // potion id 10
 
   Potion_Acid = function() {
     this.initialize.apply(this, arguments);
@@ -5014,7 +5053,10 @@
   Potion_Acid.prototype.constructor = Potion_Acid;
 
   Potion_Acid.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataItems[41]);
+    ItemTemplate.prototype.initialize.call(this, $dataItems[6]);
+    this.id = 10;
+    this.name = '酸蝕藥水';
+    this.description = '造成酸蝕傷害';
   }
 
   Potion_Acid.prototype.onQuaff = function(user) {
@@ -5047,7 +5089,7 @@
   //-----------------------------------------------------------------------------------
   // Potion_Poison
   //
-  // item id 42
+  // potion id 11
 
   Potion_Poison = function() {
     this.initialize.apply(this, arguments);
@@ -5057,7 +5099,10 @@
   Potion_Poison.prototype.constructor = Potion_Poison;
 
   Potion_Poison.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataItems[42]);
+    ItemTemplate.prototype.initialize.call(this, $dataItems[6]);
+    this.id = 11;
+    this.name = '毒藥水';
+    this.description = '中毒';
   }
 
   Potion_Poison.prototype.onQuaff = function(user) {
@@ -5091,7 +5136,7 @@
   //-----------------------------------------------------------------------------------
   // Scroll_Identify
   //
-  // item id 51
+  // scroll id 0
 
   Scroll_Identify = function() {
     this.initialize.apply(this, arguments);
@@ -5101,7 +5146,10 @@
   Scroll_Identify.prototype.constructor = Scroll_Identify;
 
   Scroll_Identify.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataItems[51]);
+    ItemTemplate.prototype.initialize.call(this, $dataItems[7]);
+    this.id = 0;
+    this.name = '鑑定卷軸';
+    this.description = '鑑定身上的一件物品';
   }
 
   Scroll_Identify.prototype.onRead = function(user) {
@@ -5127,7 +5175,7 @@
   //-----------------------------------------------------------------------------------
   // Scroll_EnchantArmor
   //
-  // item id 52
+  // scroll id 1
 
   Scroll_EnchantArmor = function() {
     this.initialize.apply(this, arguments);
@@ -5137,7 +5185,10 @@
   Scroll_EnchantArmor.prototype.constructor = Scroll_EnchantArmor;
 
   Scroll_EnchantArmor.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataItems[52]);
+    ItemTemplate.prototype.initialize.call(this, $dataItems[7]);
+    this.id = 1;
+    this.name = '防具強化卷軸';
+    this.description = '強化一件裝備中的防具';
   }
 
   Scroll_EnchantArmor.prototype.onRead = function(user) {
@@ -5182,7 +5233,7 @@
   //-----------------------------------------------------------------------------------
   // Scroll_EnchantWeapon
   //
-  // item id 53
+  // scroll id 2
 
   Scroll_EnchantWeapon = function() {
     this.initialize.apply(this, arguments);
@@ -5192,7 +5243,10 @@
   Scroll_EnchantWeapon.prototype.constructor = Scroll_EnchantWeapon;
 
   Scroll_EnchantWeapon.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataItems[53]);
+    ItemTemplate.prototype.initialize.call(this, $dataItems[7]);
+    this.id = 2;
+    this.name = '武器強化卷軸';
+    this.description = '強化裝備中的武器';
   }
 
   Scroll_EnchantWeapon.prototype.onRead = function(user) {
@@ -5237,7 +5291,7 @@
   //-----------------------------------------------------------------------------------
   // Scroll_RemoveCurse
   //
-  // item id 54
+  // scroll id 3
 
   Scroll_RemoveCurse = function() {
     this.initialize.apply(this, arguments);
@@ -5247,7 +5301,10 @@
   Scroll_RemoveCurse.prototype.constructor = Scroll_RemoveCurse;
 
   Scroll_RemoveCurse.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataItems[54]);
+    ItemTemplate.prototype.initialize.call(this, $dataItems[7]);
+    this.id = 3;
+    this.name = '解除詛咒卷軸';
+    this.description = '解除一件裝備中的詛咒';
   }
 
   Scroll_RemoveCurse.prototype.onRead = function(user) {
@@ -5276,7 +5333,7 @@
   //-----------------------------------------------------------------------------------
   // Scroll_Teleport
   //
-  // item id 55
+  // scroll id 4
 
   Scroll_Teleport = function() {
     this.initialize.apply(this, arguments);
@@ -5286,7 +5343,10 @@
   Scroll_Teleport.prototype.constructor = Scroll_Teleport;
 
   Scroll_Teleport.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataItems[55]);
+    ItemTemplate.prototype.initialize.call(this, $dataItems[7]);
+    this.id = 4;
+    this.name = '傳送卷軸';
+    this.description = '傳送至地圖的某處';
   }
 
   Scroll_Teleport.prototype.onRead = function(user) {
@@ -5329,7 +5389,7 @@
   //-----------------------------------------------------------------------------------
   // Scroll_DestroyArmor
   //
-  // item id 56
+  // scroll id 5
 
   Scroll_DestroyArmor = function() {
     this.initialize.apply(this, arguments);
@@ -5339,7 +5399,10 @@
   Scroll_DestroyArmor.prototype.constructor = Scroll_DestroyArmor;
 
   Scroll_DestroyArmor.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataItems[56]);
+    ItemTemplate.prototype.initialize.call(this, $dataItems[7]);
+    this.id = 5;
+    this.name = '摧毀防具卷軸';
+    this.description = '摧毀一件裝備中的防具';
   }
 
   Scroll_DestroyArmor.prototype.onRead = function(user) {
@@ -5373,7 +5436,7 @@
   //-----------------------------------------------------------------------------------
   // Scroll_CreateMonster
   //
-  // item id 57
+  // scroll id 6
 
   Scroll_CreateMonster = function() {
     this.initialize.apply(this, arguments);
@@ -5383,7 +5446,10 @@
   Scroll_CreateMonster.prototype.constructor = Scroll_CreateMonster;
 
   Scroll_CreateMonster.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataItems[57]);
+    ItemTemplate.prototype.initialize.call(this, $dataItems[7]);
+    this.id = 6;
+    this.name = '召喚生物卷軸';
+    this.description = '在身邊召喚怪物';
   }
 
   Scroll_CreateMonster.prototype.onRead = function(user) {
@@ -5417,7 +5483,7 @@
   //-----------------------------------------------------------------------------------
   // Scroll_ScareMonster
   //
-  // item id 58
+  // scroll id 7
 
   Scroll_ScareMonster = function() {
     this.initialize.apply(this, arguments);
@@ -5427,7 +5493,10 @@
   Scroll_ScareMonster.prototype.constructor = Scroll_ScareMonster;
 
   Scroll_ScareMonster.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataItems[58]);
+    ItemTemplate.prototype.initialize.call(this, $dataItems[7]);
+    this.id = 7;
+    this.name = '威嚇卷軸';
+    this.description = '一段時間內嚇退敵人';
   }
 
   Scroll_ScareMonster.prototype.onRead = function(user) {
@@ -5450,6 +5519,51 @@
       }
       MapUtils.displayMessage(msg);
     }
+  }
+
+  ItemUtils.scrollTemplates[0] = Scroll_Identify;
+  ItemUtils.scrollTemplates[1] = Scroll_EnchantArmor;
+  ItemUtils.scrollTemplates[2] = Scroll_EnchantWeapon;
+  ItemUtils.scrollTemplates[3] = Scroll_RemoveCurse;
+  ItemUtils.scrollTemplates[4] = Scroll_Teleport;
+  ItemUtils.scrollTemplates[5] = Scroll_DestroyArmor;
+  ItemUtils.scrollTemplates[6] = Scroll_CreateMonster;
+  ItemUtils.scrollTemplates[7] = Scroll_ScareMonster;
+
+  //-----------------------------------------------------------------------------------
+  // Soul_Chick
+  //
+  // type: SOUL
+
+  Soul_Chick = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Soul_Chick.prototype = Object.create(ItemTemplate.prototype);
+  Soul_Chick.prototype.constructor = Soul_Chick;
+
+  Soul_Chick.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
+    this.name = '雛鳥之魂';
+    this.description = '獲得經驗值+5%';
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Soul_Bite
+  //
+  // type: SOUL
+
+  Soul_Bite = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Soul_Bite.prototype = Object.create(ItemTemplate.prototype);
+  Soul_Bite.prototype.constructor = Soul_Bite;
+
+  Soul_Bite.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
+    this.name = '噬咬';
+    this.description = '展現你牙齒的威力吧！';
   }
 
   //-----------------------------------------------------------------------------------
@@ -5622,14 +5736,14 @@
     throw new Error('This is a static class');
   }
 
-  Soul_Obtained_Action.learnSkill = function(soulId) {
+  Soul_Obtained_Action.learnSkill = function(soulClass) {
     let skillId = -1;
-    switch (soulId) {
-      case 102: // Bite
+    switch (soulClass) {
+      case Soul_Bite: // Bite
         skillId = 21;
         break;
       default:
-        console.log("ERROR: no related skill for soulId: " + soulId);
+        console.log("ERROR: no related skill for soulClass: " + soulClass);
         break;
     }
     $gameActors.actor(1).learnSkill(skillId);
@@ -5654,7 +5768,7 @@
 
   // always return true, because every item can be got/dropped
   Window_GetDropItemList.prototype.isEnabled = function (item) {
-    return true;
+    return item;
   };
 
   //-----------------------------------------------------------------------------
@@ -6221,9 +6335,9 @@
     }
   };
 
-  Game_Party.prototype.hasSoul = function(soulId) {
+  Game_Party.prototype.hasSoul = function(soulClass) {
     for (let id in this._items) {
-      if (this._items[id].id == soulId) {
+      if (this._items[id].constructor.name == soulClass.name) {
         return true;
       }
     }
@@ -6332,7 +6446,7 @@
   }
 
   Window_FoodList.prototype.isEnabled = function(item) {
-    return true;
+    return item;
   };
 
   //-----------------------------------------------------------------------------------
@@ -6447,7 +6561,7 @@
   }
 
   Window_PotionList.prototype.isEnabled = function(item) {
-    return true;
+    return item;
   };
 
   //-----------------------------------------------------------------------------------
@@ -6534,7 +6648,7 @@
   }
 
   Window_ScrollList.prototype.isEnabled = function(item) {
-    return true;
+    return item;
   };
 
   //-----------------------------------------------------------------------------------
@@ -6622,7 +6736,7 @@
   }
 
   Window_ProjectileList.prototype.isEnabled = function(item) {
-    return true;
+    return item;
   };
 
   //-----------------------------------------------------------------------------------
