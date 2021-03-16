@@ -2305,6 +2305,30 @@
     return newObj;
   }
 
+  //-----------------------------------------------------------------------------
+  // Game_Enemy
+  //
+  // The game object class for an enemy.
+  // Modify this class for mob instance, isolate them from the template
+
+  Game_Enemy.prototype.initialize = function(enemyId, x, y, params) {
+    Game_Battler.prototype.initialize.call(this);
+    this._params = params;
+    this.setup(enemyId, x, y);
+  };
+
+  Game_Enemy.prototype.name = function() {
+    return this._name;
+  };
+
+  Game_Enemy.prototype.paramBase = function(paramId) {
+    return this._params[paramId];
+  };
+
+  Game_Enemy.prototype.exp = function() {
+    return this._exp;
+  };
+
   //-----------------------------------------------------------------------------------
   // Game_Mob
   //
@@ -2335,7 +2359,7 @@
     Game_Mob.prototype.fromEvent(this, $dataMap.events[this._eventId]);
   }
 
-  Game_Mob.prototype.initialize = function (x, y, mobId, fromData) {
+  Game_Mob.prototype.initialize = function (x, y, mobId, fromData, mobInitData) {
     var eventId = -1;
     if (fromData) {
       for (var i = 1; i < $dataMap.events.length; i++) {
@@ -2347,7 +2371,10 @@
       }
     } else {
       // new mob instance from mobId
-      this.mob = new Game_Enemy(mobId, x, y);
+      this.mob = new Game_Enemy(mobId, x, y, mobInitData.params);
+      this.mob._name = mobInitData.name;
+      this.mob._exp = mobInitData.exp;
+      this.mob.level = mobInitData.level;
       this.mob._tp = 100;
       this.mob.awareDistance = 5;
       this.mob.status = CharUtils.initStatus();
@@ -2564,10 +2591,6 @@
   }
 
   Game_Mob.prototype.initAttribute = function() {
-    let prop = JSON.parse(this.mob.enemy().note);
-    for (let id in prop) {
-      this.mob[id] = prop[id];
-    }
     CharUtils.updateHpMp(this.mob);
   }
 
@@ -2639,7 +2662,13 @@
   Chick.prototype.constructor = Chick;
 
   Chick.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData);
+    let mobInitData = {
+      name: '小雞',
+      exp: 27,
+      params: [1, 1, 6, 1, 5, 1, 1, 5],
+      level: 1
+    }
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
     this.setImage('Chick', 0);
     if (!fromData) {
       this.mob.awareDistance = 8;
@@ -2676,7 +2705,13 @@
   Dog.prototype.constructor = Dog;
 
   Dog.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 12, fromData);
+    let mobInitData = {
+      name: '小狗',
+      exp: 27,
+      params: [1, 1, 6, 6, 10, 10, 5, 5],
+      level: 1
+    }
+    Game_Mob.prototype.initialize.call(this, x, y, 12, fromData, mobInitData);
     this.setImage('Nature', 0);
     if (!fromData) {
       this.mob.awareDistance = 8;
@@ -2736,7 +2771,13 @@
   Rooster.prototype.constructor = Rooster;
 
   Rooster.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData);
+    let mobInitData = {
+      name: '大雞',
+      exp: 33,
+      params: [1, 1, 14, 10, 1, 5, 9, 3],
+      level: 3
+    }
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
     this.setImage('Nature', 2);
     if (!fromData) {
       this.mob.awareDistance = 8;
