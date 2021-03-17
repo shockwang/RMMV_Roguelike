@@ -564,8 +564,7 @@
     $gameVariables[0].gameTime = 0;
     $gameVariables[0].gameTimeAmp = 10;
     // define player attributes
-    $gameActors.actor(1).skillExp = {};
-    $gameActors.actor(1).nutrition = 900;
+    $gameActors.actor(1).nutrition = 800;
     $gameActors.actor(1).status = CharUtils.initStatus();
     $gameActors.actor(1).originalViewDistance = viewDistance;
     $gameActors.actor(1).moved = false;
@@ -2818,6 +2817,30 @@
     }
   }
 
+  Cat.prototype.looting = function () {
+    var lootings = [];
+    if (getRandomInt(10) < 3) {
+      lootings.push(new Cat_Meat());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Cat_Tooth());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Cat_Claw());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Cat_Skin());
+    }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_Chick);
+    }
+  }
+  CharUtils.mobTemplates.push(Cat);
+
   //-----------------------------------------------------------------------------------
   // Game_Door
   //
@@ -4600,6 +4623,26 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Cat_Meat
+  //
+  // type: FOOD
+
+  Cat_Meat = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Cat_Meat.prototype = Object.create(ItemTemplate.prototype);
+  Cat_Meat.prototype.constructor = Cat_Meat;
+
+  Cat_Meat.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[11]);
+    this.name = '貓肉';
+    this.description = '這麼可愛, 你忍心吃?';
+    this.templateName = this.name;
+    this.nutrition = 150;
+  }
+
+  //-----------------------------------------------------------------------------------
   // Dog_Tooth
   //
   // weapon type: TOOTH
@@ -4644,6 +4687,35 @@
     ItemTemplate.prototype.initialize.call(this, $dataWeapons[11]);
     this.name = '雞喙';
     this.description = '被啄到會很痛';
+    this.templateName = this.name;
+    // randomize attributes
+    let modifier = getRandomIntRange(0, 3);
+    this.traits[2].value = '1d4';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    }
+    ItemUtils.updateEquipDescription(this);
+    // randomize bucState
+    this.bucState = getRandomIntRange(-1, 2);
+    ItemUtils.updateEquipName(this);
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Cat_Tooth
+  //
+  // weapon type: TOOTH
+
+  Cat_Tooth = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Cat_Tooth.prototype = Object.create(ItemTemplate.prototype);
+  Cat_Tooth.prototype.constructor = Cat_Tooth;
+
+  Cat_Tooth.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataWeapons[11]);
+    this.name = '貓牙';
+    this.description = '尖銳的牙齒';
     this.templateName = this.name;
     // randomize attributes
     let modifier = getRandomIntRange(0, 3);
@@ -4713,6 +4785,35 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Cat_Claw
+  //
+  // weapon type: CLAW
+
+  Cat_Claw = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Cat_Claw.prototype = Object.create(ItemTemplate.prototype);
+  Cat_Claw.prototype.constructor = Cat_Claw;
+
+  Cat_Claw.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataWeapons[13]);
+    this.name = '貓爪';
+    this.description = '可以輕易撕開皮膚';
+    this.templateName = this.name;
+    // randomize attributes
+    let modifier = getRandomIntRange(2, 5);
+    this.traits[2].value = '2d2';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    }
+    ItemUtils.updateEquipDescription(this);
+    // randomize bucState
+    this.bucState = getRandomIntRange(-1, 2);
+    ItemUtils.updateEquipName(this);
+  }
+
+  //-----------------------------------------------------------------------------------
   // Dog_Skin
   //
   // armor type: SKIN
@@ -4730,10 +4831,30 @@
     this.description = '髒兮兮的薄皮';
     this.templateName = this.name;
     // randomize attributes
-    let modifier = getRandomIntRange(0, 3);
-    ItemUtils.modifyAttr(this.traits[0], modifier);
-    modifier = getRandomIntRange(0, 2);
-    ItemUtils.modifyAttr(this.traits[1], modifier);
+    ItemUtils.modifyAttr(this.traits[0], 2);
+    ItemUtils.updateEquipDescription(this);
+  };
+
+  //-----------------------------------------------------------------------------------
+  // Cat_Skin
+  //
+  // armor type: SKIN
+
+  Cat_Skin = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Cat_Skin.prototype = Object.create(ItemTemplate.prototype);
+  Cat_Skin.prototype.constructor = Cat_Skin;
+
+  Cat_Skin.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataArmors[11]);
+    this.name = '貓皮';
+    this.description = '泛著光澤的皮';
+    this.templateName = this.name;
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 1);
+    ItemUtils.modifyAttr(this.traits[1], 2);
     ItemUtils.updateEquipDescription(this);
   };
 
@@ -5778,6 +5899,65 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Skill_Clever
+
+  Skill_Clever = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_Clever.prototype = Object.create(ItemTemplate.prototype);
+  Skill_Clever.prototype.constructor = Skill_Clever;
+
+  Skill_Clever.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[13]);
+    this.name = '狡詐';
+    this.description = '暫時智力提升';
+    this.iconIndex = 79;
+    this.mpCost = 10;
+    this.lv = 1;
+    this.exp = 0;
+  }
+
+  Skill_Clever.prop = {
+    type: "SKILL",
+    subType: "RANGE",
+    effect: [
+      {lv: 1, buffPercentage: 0.1, turns: 20, levelUp: 50},
+      {lv: 2, buffPercentage: 0.2, turns: 30,levelUp: 150},
+      {lv: 3, buffPercentage: 0.3, turns: 40,levelUp: 300},
+      {lv: 4, buffPercentage: 1.4, turns: 50,levelUp: 450},
+      {lv: 5, buffPercentage: 2.5, turns: 60,levelUp: -1}
+    ]
+  }
+
+  Skill_Clever.prototype.action = function(src, target) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    if (!SkillUtils.canPerform(realSrc, this)) {
+      return false;
+    }
+    realSrc._mp -= this.mpCost;
+    realSrc._tp -= this.tpCost;
+
+    if (target) {
+      let realTarget = BattleUtils.getRealTarget(target);
+      let index = this.lv - 1;
+      let skillBonus = Skill_Bite.prop.effect[index].atkPercentage;
+      let value = SkillUtils.meleeDamage(realSrc, realTarget, 1 + skillBonus);
+      TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 12));
+      TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
+      LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)
+        , LogUtils.getPerformedTargetName(realSrc, realTarget), this.name, value));
+      realTarget._hp -= value;
+      SkillUtils.gainSkillExp(realSrc, this, index, Skill_Bite.prop);
+      BattleUtils.checkTargetAlive(realSrc, realTarget, target);
+    } else {
+      LogUtils.addLog(String.format(Message.display('attackAir'), LogUtils.getCharName(realSrc)
+        , this.name));
+    }
+    return true;
+  }
+
+  //-----------------------------------------------------------------------------------
   // Soul_Obtained_Action
   //
   // actions for souls obtained
@@ -6131,7 +6311,7 @@
   Game_BattlerBase.prototype.param = function (paramId) {
     if (paramId < 8) {
       var value = this.paramBase(paramId) + this.paramPlus(paramId);
-      value *= this.paramRate(paramId) * this.paramBuffRate(paramId);
+      value = value * this.paramRate(paramId) + this._buffs[paramId];
       var maxValue = this.paramMax(paramId);
       var minValue = this.paramMin(paramId);
       return Math.round(value.clamp(minValue, maxValue));
