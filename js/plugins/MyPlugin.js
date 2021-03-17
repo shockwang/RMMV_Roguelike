@@ -2380,10 +2380,9 @@
       this.mob._exp = mobInitData.exp;
       this.mob.level = mobInitData.level;
       this.mob._tp = 100;
-      this.mob.awareDistance = 5;
+      this.mob.awareDistance = 8;
       this.mob.status = CharUtils.initStatus();
       this.mob._skills = [];
-      this.mob.skillExp = {};
       this.mob.moved = false;
       this.mob.attacked = false;
       // find empty space for new event
@@ -2627,10 +2626,9 @@
   Bat.prototype.constructor = Bat;
 
   Bat.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 1, fromData);
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData);
     this.setImage('Monster', 0);
     if (!fromData) {
-      this.mob.awareDistance = 8;
       this.mob.mobClass = 'Bat';
     }
   }
@@ -2646,8 +2644,6 @@
 
   //-----------------------------------------------------------------------------------
   // Chick
-  //
-  // Game_Mob id 11
 
   Chick = function () {
     this.initialize.apply(this, arguments);
@@ -2667,7 +2663,6 @@
     Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
     this.setImage('Chick', 0);
     if (!fromData) {
-      this.mob.awareDistance = 8;
       this.mob.mobClass = 'Chick';
     }
   }
@@ -2689,8 +2684,6 @@
 
   //-----------------------------------------------------------------------------------
   // Dog
-  //
-  // Game_Mob id 12
 
   Dog = function () {
     this.initialize.apply(this, arguments);
@@ -2707,13 +2700,11 @@
       params: [1, 1, 6, 6, 10, 10, 5, 5],
       level: 1
     }
-    Game_Mob.prototype.initialize.call(this, x, y, 12, fromData, mobInitData);
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
     this.setImage('Nature', 0);
     if (!fromData) {
-      this.mob.awareDistance = 8;
       this.mob.mobClass = 'Dog';
-      this.mob.skillExp = {};
-      this.mob.skillExp[21] = {lv: 1};
+      this.mob._skills.push(new Skill_Bite());
     }
   }
 
@@ -2742,8 +2733,8 @@
 
   Dog.prototype.meleeAction = function(target) {
     let skillSuccess = false;
-    if (getRandomInt(100) < 30) {
-      skillSuccess = Skill_Bite.action(this, target);
+    if (getRandomInt(100) < 30) { // Skill_Bite
+      skillSuccess = this.mob._skills[0].action(this, target);
     }
     if (skillSuccess) {
       return true;
@@ -2755,8 +2746,6 @@
 
   //-----------------------------------------------------------------------------------
   // Rooster
-  //
-  // Game_Mob id 11
 
   Rooster = function () {
     this.initialize.apply(this, arguments);
@@ -2776,7 +2765,6 @@
     Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
     this.setImage('Nature', 2);
     if (!fromData) {
-      this.mob.awareDistance = 8;
       this.mob.mobClass = 'Rooster';
     }
   }
@@ -2804,6 +2792,31 @@
     }
   }
   CharUtils.mobTemplates.push(Rooster);
+
+  //-----------------------------------------------------------------------------------
+  // Cat
+
+  Cat = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Cat.baseDungeonLevel = 4;
+
+  Cat.prototype = Object.create(Game_Mob.prototype);
+  Cat.prototype.constructor = Cat;
+
+  Cat.prototype.initialize = function (x, y, fromData) {
+    let mobInitData = {
+      name: '貓',
+      exp: 36,
+      params: [1, 1, 6, 6, 30, 20, 15, 5],
+      level: 4
+    }
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
+    this.setImage('Nature', 1);
+    if (!fromData) {
+      this.mob.mobClass = 'Cat';
+    }
+  }
 
   //-----------------------------------------------------------------------------------
   // Game_Door
@@ -3589,15 +3602,15 @@
       let prefix = 'Digit';
       for (let i = 0; i < 10; i++) {
         if (prefix + i == event.code) {
-          let skillId = SceneManager._scene.item().id;
-          if ($gameVariables[0].hotkeys[i] == skillId) {
+          let skill = SceneManager._scene.item();
+          if ($gameVariables[0].hotkeys[i] == skill) {
             $gameVariables[0].hotkeys[i] = null;
           } else {
-            let oldHotkey = SkillUtils.getHotKey(skillId);
+            let oldHotkey = SkillUtils.getHotKey(skill);
             if (oldHotkey != null) {
               $gameVariables[0].hotkeys[oldHotkey] = null;
             }
-            $gameVariables[0].hotkeys[i] = skillId;
+            $gameVariables[0].hotkeys[i] = skill;
           }
           SceneManager._scene._itemWindow.refresh();
           break;
@@ -4068,16 +4081,28 @@
   BattleUtils.getWeaponClass = function(realSrc) {
     let skillClass;
     if (realSrc._equips && realSrc._equips[0].itemId() != 0) {
-      var weapon = $dataWeapons[realSrc._equips[0].itemId()];
-      switch (weapon.wtypeId) {
-        case 2: // long sword
-          skillClass = Skill_LongSword;
+      let prop = JSON.parse($dataWeapons[realSrc._equips[0].itemId()].note);
+      // TODO: implement weapon types
+      switch (prop.subType) {
+        default:
+          skillClass = Skill_MartialArt;
           break;
       }
     } else { // martial art
       skillClass = Skill_MartialArt;
     }
     return skillClass;
+  }
+
+  BattleUtils.getWeaponSkill = function(realSrc) {
+    let skillClass = BattleUtils.getWeaponClass(realSrc);
+
+    for (let id in realSrc._skills) {
+      if (realSrc._skills[id].constructor.name == skillClass.name) {
+        return realSrc._skills[id];
+      }
+    }
+    return null;
   }
 
   BattleUtils.meleeAttack = function (src, target) {
@@ -4095,23 +4120,23 @@
     // calculate the damage
     let weaponBonus = 0;
     if (realSrc == $gameActors.actor(1)) {
-      let skillClass = BattleUtils.getWeaponClass(realSrc);
-      let skillId = skillClass.getSkillId();
-      if (realSrc._skills.includes(skillId)) {
-        let prop = JSON.parse($dataSkills[skillId].note);
-        let index = $gameActors.actor(1).skillExp[skillId].lv;
+      let weaponSkill = BattleUtils.getWeaponSkill(realSrc);
+      if (weaponSkill) {
+        let prop = window[weaponSkill.constructor.name].prop;
+        let index = weaponSkill.lv;
         weaponBonus = prop.effect[index].atk;
-        $gameActors.actor(1).skillExp[skillId].exp += ($gameParty.hasSoul(Soul_Chick)) ? 1.05 : 1;
-        if (prop.effect[index].levelUp != -1 && $gameActors.actor(1).skillExp[skillId].exp >= prop.effect[index].levelUp) {
-          $gameMessage.add('你的' + $dataSkills[skillId].name + '更加熟練了!');
-          $gameActors.actor(1).skillExp[skillId].lv++;
-          $gameActors.actor(1).skillExp[skillId].exp = 0;
+        weaponSkill.exp += ($gameParty.hasSoul(Soul_Chick)) ? 1.05 : 1;
+        if (prop.effect[index].levelUp != -1 && weaponSkill.exp >= prop.effect[index].levelUp) {
+          $gameMessage.add('你的' + weaponSkill.name + '更加熟練了!');
+          weaponSkill.lv++;
+          weaponSkill.exp = 0;
         }
       } else {
-        $gameActors.actor(1)._skills.push(skillId);
-        $gameActors.actor(1).skillExp[skillId] = {};
-        $gameActors.actor(1).skillExp[skillId].lv = 0;
-        $gameActors.actor(1).skillExp[skillId].exp = 1;
+        let skillClass = BattleUtils.getWeaponClass(realSrc);
+        let newWeaponSkill = new skillClass();
+        realSrc._skills.push(newWeaponSkill);
+        newWeaponSkill.lv = 0;
+        newWeaponSkill.exp = 1;
       }
     }
 
@@ -5563,7 +5588,7 @@
   Soul_Bite.prototype.initialize = function () {
     ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
     this.name = '噬咬';
-    this.description = '展現你牙齒的威力吧！';
+    this.description = '你的牙齒變得更銳利了';
   }
 
   //-----------------------------------------------------------------------------------
@@ -5579,9 +5604,12 @@
 
   SkillUtils.meleeDamage = function(realSrc, realTarget, skillAmplify) {
     // get weapon bonus
-    let skillId = BattleUtils.getWeaponClass(realSrc).getSkillId();
-    let prop = JSON.parse($dataSkills[skillId].note);
-    let weaponBonus = realSrc.skillExp[skillId] ? prop.effect[realSrc.skillExp[skillId].lv].atk : 0;
+    let weaponSkill = BattleUtils.getWeaponSkill(realSrc);
+    let weaponBonus = 0;
+    if (weaponSkill) {
+      let prop = window[weaponSkill.constructor.name].prop;
+      weaponBonus = prop.effect[weaponSkill.lv].atk;
+    }
     return BattleUtils.calcPhysicalDamage(realSrc, realTarget, weaponBonus, skillAmplify);
   }
 
@@ -5597,13 +5625,13 @@
     return true;
   }
 
-  SkillUtils.gainSkillExp = function(realSrc, skillId, prop, skillLv) {
+  SkillUtils.gainSkillExp = function(realSrc, skill, index, prop) {
     if (realSrc == $gameActors.actor(1)) {
-      realSrc.skillExp[skillId].exp++;
-      if (prop.effect[skillLv].levelUp != -1 && realSrc.skillExp[skillId].exp >= prop.effect[skillLv].levelUp) {
-        $gameMessage.add('你的' + $dataSkills[skillId].name + '更加熟練了!');
-        $gameActors.actor(1).skillExp[skillId].lv++;
-        $gameActors.actor(1).skillExp[skillId].exp = 0;
+      skill.exp++;
+      if (prop.effect[index].levelUp != -1 && skill.exp >= prop.effect[index].levelUp) {
+        $gameMessage.add('你的' + skill.name + '更加熟練了!');
+        skill.lv++;
+        skill.exp = 0;
       }
     }
   }
@@ -5621,18 +5649,18 @@
       target = $gamePlayer;
     }
 
-    SkillUtils.skillList[$gameVariables[0].fireProjectileInfo.skillId].action(src, target);
+    $gameVariables[0].fireProjectileInfo.skill.action(src, target);
     $gameVariables[0].messageFlag = false;
     $gameActors.actor(1).attacked = true;
     return true;
   }
 
   // for hotkeys usage
-  SkillUtils.performSkill = function(skillId) {
-    let prop = JSON.parse($dataSkills[skillId].note);
+  SkillUtils.performSkill = function(skill) {
+    let prop = window[skill.constructor.name].prop;
     if (prop.subType == 'DIRECTIONAL') {
-      if (SkillUtils.canPerform($gameActors.actor(1), $dataSkills[skillId])) {
-        $gameVariables[0].fireProjectileInfo.skillId = skillId;
+      if (SkillUtils.canPerform($gameActors.actor(1), skill)) {
+        $gameVariables[0].fireProjectileInfo.skill = skill;
         $gameVariables[0].directionalAction = SkillUtils.performAction;
         $gameVariables[0].directionalFlag = true;
         setTimeout(function() {
@@ -5642,9 +5670,9 @@
     }
   }
 
-  SkillUtils.getHotKey = function(skillId) {
+  SkillUtils.getHotKey = function(skill) {
     for (let i = 0; i < 10; i++) {
-      if ($gameVariables[0].hotkeys[i] == skillId) {
+      if ($gameVariables[0].hotkeys[i] == skill) {
         return i;
       }
     }
@@ -5653,79 +5681,101 @@
 
   //-----------------------------------------------------------------------------------
   // Skill_MartialArt
-  //
-  // skill id 11
 
   Skill_MartialArt = function() {
-    throw new Error('This is a static class');
+    this.initialize.apply(this, arguments);
   }
 
-  Skill_MartialArt.getSkillId = function() {
-    return 11;
+  Skill_MartialArt.prototype = Object.create(ItemTemplate.prototype);
+  Skill_MartialArt.prototype.constructor = Skill_MartialArt;
+
+  Skill_MartialArt.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[11]);
+    this.name = '武術';
+    this.description = '赤手空拳搏鬥的技術';
+    this.iconIndex = 77;
+    this.lv = 0;
+    this.exp = 0;
   }
 
-  SkillUtils.skillList[11] = Skill_MartialArt;
-
-  //-----------------------------------------------------------------------------------
-  // Skill_LongSword
-  //
-  // skill id 12
-
-  Skill_LongSword = function() {
-    throw new Error('This is a static class');
+  Skill_MartialArt.prop = {
+    type: "SKILL",
+    subType:"PASSIVE",
+    effect: [
+      {lv: 0, atk: 0, levelUp: 20},
+      {lv: 1, atk: 2, levelUp: 20},
+      {lv: 2, atk: 5, levelUp: 40},
+      {lv: 3, atk: 8, levelUp: 60},
+      {lv: 4, atk: 10, levelUp: 80},
+      {lv: 5, atk: 12, levelUp: 100},
+      {lv: 6, atk: 15, levelUp: 150},
+      {lv: 7, atk: 20, levelUp: 300},
+      {lv: 8, atk: 28, levelUp: 450},
+      {lv: 9, atk: 35, levelUp: 500},
+      {lv: 10, atk: 40, levelUp: -1}
+    ]
   }
-
-  Skill_LongSword.getSkillId = function() {
-    return 12;
-  }
-
-  SkillUtils.skillList[12] = Skill_LongSword;
 
   //-----------------------------------------------------------------------------------
   // Skill_Bite
-  //
-  // skill id 21
 
   Skill_Bite = function() {
-    throw new Error('This is a static class');
+    this.initialize.apply(this, arguments);
   }
 
-  Skill_Bite.getSkillId = function() {
-    return 21;
+  Skill_Bite.prototype = Object.create(ItemTemplate.prototype);
+  Skill_Bite.prototype.constructor = Skill_Bite;
+
+  Skill_Bite.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[12]);
+    this.name = '噬咬';
+    this.description = '噬咬一名敵人, 機率出血';
+    this.iconIndex = 5;
+    this.mpCost = 2;
+    this.tpCost = 10;
+    this.lv = 1;
+    this.exp = 0;
   }
 
-  Skill_Bite.action = function(src, target) {
+  Skill_Bite.prop = {
+    type: "SKILL",
+    subType: "DIRECTIONAL",
+    damageType: "MELEE",
+    effect: [
+      {lv: 1, atkPercentage: 0.3, levelUp: 50},
+      {lv: 2, atkPercentage: 0.6, levelUp: 150},
+      {lv: 3, atkPercentage: 0.9, levelUp: 300},
+      {lv: 4, atkPercentage: 1.3, levelUp: 450},
+      {lv: 5, atkPercentage: 2.1, levelUp: -1}
+    ]
+  }
+
+  Skill_Bite.prototype.action = function(src, target) {
     let realSrc = BattleUtils.getRealTarget(src);
-    let skill = $dataSkills[Skill_Bite.getSkillId()];
-    if (!SkillUtils.canPerform(realSrc, skill)) {
+    if (!SkillUtils.canPerform(realSrc, this)) {
       return false;
     }
-    realSrc._mp -= skill.mpCost;
-    realSrc._tp -= skill.tpCost;
+    realSrc._mp -= this.mpCost;
+    realSrc._tp -= this.tpCost;
 
-    let skillName = $dataSkills[Skill_Bite.getSkillId()].name;
     if (target) {
       let realTarget = BattleUtils.getRealTarget(target);
-      let skillId = Skill_Bite.getSkillId();
-      let prop = JSON.parse($dataSkills[skillId].note);
-      let index = realSrc.skillExp[skillId].lv;
-      let skillBonus = prop.effect[index].atkPercentage;
+      let index = this.lv - 1;
+      let skillBonus = Skill_Bite.prop.effect[index].atkPercentage;
       let value = SkillUtils.meleeDamage(realSrc, realTarget, 1 + skillBonus);
       TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 12));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
       LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)
-        , LogUtils.getPerformedTargetName(realSrc, realTarget), skillName, value));
+        , LogUtils.getPerformedTargetName(realSrc, realTarget), this.name, value));
       realTarget._hp -= value;
-      SkillUtils.gainSkillExp(realSrc, skillId, prop, index);
+      SkillUtils.gainSkillExp(realSrc, this, index, Skill_Bite.prop);
       BattleUtils.checkTargetAlive(realSrc, realTarget, target);
     } else {
       LogUtils.addLog(String.format(Message.display('attackAir'), LogUtils.getCharName(realSrc)
-        , skillName));
+        , this.name));
     }
     return true;
   }
-
-  SkillUtils.skillList[21] = Skill_Bite;
 
   //-----------------------------------------------------------------------------------
   // Soul_Obtained_Action
@@ -5737,18 +5787,10 @@
   }
 
   Soul_Obtained_Action.learnSkill = function(soulClass) {
-    let skillId = -1;
-    switch (soulClass) {
-      case Soul_Bite: // Bite
-        skillId = 21;
-        break;
-      default:
-        console.log("ERROR: no related skill for soulClass: " + soulClass);
-        break;
+    let skillClass = window["Skill_" + soulClass.name.split('_')[1]];
+    if (skillClass) {
+      $gameActors.actor(1).learnSkill(new skillClass());
     }
-    $gameActors.actor(1).learnSkill(skillId);
-    $gameActors.actor(1).skillExp[skillId] = {};
-    $gameActors.actor(1).skillExp[skillId].lv = 1;
   }
 
   //-----------------------------------------------------------------------------------
@@ -6017,7 +6059,7 @@
   };
 
   Scene_WarSkill.prototype.onItemOk = function() {
-    SkillUtils.performSkill(this.item().id);
+    SkillUtils.performSkill(this.item());
     this.popScene();
   };
 
@@ -6254,11 +6296,11 @@
   Window_SkillList.prototype.drawItemName = function (item, x, y, width) {
     width = width || 312;
     if (item) {
-      var skillLv = $gameActors.actor(1).skillExp[item.id].lv;
+      var skillLv = item.lv;
       var iconBoxWidth = Window_Base._iconWidth + 4;
       this.resetTextColor();
       this.drawIcon(item.iconIndex, x + 2, y + 2);
-      let hotkey = SkillUtils.getHotKey(item.id);
+      let hotkey = SkillUtils.getHotKey(item);
       let postfix = (hotkey != null) ? (' {' + hotkey + '}') : '';
       this.drawText(item.name + 'Lv' + skillLv + postfix, x + iconBoxWidth, y, width - iconBoxWidth);
     }
@@ -6269,7 +6311,7 @@
     if (this._actor) {
       this._data = this._actor.skills().filter(function(item) {
         let show = true;
-        if (this._actor.skillExp[item.id].lv == 0) {
+        if (item.lv == 0) {
           show = false;
         }
         return this.includes(item) && show;
@@ -6837,11 +6879,6 @@
     CharUtils.levelUp(this);
     let msg = String.format(Message.display('levelUp'), LogUtils.getCharName(this));
     LogUtils.addLog(msg);
-    this.currentClass().learnings.forEach(function(learning) {
-      if (learning.level === this._level) {
-        this.learnSkill(learning.skillId);
-      }
-    }, this);
   };
 
   Game_Actor.prototype.levelDown = function() {
@@ -6858,7 +6895,31 @@
       modifier = -5;
     }
     this.gainExp(exp * (1 + 0.2 * modifier));
-};
+  };
+
+  // modify for skill instance
+  Game_Actor.prototype.learnSkill = function(skill) {
+    if (!this.isLearnedSkill(skill)) {
+      this._skills.push(skill);
+    }
+  };
+
+  Game_Actor.prototype.isLearnedSkill = function(skill) {
+    for (let id in this._skills) {
+      if (this._skills[id].constructor.name == skill.constructor.name) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  Game_Actor.prototype.skills = function() {
+    return this._skills;
+  };
+
+  Game_Actor.prototype.findNewSkills = function(lastSkills) {
+    return [];
+  };
 
   //-----------------------------------------------------------------------------
   // Game_Item
