@@ -289,8 +289,10 @@
       secretDoorDiscovered: '你發現了一扇隱藏的門!',
       absorbSoul: '你從{0}身上吸收了{1}!',
       damageSkillPerformed: '{0}對{1}使出了{2}, 造成{3}點傷害!',
+      nonDamageSkillPerformed: '{0}發動了{1}!',
       bleeding: '{0}出血了!',
       recoverFromBleeding: '{0}的出血停止了.',
+      skillEffectEnd: '{0}身上{1}的效果消失了.',
       attackOutOfEnergy: '{0}想發動攻擊, 但是沒有足夠的體力!',
       askDirection: '往哪個方向?',
       attackAir: '{0}對空氣發動了{1}.',
@@ -368,9 +370,20 @@
       invisibleCount: 0,
       seeInvisibleCount: 0,
       afraidCount: 0,
-      groundHoleTrapped: false
+      groundHoleTrapped: false,
+      skillEffect: []
     }
     return result;
+  }
+
+  CharUtils.getTargetEffect = function(realSrc, skillClass) {
+    for (let id in realSrc.status.skillEffect) {
+      let skillEffect = realSrc.status.skillEffect[id];
+      if (skillEffect.skill.constructor.name == skillClass.name) {
+        return skillEffect;
+      }
+    }
+    return null;
   }
 
   CharUtils.updateStatus = function(event) {
@@ -431,6 +444,20 @@
               break;
           }
         }
+      }
+    }
+    // update skill effects
+    let i = target.status.skillEffect.length;
+    while (i--) {
+      let effect = target.status.skillEffect[i];
+      effect.effectCount--;
+      if (effect.effectCount == 0) {
+        if (CharUtils.playerCanSeeChar(event)) {
+          LogUtils.addLog(String.format(Message.display('skillEffectEnd'), LogUtils.getCharName(target)
+            , effect.skill.name));
+        }
+        effect.effectEnd();
+        target.status.skillEffect.splice(i, 1);
       }
     }
   }
@@ -626,6 +653,7 @@
 
     $gameParty._items.push(new Soul_Bite());
     Soul_Obtained_Action.learnSkill(Soul_Bite);
+    $gameActors.actor(1).learnSkill(new Skill_Clever());
   }
 
   // message window defined here, because it can't be assigned to $gameVariables, will cause save/load crash
@@ -5788,6 +5816,10 @@
           MapUtils.displayMessage(Message.display('askDirection'));
         }, 100);
       }
+    } else {
+      if (skill.action($gamePlayer)) {
+        setTimeout('TimeUtils.afterPlayerMoved();', 100);
+      }
     }
   }
 
@@ -5916,6 +5948,8 @@
     this.mpCost = 10;
     this.lv = 1;
     this.exp = 0;
+    // buff or debuf
+    this.isBuff = true;
   }
 
   Skill_Clever.prop = {
@@ -5930,7 +5964,73 @@
     ]
   }
 
-  Skill_Clever.prototype.action = function(src, target) {
+  Skill_Clever.prototype.action = function(src) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    if (!SkillUtils.canPerform(realSrc, this)) {
+      return false;
+    }
+    realSrc._mp -= this.mpCost;
+    realSrc._tp -= this.tpCost;
+
+    let prop = window[this.constructor.name].prop;
+    let effect = CharUtils.getTargetEffect(realSrc, Skill_Clever);
+    if (effect) {
+      effect.effectEnd();
+      let index = realSrc.status.skillEffect.indexOf(effect);
+      realSrc.status.skillEffect.splice(index, 1);
+    }
+    if (CharUtils.playerCanSeeChar(src)) {
+      TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 51));
+      TimeUtils.animeQueue.push(new AnimeObject(src, 'POP_UP', this.name));
+      LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
+        , LogUtils.getCharName(realSrc), this.name));
+    }
+    let buffAmount = Math.round(realSrc.param(4) * prop.effect[this.lv - 1].buffPercentage);
+    realSrc._buffs[4] += buffAmount;
+    realSrc.status.skillEffect.push({
+      skill: this,
+      effectCount: prop.effect[this.lv - 1].turns,
+      effectEnd: function() {
+        realSrc._buffs[4] -= buffAmount;
+      }
+    });
+    return true;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Skill_DarkFire
+
+  Skill_DarkFire = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_DarkFire.prototype = Object.create(ItemTemplate.prototype);
+  Skill_DarkFire.prototype.constructor = Skill_DarkFire;
+
+  Skill_DarkFire.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[12]);
+    this.name = '暗滅';
+    this.description = '直線射出一顆黑色火球, 魔法傷害';
+    this.iconIndex = 5;
+    this.mpCost = 15;
+    this.lv = 1;
+    this.exp = 0;
+  }
+
+  Skill_DarkFire.prop = {
+    type: "SKILL",
+    subType: "PROJECTILE",
+    damageType: "MAGIC",
+    effect: [
+      {lv: 1, atkPercentage: 0.3, levelUp: 50},
+      {lv: 2, atkPercentage: 0.6, levelUp: 150},
+      {lv: 3, atkPercentage: 0.9, levelUp: 300},
+      {lv: 4, atkPercentage: 1.3, levelUp: 450},
+      {lv: 5, atkPercentage: 2.1, levelUp: -1}
+    ]
+  }
+
+  Skill_DarkFire.prototype.action = function(src, target) {
     let realSrc = BattleUtils.getRealTarget(src);
     if (!SkillUtils.canPerform(realSrc, this)) {
       return false;

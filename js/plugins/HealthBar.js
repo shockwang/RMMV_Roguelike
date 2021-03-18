@@ -69,49 +69,55 @@
         }
         var status = '';
         // deal with nutrition system
-        if ($gameActors._data[1].nutrition > 1000) {
+        if ($gameActors.actor(1).nutrition > 1000) {
             this.changeTextColor('#4169E1'); // royal blue
             status += '過飽 ';
-        } else if ($gameActors._data[1].nutrition < 150 && $gameActors._data[1].nutrition >= 50) {
+        } else if ($gameActors.actor(1).nutrition < 150 && $gameActors.actor(1).nutrition >= 50) {
             this.changeTextColor('#FFFF00'); // yellow
             status += '飢餓 ';
-        } else if ($gameActors._data[1].nutrition < 50 && $gameActors._data[1].nutrition >= 0) {
+        } else if ($gameActors.actor(1).nutrition < 50 && $gameActors.actor(1).nutrition >= 0) {
             this.changeTextColor('#FF8C00'); // dark orange
             status += '虛弱 ';
-        } else if ($gameActors._data[1].nutrition < 0 && $gameActors._data[1].nutrition >= -200) {
+        } else if ($gameActors.actor(1).nutrition < 0 && $gameActors.actor(1).nutrition >= -200) {
             this.changeTextColor('#FF0000'); // red
             status += '昏厥 ';
         }
         // draw buff/debuff
         let debuffColor = '#FF0000';
         let buffColor = '#00FF23';
-        if ($gameActors._data[1].status.blindCount > 0) {
+        if ($gameActors.actor(1).status.blindCount > 0) {
             this.changeTextColor(debuffColor);
             status += '失明 ';
         }
-        if ($gameActors._data[1].status.paralyzeCount > 0) {
+        if ($gameActors.actor(1).status.paralyzeCount > 0) {
             this.changeTextColor(debuffColor);
             status += '麻痺 ';
         }
-        if ($gameActors._data[1].status.sleepCount > 0) {
+        if ($gameActors.actor(1).status.sleepCount > 0) {
             this.changeTextColor(debuffColor);
             status += '昏睡 ';
         }
-        if ($gameActors._data[1].status.poisonCount > 0) {
+        if ($gameActors.actor(1).status.poisonCount > 0) {
             this.changeTextColor(debuffColor);
             status += '中毒 ';
         }
-        if ($gameActors._data[1].status.speedUpCount > 0) {
+        if ($gameActors.actor(1).status.speedUpCount > 0) {
             this.changeTextColor(buffColor);
             status += '加速 ';
         }
-        if ($gameActors._data[1].status.invisibleCount > 0) {
+        if ($gameActors.actor(1).status.invisibleCount > 0) {
             this.changeTextColor(buffColor);
             status += '隱形 ';
         }
-        if ($gameActors._data[1].status.seeInvisibleCount > 0) {
+        if ($gameActors.actor(1).status.seeInvisibleCount > 0) {
             this.changeTextColor(buffColor);
             status += '偵測隱形 ';
+        }
+        for (let id in $gameActors.actor(1).status.skillEffect) {
+            let skillEffect = $gameActors.actor(1).status.skillEffect[id];
+            let color = (skillEffect.skill.isBuff) ? buffColor : debuffColor;
+            this.changeTextColor(color);
+            status += skillEffect.skill.name + ' ';
         }
         var width = this.textWidth(status);
         this.drawText(status, x, y, width);
