@@ -74,6 +74,22 @@
     this.name = name;
   }
 
+  var ProjectileData = function(skill, imageName, imageIndex, distance, hitCharFunc, hitDoorFunc, hitWallFunc) {
+    this.skill = skill;
+    this.imageName = imageName;
+    this.imageIndex = imageIndex;
+    this.distance = distance;
+    this.hitCharFunc = hitCharFunc;
+    this.hitDoorFunc = hitDoorFunc;
+    this.hitWallFunc = hitWallFunc;
+  }
+
+  var TargetInSightData = function(directionX, directionY, distance) {
+    this.directionX = directionX;
+    this.directionY = directionY;
+    this.distance = distance;
+  }
+
   var FLOOR = '□';
   var WALL = '■';
   var DOOR = 'Ｄ';
@@ -224,6 +240,7 @@
     language: 'chinese',
     chinese: {
       meleeAttack: '{0}對{1}造成了{2}點傷害.',
+      shootProjectile: '{0}發射了{1}!',
       projectileAttack: '{0}的{1}對{2}造成了{3}點傷害.',
       targetKilled: '{0}被{1}殺死了!',
       targetDied: '{0}死了...',
@@ -557,6 +574,27 @@
     return null;
   }
 
+  // for distance attack
+  CharUtils.checkTargetReachable = function(src, target) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    let realTarget = BattleUtils.getRealTarget(target);
+
+    let inLine = false;
+    if (realSrc._x == realTarget._x) {
+      inLine = true;
+    } else {
+      let m = (realTarget._y - realSrc._y) / (realTarget._x - realSrc._x);
+      if (m == 0 || Math.abs(m) == 1) {
+        inLine = true;
+      }
+    }
+    if (inLine && MapUtils.checkReachable(realSrc, realSrc.awareDistance, realTarget._x, realTarget._y
+      , $gameVariables[$gameMap._mapId].mapData, true)) {
+      return true;
+    }
+    return false;
+  }
+
   //-----------------------------------------------------------------------------------
   // MapUtils
   //
@@ -654,6 +692,7 @@
     $gameParty._items.push(new Soul_Bite());
     Soul_Obtained_Action.learnSkill(Soul_Bite);
     $gameActors.actor(1).learnSkill(new Skill_Clever());
+    $gameActors.actor(1).learnSkill(new Skill_DarkFire());
   }
 
   // message window defined here, because it can't be assigned to $gameVariables, will cause save/load crash
@@ -766,8 +805,8 @@
     return Math.floor(Math.random() * Math.floor(max - min)) + min;
   }
 
-  // this function should be called twice (src must be a Game_Event)
-  function updateVisible(src, distance, x, y, mapData) {
+  // check if projectile can hit
+  MapUtils.checkReachable = function(src, distance, x, y, mapData, checkMobFlag) {
     var visible = false;
     if (MapUtils.getDistance(src._x, src._y, x, y) <= distance) {
       // around player, check visibility
@@ -805,7 +844,7 @@
 
         for (var i = 0; i < path.length; i++) {
           // does not count the (x, y) point
-          if (!(path[i].x == x && path[i].y == y)) {
+          if (!(path[i].x == x && path[i].y == y) && !(path[i].x == src._x && path[i].y == src._y)) {
             if (!MapUtils.isTilePassable($gameMap._mapId, path[i].x, path[i].y
               , mapData[path[i].x][path[i].y].originalTile)) {
               visible = false;
@@ -815,6 +854,9 @@
               var events = $gameMap.eventsXy(path[i].x, path[i].y);
               for (var id in events) {
                 if (events[id] instanceof Game_Door && events[id].status != 2) {
+                  visible = false;
+                  break;
+                } else if (checkMobFlag && events[id].mob) {
                   visible = false;
                   break;
                 }
@@ -838,14 +880,21 @@
               if (events[id] instanceof Game_Door && events[id].status != 2) {
                 visible = false;
                 break;
+              } else if (checkMobFlag && events[id].mob) {
+                visible = false;
+                break;
               }
             }
           }
         }
       }
     }
+    return visible;
+  }
 
-    mapData[x][y].isVisible = visible;
+  // this function should be called twice (src must be a Game_Event)
+  function updateVisible(src, distance, x, y, mapData) {
+    mapData[x][y].isVisible = MapUtils.checkReachable(src, distance, x, y, mapData);
   }
 
   function refineMapTile(rawData, x, y, centerTile) {
@@ -2759,12 +2808,8 @@
   }
 
   Dog.prototype.meleeAction = function(target) {
-    let skillSuccess = false;
-    if (getRandomInt(100) < 30) { // Skill_Bite
-      skillSuccess = this.mob._skills[0].action(this, target);
-    }
-    if (skillSuccess) {
-      return true;
+    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Bite
+      return this.mob._skills[0].action(this, target);
     } else {
       return BattleUtils.meleeAttack(this, target);
     }
@@ -3035,7 +3080,10 @@
     this.src = src; // recognize for log purpose
     this.moveFunc = this.moveStraight;
     this.param1 = 6;
-    if (src._x == x) {
+    if (src._x == x && src._y == y) {
+      // target self
+      this.moveFunc = function() {};
+    } else if (src._x == x) {
       this.moveFunc = this.moveStraight;
       if (y - 1 == src._y) {
         this.param1 = 2;
@@ -3089,7 +3137,7 @@
       }
       this.moveFunc(this.param1, this.param2);
       if ($gamePlayer.pos(this._x, this._y)) {
-        vanish = this.hitCharacter(this, evt);
+        vanish = this.hitCharacter(this, $gamePlayer);
       } else {
         let events = $gameMap.eventsXy(this._x, this._y);
         for (let id in events) {
@@ -3242,6 +3290,51 @@
       ,vm.skillName, LogUtils.getCharName(realTarget), value));
     BattleUtils.checkTargetAlive(realSrc, realTarget, evt);
     vm.distanceCount = 99;
+    return true;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Projectile_SingleTarget
+  //
+  // projectile that hits single enemy, then vanish
+
+  Projectile_SingleTarget = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Projectile_SingleTarget.prototype = Object.create(Game_Projectile.prototype);
+  Projectile_SingleTarget.prototype.constructor = Projectile_SingleTarget;
+
+  Projectile_SingleTarget.prototype.initialize = function (src, x, y, projectileData) {
+    Game_Projectile.prototype.initialize.call(this, src, x, y);
+    this.setImage(projectileData.imageName, projectileData.imageIndex);
+    this.distance = projectileData.distance;
+    this.projectileData = projectileData;
+    this.action();
+    $gameVariables[0].messageFlag = false;
+  };
+
+  Projectile_SingleTarget.prototype.hitCharacter = function(vm, evt) {
+    Game_Projectile.prototype.hitCharacter.call(this, vm, evt);
+    if (this.projectileData.hitCharFunc) {
+      this.projectileData.hitCharFunc(vm, evt);
+    }
+    return true;
+  }
+
+  Projectile_SingleTarget.prototype.hitDoor = function(vm, evt) {
+    Game_Projectile.prototype.hitDoor.call(this, vm, evt);
+    if (this.projectileData.hitDoorFunc) {
+      this.projectileData.hitDoorFunc(vm, evt);
+    }
+    return true;
+  }
+
+  Projectile_SingleTarget.prototype.hitWall = function(vm, evt) {
+    Game_Projectile.prototype.hitWall.call(this, vm, evt);
+    if (this.projectileData.hitWallFunc) {
+      this.projectileData.hitWallFunc(vm, evt);
+    }
     return true;
   }
 
@@ -5763,10 +5856,17 @@
   }
 
   SkillUtils.canPerform = function(realSrc, skill) {
-    if (realSrc._mp < skill.mpCost || realSrc._tp < skill.tpCost) {
+    if (realSrc._tp < skill.tpCost) {
       if (realSrc == $gameActors.actor(1)) {
         setTimeout(function() {
           MapUtils.displayMessage('你氣喘吁吁, 沒有足夠的體力攻擊!');
+        }, 100);
+      }
+      return false;
+    } else if (realSrc._mp < skill.mpCost) {
+      if (realSrc == $gameActors.actor(1)) {
+        setTimeout(function() {
+          MapUtils.displayMessage('你的魔力不夠了...');
         }, 100);
       }
       return false;
@@ -5786,7 +5886,7 @@
   }
 
   // for directional skill
-  SkillUtils.performAction = function(src, x, y) {
+  SkillUtils.performDirectionalAction = function(src, x, y) {
     let target = null;
     let events = $gameMap.eventsXy(x, y);
     for (let id in events) {
@@ -5804,19 +5904,33 @@
     return true;
   }
 
-  // for hotkeys usage
+  // for projectile skill
+  SkillUtils.performProjectileAction = function(src, x, y) {
+    $gameVariables[0].fireProjectileInfo.skill.action(src, x, y);
+    return true;
+  }
+
   SkillUtils.performSkill = function(skill) {
     let prop = window[skill.constructor.name].prop;
     if (prop.subType == 'DIRECTIONAL') {
       if (SkillUtils.canPerform($gameActors.actor(1), skill)) {
         $gameVariables[0].fireProjectileInfo.skill = skill;
-        $gameVariables[0].directionalAction = SkillUtils.performAction;
+        $gameVariables[0].directionalAction = SkillUtils.performDirectionalAction;
         $gameVariables[0].directionalFlag = true;
         setTimeout(function() {
           MapUtils.displayMessage(Message.display('askDirection'));
         }, 100);
       }
-    } else {
+    } else if (prop.subType == 'PROJECTILE') {
+      if (SkillUtils.canPerform($gameActors.actor(1), skill)) {
+        $gameVariables[0].fireProjectileInfo.skill = skill;
+        $gameVariables[0].directionalAction = SkillUtils.performProjectileAction;
+        $gameVariables[0].directionalFlag = true;
+        setTimeout(function() {
+          MapUtils.displayMessage(Message.display('askDirection'));
+        }, 100);
+      }
+    } else if (prop.subType == 'RANGE'){
       if (skill.action($gamePlayer)) {
         setTimeout('TimeUtils.afterPlayerMoved();', 100);
       }
@@ -5905,9 +6019,6 @@
 
   Skill_Bite.prototype.action = function(src, target) {
     let realSrc = BattleUtils.getRealTarget(src);
-    if (!SkillUtils.canPerform(realSrc, this)) {
-      return false;
-    }
     realSrc._mp -= this.mpCost;
     realSrc._tp -= this.tpCost;
 
@@ -5959,16 +6070,13 @@
       {lv: 1, buffPercentage: 0.1, turns: 20, levelUp: 50},
       {lv: 2, buffPercentage: 0.2, turns: 30,levelUp: 150},
       {lv: 3, buffPercentage: 0.3, turns: 40,levelUp: 300},
-      {lv: 4, buffPercentage: 1.4, turns: 50,levelUp: 450},
-      {lv: 5, buffPercentage: 2.5, turns: 60,levelUp: -1}
+      {lv: 4, buffPercentage: 0.4, turns: 50,levelUp: 450},
+      {lv: 5, buffPercentage: 0.5, turns: 60,levelUp: -1}
     ]
   }
 
   Skill_Clever.prototype.action = function(src) {
     let realSrc = BattleUtils.getRealTarget(src);
-    if (!SkillUtils.canPerform(realSrc, this)) {
-      return false;
-    }
     realSrc._mp -= this.mpCost;
     realSrc._tp -= this.tpCost;
 
@@ -5985,7 +6093,8 @@
       LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
         , LogUtils.getCharName(realSrc), this.name));
     }
-    let buffAmount = Math.round(realSrc.param(4) * prop.effect[this.lv - 1].buffPercentage);
+    let index = this.lv - 1;
+    let buffAmount = Math.round(10 + 5 * index + realSrc.param(4) * 0.1);
     realSrc._buffs[4] += buffAmount;
     realSrc.status.skillEffect.push({
       skill: this,
@@ -6008,10 +6117,10 @@
   Skill_DarkFire.prototype.constructor = Skill_DarkFire;
 
   Skill_DarkFire.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataSkills[12]);
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[13]);
     this.name = '暗滅';
     this.description = '直線射出一顆黑色火球, 魔法傷害';
-    this.iconIndex = 5;
+    this.iconIndex = 64;
     this.mpCost = 15;
     this.lv = 1;
     this.exp = 0;
@@ -6022,38 +6131,41 @@
     subType: "PROJECTILE",
     damageType: "MAGIC",
     effect: [
-      {lv: 1, atkPercentage: 0.3, levelUp: 50},
-      {lv: 2, atkPercentage: 0.6, levelUp: 150},
-      {lv: 3, atkPercentage: 0.9, levelUp: 300},
-      {lv: 4, atkPercentage: 1.3, levelUp: 450},
-      {lv: 5, atkPercentage: 2.1, levelUp: -1}
+      {lv: 1, baseDamage: 15, levelUp: 50},
+      {lv: 2, baseDamage: 20, levelUp: 150},
+      {lv: 3, baseDamage: 25, levelUp: 300},
+      {lv: 4, baseDamage: 30, levelUp: 450},
+      {lv: 5, baseDamage: 35, levelUp: -1}
     ]
   }
 
-  Skill_DarkFire.prototype.action = function(src, target) {
+  Skill_DarkFire.prototype.action = function(src, x, y) {
     let realSrc = BattleUtils.getRealTarget(src);
-    if (!SkillUtils.canPerform(realSrc, this)) {
-      return false;
-    }
     realSrc._mp -= this.mpCost;
     realSrc._tp -= this.tpCost;
 
-    if (target) {
+    // parent of this function would be ProjectileData
+    let hitCharFunc = function(vm, target) {
+      let realSrc = BattleUtils.getRealTarget(vm.src);
       let realTarget = BattleUtils.getRealTarget(target);
-      let index = this.lv - 1;
-      let skillBonus = Skill_Bite.prop.effect[index].atkPercentage;
-      let value = SkillUtils.meleeDamage(realSrc, realTarget, 1 + skillBonus);
-      TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 12));
-      TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
-      LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)
-        , LogUtils.getPerformedTargetName(realSrc, realTarget), this.name, value));
-      realTarget._hp -= value;
-      SkillUtils.gainSkillExp(realSrc, this, index, Skill_Bite.prop);
+      let damage = window[this.skill.constructor.name].prop.effect[this.skill.lv - 1].baseDamage + Math.floor(realSrc.param(4) / 5);
+      console.log('original damage: ' + damage);
+      damage = Math.round(damage * getRandomIntRange(80, 121) / 100);
+      console.log('damage after random: ' + damage);
+      realTarget._hp -= damage;
+      if (CharUtils.playerCanSeeChar(target)) {
+        TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
+        TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
+        LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc)
+          , this.skill.name, LogUtils.getCharName(realTarget), damage));
+      }
       BattleUtils.checkTargetAlive(realSrc, realTarget, target);
-    } else {
-      LogUtils.addLog(String.format(Message.display('attackAir'), LogUtils.getCharName(realSrc)
-        , this.name));
     }
+    if (CharUtils.playerCanSeeChar) {
+      LogUtils.addLog(String.format(Message.display('shootProjectile'), LogUtils.getCharName(realSrc), this.name));
+    }
+    let data = new ProjectileData(this, '!Flame', 4, 5, hitCharFunc);
+    new Projectile_SingleTarget(src, x, y, data);
     return true;
   }
 
