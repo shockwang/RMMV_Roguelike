@@ -69,16 +69,16 @@
         }
         var status = '';
         // deal with nutrition system
-        if ($gameActors.actor(1).nutrition > 1000) {
+        if ($gameActors.actor(1).bellyStatus == 'FULL') {
             this.changeTextColor('#4169E1'); // royal blue
             status += '過飽 ';
-        } else if ($gameActors.actor(1).nutrition < 150 && $gameActors.actor(1).nutrition >= 50) {
+        } else if ($gameActors.actor(1).bellyStatus == 'HUNGRY') {
             this.changeTextColor('#FFFF00'); // yellow
             status += '飢餓 ';
-        } else if ($gameActors.actor(1).nutrition < 50 && $gameActors.actor(1).nutrition >= 0) {
+        } else if ($gameActors.actor(1).bellyStatus == 'WEAK') {
             this.changeTextColor('#FF8C00'); // dark orange
             status += '虛弱 ';
-        } else if ($gameActors.actor(1).nutrition < 0 && $gameActors.actor(1).nutrition >= -200) {
+        } else if ($gameActors.actor(1).bellyStatus == 'FAINT') {
             this.changeTextColor('#FF0000'); // red
             status += '昏厥 ';
         }

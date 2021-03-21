@@ -101,12 +101,11 @@
   var upStair = 19;
   var downStair = 27;
 
+  var dungeonDepth = 10;
+
   // door figures
   var doorClosedIcon = 512;
   var doorOpenedIcon = 528;
-
-  // view parameters
-  var viewDistance = 8;
 
   // room parameters
   var roomNum = 3, minRoomSize = 4, maxRoomSize = 16;
@@ -324,7 +323,15 @@
       groundHoleTrapTriggered: '{0}失足掉入地洞陷阱, 受到{1}點傷害!',
       climbOutFailed: '{0}嘗試爬出地洞, 但是失敗了.',
       climbOutSuccess: '{0}爬出了地洞.',
-      magicTrapTriggered: '{0}觸動了魔法陷阱!'
+      magicTrapTriggered: '{0}觸動了魔法陷阱!',
+      nutritionUpToFull: '你吃得太撐了!',
+      nutritionUpToNormal: '你不再感到飢餓了.',
+      nutritionDownToNormal: '你的肚子不那麼撐了.',
+      nutritionUpToHungry: '你現在僅僅感到飢餓.',
+      nutritionDownToHungry: '你感覺肚子餓了.',
+      nutritionUpToWeak: '你感覺身體的機能恢復了少許.',
+      nutritionDownToWeak: '你餓到身體開始虛弱了...',
+      nutritionDownToFaint: '你餓到意識不清, 再不吃點東西的話就死定了!'
     },
     display: function(msgName) {
       switch (Message.language) {
@@ -388,7 +395,8 @@
       seeInvisibleCount: 0,
       afraidCount: 0,
       groundHoleTrapped: false,
-      skillEffect: []
+      skillEffect: [],
+      bellyStatus: 'NORMAL' // FAINT, WEAK, HUNGRY, NORMAL, FULL
     }
     return result;
   }
@@ -429,7 +437,7 @@
               LogUtils.addLog(String.format(Message.display('recoverFromBlind')
                 , LogUtils.getCharName(target)));
               if (event == $gamePlayer) {
-                viewDistance = $gameActors.actor(1).originalViewDistance;
+                $gameActors.actor(1).awareDistance = $gameActors.actor(1).originalAwareDistance;
               }
               break;
             case 'paralyzeCount':
@@ -488,10 +496,10 @@
     }
   }
 
-  CharUtils.getActionTime = function(target) {
-    let result = $gameVariables[0].gameTimeAmp;
-    if (target.status.speedUpCount > 0) {
-      result /= 2;
+  CharUtils.getActionTime = function(realTarget) {
+    let result = Math.ceil(100 / realTarget.param(6) + 10);
+    if (realTarget.status.speedUpCount > 0) {
+      result = Math.ceil(result / 2);
     }
     return result;
   }
@@ -577,22 +585,94 @@
   // for distance attack
   CharUtils.checkTargetReachable = function(src, target) {
     let realSrc = BattleUtils.getRealTarget(src);
-    let realTarget = BattleUtils.getRealTarget(target);
 
     let inLine = false;
-    if (realSrc._x == realTarget._x) {
+    if (src._x == target._x) {
       inLine = true;
     } else {
-      let m = (realTarget._y - realSrc._y) / (realTarget._x - realSrc._x);
+      let m = (target._y - src._y) / (target._x - src._x);
       if (m == 0 || Math.abs(m) == 1) {
         inLine = true;
       }
     }
-    if (inLine && MapUtils.checkReachable(realSrc, realSrc.awareDistance, realTarget._x, realTarget._y
+    if (inLine && MapUtils.checkVisible(src, realSrc.awareDistance, target._x, target._y
       , $gameVariables[$gameMap._mapId].mapData, true)) {
-      return true;
+      let directionX = src._x, directionY = src._y;
+      if (src._x > target._x) {
+        directionX--;
+      } else if (src._x < target._x) {
+        directionX++;
+      }
+      if (src._y > target._y) {
+        directionY--;
+      } else if (src._y < target._y) {
+        directionY++;
+      }
+      let deltaX = Math.abs(src._x - target._x);
+      let deltaY = Math.abs(src._y - target._y);
+      let distance = (deltaX > deltaY) ? deltaX : deltaY;
+      return new TargetInSightData(directionX, directionY, distance);
     }
-    return false;
+    return null;
+  }
+
+  CharUtils.decreaseNutrition = function(realTarget) {
+    let isPlayer = (realTarget == $gameActors.actor(1)) ? true : false;
+    realTarget.nutrition--;
+    if (realTarget.nutrition >= $gameVariables[0].satiety.full) {
+      if (isPlayer) {
+        switch (realTarget.bellyStatus) {
+          case 'NORMAL': case 'HUNGRY': case 'WEAK': case 'FAINT':
+            LogUtils.addLog(Message.display('nutritionUpToFull'));
+            break;
+        }
+      }
+      realTarget.bellyStatus = 'FULL';
+    } else if (realTarget.nutrition >= $gameVariables[0].satiety.hungry) {
+      if (isPlayer) {
+        switch (realTarget.bellyStatus) {
+          case 'FULL':
+            LogUtils.addLog(Message.display('nutritionDownToNormal'));
+            break;
+          case 'HUNGRY': case 'WEAK': case 'FAINT':
+            LogUtils.addLog(Message.display('nutritionUpToNormal'));
+        }
+      }
+      realTarget.bellyStatus = 'NORMAL';
+    } else if (realTarget.nutrition >= $gameVariables[0].satiety.weak) {
+      if (isPlayer) {
+        switch (realTarget.bellyStatus) {
+          case 'FULL': case 'NORMAL':
+            LogUtils.addLog(Message.display('nutritionDownToHungry'));
+            break;
+          case 'WEAK': case 'FAINT':
+            LogUtils.addLog(Message.display('nutritionUpToHungry'));
+            break;
+        }
+      }
+      realTarget.bellyStatus = 'HUNGRY';
+    } else if (realTarget.nutrition >= $gameVariables[0].satiety.faint) {
+      if (isPlayer) {
+        switch (realTarget.bellyStatus) {
+          case 'FULL': case 'NORMAL': case 'HUNGRY':
+            LogUtils.addLog(Message.display('nutritionDownToWeak'));
+            break;
+          case 'FAINT':
+            LogUtils.addLog(Message.display('nutritionUpToWeak'));
+            break;
+        }
+      }
+      realTarget.bellyStatus = 'WEAK';
+    } else {
+      if (isPlayer) {
+        switch (realTarget.bellyStatus) {
+          case 'FULL': case 'NORMAL': case 'HUNGRY': case 'WEAK':
+            LogUtils.addLog(Message.display('nutritionDownToFaint'));
+            break;
+        }
+      }
+      realTarget.bellyStatus = 'FAINT';
+    }
   }
 
   //-----------------------------------------------------------------------------------
@@ -606,13 +686,13 @@
 
   MapUtils.initialize = function () {
     // define map variables here
-    for (var i = 0; i < 5; i++) {
+    for (var i = 0; i < dungeonDepth; i++) {
       $gameVariables[i + 1] = new MapVariable(null, null);
     }
-    for (var i = 1; i < 5; i++) {
+    for (var i = 1; i < dungeonDepth; i++) {
       $gameVariables[i + 1].generateRandom = true;
     }
-    $gameVariables[5].stairDownNum = 0;
+    $gameVariables[dungeonDepth].stairDownNum = 0;
 
     // game system setup
     $dataSystem.terms.params.push("武器威力"); // this one should be param(10)
@@ -627,11 +707,20 @@
     $gameVariables[0].logList = []; // only 18 lines can be displayed
     // define game time (counts * gameTimeAmp for possible future extends)
     $gameVariables[0].gameTime = 0;
-    $gameVariables[0].gameTimeAmp = 10;
+    $gameVariables[0].gameTimeAmp = 20;
+    // hunger related values
+    $gameVariables[0].satiety = {
+      full: 1000,
+      hungry: 300,
+      weak: 100,
+      faint: 0,
+      starve: -200
+    }
     // define player attributes
     $gameActors.actor(1).nutrition = 800;
     $gameActors.actor(1).status = CharUtils.initStatus();
-    $gameActors.actor(1).originalViewDistance = viewDistance;
+    $gameActors.actor(1).originalAwareDistance = 8;
+    $gameActors.actor(1).awareDistance = 8;
     $gameActors.actor(1).moved = false;
     $gameActors.actor(1).attacked = false;
     // initialize template events
@@ -691,8 +780,7 @@
 
     $gameParty._items.push(new Soul_Bite());
     Soul_Obtained_Action.learnSkill(Soul_Bite);
-    $gameActors.actor(1).learnSkill(new Skill_Clever());
-    $gameActors.actor(1).learnSkill(new Skill_DarkFire());
+    // $gameActors.actor(1).learnSkill(new Skill_Scud());
   }
 
   // message window defined here, because it can't be assigned to $gameVariables, will cause save/load crash
@@ -806,7 +894,7 @@
   }
 
   // check if projectile can hit
-  MapUtils.checkReachable = function(src, distance, x, y, mapData, checkMobFlag) {
+  MapUtils.checkVisible = function(src, distance, x, y, mapData, checkMobFlag) {
     var visible = false;
     if (MapUtils.getDistance(src._x, src._y, x, y) <= distance) {
       // around player, check visibility
@@ -894,7 +982,7 @@
 
   // this function should be called twice (src must be a Game_Event)
   function updateVisible(src, distance, x, y, mapData) {
-    mapData[x][y].isVisible = MapUtils.checkReachable(src, distance, x, y, mapData);
+    mapData[x][y].isVisible = MapUtils.checkVisible(src, distance, x, y, mapData);
   }
 
   function refineMapTile(rawData, x, y, centerTile) {
@@ -1042,7 +1130,7 @@
     // update visibility
     for (var j = 0; j < mapData[0].length; j++) {
       for (var i = 0; i < mapData.length; i++) {
-        updateVisible($gamePlayer, viewDistance, i, j, mapData);
+        updateVisible($gamePlayer, $gameActors.actor(1).awareDistance, i, j, mapData);
       }
     }
 
@@ -2512,7 +2600,18 @@
             LogUtils.addLog(String.format(Message.display('attackOutOfEnergy'), LogUtils.getCharName(this.mob)));
           }
         } else if (distance < this.mob.awareDistance) {
-          this.moveTowardCharacter($gamePlayer);
+          // check remote attack
+          if (MapUtils.checkVisible(this, this.mob.awareDistance, $gamePlayer._x, $gamePlayer._y
+            , $gameVariables[$gameMap._mapId].mapData) && this.targetInSightAction($gamePlayer)) {
+            // alreay done action
+          } else {
+            let data = CharUtils.checkTargetReachable(this, $gamePlayer);
+            if (data && this.projectileAction(data.directionX, data.directionY, data.distance)) {
+              // already done action
+            } else {
+              this.moveTowardCharacter($gamePlayer);
+            }
+          }
         } else {
           this.moveRandom();
         }
@@ -2522,9 +2621,28 @@
     }
   }
 
+  Game_Mob.prototype.performBuffIfNotPresent = function(skill) {
+    if (!CharUtils.getTargetEffect(this.mob, window[skill.constructor.name])
+      && SkillUtils.canPerform(this.mob, skill)) {
+      skill.action(this);
+      return true;
+    }
+    return false;
+  }
+
+  // define target in sight action (buff, range attack)
+  Game_Mob.prototype.targetInSightAction = function(target) {
+    return false;
+  }
+
   // define melee action
   Game_Mob.prototype.meleeAction = function(target) {
     return BattleUtils.meleeAttack(this, target);
+  }
+
+  // define projectile action (target in line)
+  Game_Mob.prototype.projectileAction = function(x, y, distance) {
+    return false;
   }
 
   // Override moveTowardCharacter() function so mobs can move diagonally
@@ -2733,7 +2851,7 @@
     let mobInitData = {
       name: '小雞',
       exp: 27,
-      params: [1, 1, 6, 1, 5, 1, 1, 5],
+      params: [1, 1, 6, 1, 5, 1, 3, 5],
       level: 1
     }
     Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
@@ -2784,6 +2902,14 @@
     }
   }
 
+  Dog.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Bite
+      return this.mob._skills[0].action(this, target);
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
   Dog.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(10) < 3) {
@@ -2796,7 +2922,7 @@
       lootings.push(new Dog_Tooth());
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Dog_Meat());
+      lootings.push(new Dog_Bone());
     }
 
     for (var id in lootings) {
@@ -2804,14 +2930,6 @@
     }
     if (getRandomInt(100) < 10) {
       this.dropSoul(Soul_Bite);
-    }
-  }
-
-  Dog.prototype.meleeAction = function(target) {
-    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Bite
-      return this.mob._skills[0].action(this, target);
-    } else {
-      return BattleUtils.meleeAttack(this, target);
     }
   }
   CharUtils.mobTemplates.push(Dog);
@@ -2887,7 +3005,28 @@
     this.setImage('Nature', 1);
     if (!fromData) {
       this.mob.mobClass = 'Cat';
+      this.mob._skills.push(new Skill_Clever());
+      this.mob._skills.push(new Skill_DarkFire());
     }
+  }
+
+  Cat.prototype.targetInSightAction = function(target) {
+    if (getRandomInt(100) < 40) { // Skill_Clever
+      return this.performBuffIfNotPresent(this.mob._skills[0]);
+    }
+    return false;
+  }
+
+  Cat.prototype.projectileAction = function(x, y, distance) {
+    if (getRandomInt(100) < 40) { // Skill_DarkFire
+      let skill = this.mob._skills[1];
+      if (distance <= window[skill.constructor.name].prop.effect[skill.lv - 1].distance
+        && SkillUtils.canPerform(this.mob, skill)) {
+        skill.action(this, x, y);
+        return true;
+      }
+    }
+    return false;
   }
 
   Cat.prototype.looting = function () {
@@ -2909,10 +3048,78 @@
       ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
     }
     if (getRandomInt(100) < 10) {
-      this.dropSoul(Soul_Chick);
+      this.dropSoul(Soul_Clever);
     }
   }
   CharUtils.mobTemplates.push(Cat);
+
+  //-----------------------------------------------------------------------------------
+  // Wolf
+
+  Wolf = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Wolf.baseDungeonLevel = 5;
+
+  Wolf.prototype = Object.create(Game_Mob.prototype);
+  Wolf.prototype.constructor = Wolf;
+
+  Wolf.prototype.initialize = function (x, y, fromData) {
+    let mobInitData = {
+      name: '狼',
+      exp: 50,
+      params: [1, 1, 18, 10, 10, 10, 10, 3],
+      level: 6
+    }
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
+    this.setImage('Animal', 2);
+    if (!fromData) {
+      this.mob.mobClass = 'Wolf';
+      this.mob._skills.push(new Skill_Scud());
+      let toPush = new Skill_Bite();
+      toPush.lv = 2;
+      this.mob._skills.push(toPush);
+    }
+  }
+
+  Wolf.prototype.targetInSightAction = function(target) {
+    if (getRandomInt(100) < 40) { // Skill_Scud
+      return this.performBuffIfNotPresent(this.mob._skills[0]);
+    }
+    return false;
+  }
+
+  Wolf.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[1])) { // Skill_Bite
+      return this.mob._skills[1].action(this, target);
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  Wolf.prototype.looting = function () {
+    var lootings = [];
+    if (getRandomInt(10) < 3) {
+      lootings.push(new Cat_Meat());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Cat_Tooth());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Cat_Claw());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Cat_Skin());
+    }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_Scud);
+    }
+  }
+  CharUtils.mobTemplates.push(Wolf);
 
   //-----------------------------------------------------------------------------------
   // Game_Door
@@ -3002,6 +3209,7 @@
     $gameVariables[0].messageFlag = false;
     SceneManager._scene.removeChild(messageWindow);
     LogUtils.addLog(Message.display('openDoor'));
+    AudioManager.playSe({name: 'Open1', pan: 0, pitch: 100, volume: 100});
     return true;
   }
 
@@ -3044,6 +3252,7 @@
     $gameVariables[0].messageFlag = false;
     SceneManager._scene.removeChild(messageWindow);
     LogUtils.addLog(Message.display('closeDoor'));
+    AudioManager.playSe({name: 'Close1', pan: 0, pitch: 100, volume: 100});
     return true;
   }
 
@@ -4069,6 +4278,7 @@
     // block player from moving
     $gamePlayer._vehicleGettingOn = true;
     var player = $gameActors.actor(1);
+    CharUtils.decreaseNutrition(player);
     if (!timeSpent) {
       timeSpent = CharUtils.getActionTime(player);
     }
@@ -4126,13 +4336,10 @@
         CharUtils.updateStatus($gamePlayer);
         TimeUtils.playAnime();
         // deal with energy calculation
-        if (playerDashed || player.attacked) {
+        if (playerDashed) {
           // huge movement, do nothing
-        } else if (player.moved) {
-          player.gainTp(3);
         } else {
-          // player rest
-          player.gainTp(6);
+          CharUtils.updateTp($gamePlayer);
         }
         MapUtils.refreshMap();
 
@@ -5068,7 +5275,7 @@
     let realUser = BattleUtils.getRealTarget(user);
     realUser.status.blindCount = 20;
     if (user == $gamePlayer) {
-      viewDistance = 0;
+      $gameActors.actor(1).awareDistance = 0;
     }
     if (CharUtils.playerCanSeeChar(user)) {
       TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 60));
@@ -5799,8 +6006,6 @@
 
   //-----------------------------------------------------------------------------------
   // Soul_Chick
-  //
-  // type: SOUL
 
   Soul_Chick = function() {
     this.initialize.apply(this, arguments);
@@ -5817,8 +6022,6 @@
 
   //-----------------------------------------------------------------------------------
   // Soul_Bite
-  //
-  // type: SOUL
 
   Soul_Bite = function() {
     this.initialize.apply(this, arguments);
@@ -5831,6 +6034,38 @@
     ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
     this.name = '噬咬';
     this.description = '你的牙齒變得更銳利了';
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Soul_Clever
+
+  Soul_Clever = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Soul_Clever.prototype = Object.create(ItemTemplate.prototype);
+  Soul_Clever.prototype.constructor = Soul_Clever;
+
+  Soul_Clever.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
+    this.name = '狡詐';
+    this.description = '你學會了勾心鬥角';
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Soul_Scud
+
+  Soul_Scud = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Soul_Scud.prototype = Object.create(ItemTemplate.prototype);
+  Soul_Scud.prototype.constructor = Soul_Scud;
+
+  Soul_Scud.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
+    this.name = '俊足';
+    this.description = '你的雙腿變得強壯';
   }
 
   //-----------------------------------------------------------------------------------
@@ -5911,29 +6146,27 @@
   }
 
   SkillUtils.performSkill = function(skill) {
+    if (!SkillUtils.canPerform($gameActors.actor(1), skill)) {
+      return;
+    }
     let prop = window[skill.constructor.name].prop;
     if (prop.subType == 'DIRECTIONAL') {
-      if (SkillUtils.canPerform($gameActors.actor(1), skill)) {
-        $gameVariables[0].fireProjectileInfo.skill = skill;
-        $gameVariables[0].directionalAction = SkillUtils.performDirectionalAction;
-        $gameVariables[0].directionalFlag = true;
-        setTimeout(function() {
-          MapUtils.displayMessage(Message.display('askDirection'));
-        }, 100);
-      }
+      $gameVariables[0].fireProjectileInfo.skill = skill;
+      $gameVariables[0].directionalAction = SkillUtils.performDirectionalAction;
+      $gameVariables[0].directionalFlag = true;
+      setTimeout(function() {
+        MapUtils.displayMessage(Message.display('askDirection'));
+      }, 100);
     } else if (prop.subType == 'PROJECTILE') {
-      if (SkillUtils.canPerform($gameActors.actor(1), skill)) {
-        $gameVariables[0].fireProjectileInfo.skill = skill;
-        $gameVariables[0].directionalAction = SkillUtils.performProjectileAction;
-        $gameVariables[0].directionalFlag = true;
-        setTimeout(function() {
-          MapUtils.displayMessage(Message.display('askDirection'));
-        }, 100);
-      }
+      $gameVariables[0].fireProjectileInfo.skill = skill;
+      $gameVariables[0].directionalAction = SkillUtils.performProjectileAction;
+      $gameVariables[0].directionalFlag = true;
+      setTimeout(function() {
+        MapUtils.displayMessage(Message.display('askDirection'));
+      }, 100);
     } else if (prop.subType == 'RANGE'){
-      if (skill.action($gamePlayer)) {
-        setTimeout('TimeUtils.afterPlayerMoved();', 100);
-      }
+      skill.action($gamePlayer);
+      setTimeout('TimeUtils.afterPlayerMoved();', 100);
     }
   }
 
@@ -6098,9 +6331,74 @@
     realSrc._buffs[4] += buffAmount;
     realSrc.status.skillEffect.push({
       skill: this,
-      effectCount: prop.effect[this.lv - 1].turns,
+      effectCount: prop.effect[index].turns,
       effectEnd: function() {
         realSrc._buffs[4] -= buffAmount;
+      }
+    });
+    return true;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Skill_Scud
+
+  Skill_Scud = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_Scud.prototype = Object.create(ItemTemplate.prototype);
+  Skill_Scud.prototype.constructor = Skill_Scud;
+
+  Skill_Scud.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[13]);
+    this.name = '俊足';
+    this.description = '暫時速度提升, 防禦下降';
+    this.iconIndex = 82;
+    this.mpCost = 15;
+    this.lv = 1;
+    this.exp = 0;
+    // buff or debuf
+    this.isBuff = true;
+  }
+
+  Skill_Scud.prop = {
+    type: "SKILL",
+    subType: "RANGE",
+    effect: [
+      {lv: 1, buffPercentage: 0.1, turns: 20, levelUp: 50},
+      {lv: 2, buffPercentage: 0.2, turns: 30, levelUp: 150},
+      {lv: 3, buffPercentage: 0.3, turns: 40, levelUp: 300},
+      {lv: 4, buffPercentage: 0.4, turns: 50, levelUp: 450},
+      {lv: 5, buffPercentage: 0.5, turns: 60, levelUp: -1}
+    ]
+  }
+
+  Skill_Scud.prototype.action = function(src) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    realSrc._mp -= this.mpCost;
+    realSrc._tp -= this.tpCost;
+
+    let prop = window[this.constructor.name].prop;
+    let effect = CharUtils.getTargetEffect(realSrc, Skill_Scud);
+    if (effect) {
+      effect.effectEnd();
+      let index = realSrc.status.skillEffect.indexOf(effect);
+      realSrc.status.skillEffect.splice(index, 1);
+    }
+    if (CharUtils.playerCanSeeChar(src)) {
+      TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 51));
+      TimeUtils.animeQueue.push(new AnimeObject(src, 'POP_UP', this.name));
+      LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
+        , LogUtils.getCharName(realSrc), this.name));
+    }
+    let index = this.lv - 1;
+    let buffAmount = Math.round(10 + 5 * index + realSrc.param(6) * prop.effect[index].buffPercentage);
+    realSrc._buffs[6] += buffAmount;
+    realSrc.status.skillEffect.push({
+      skill: this,
+      effectCount: prop.effect[index].turns,
+      effectEnd: function() {
+        realSrc._buffs[6] -= buffAmount;
       }
     });
     return true;
@@ -6131,11 +6429,11 @@
     subType: "PROJECTILE",
     damageType: "MAGIC",
     effect: [
-      {lv: 1, baseDamage: 15, levelUp: 50},
-      {lv: 2, baseDamage: 20, levelUp: 150},
-      {lv: 3, baseDamage: 25, levelUp: 300},
-      {lv: 4, baseDamage: 30, levelUp: 450},
-      {lv: 5, baseDamage: 35, levelUp: -1}
+      {lv: 1, baseDamage: 15, distance: 5, levelUp: 50},
+      {lv: 2, baseDamage: 20, distance: 5, levelUp: 150},
+      {lv: 3, baseDamage: 25, distance: 6, levelUp: 300},
+      {lv: 4, baseDamage: 30, distance: 6, levelUp: 450},
+      {lv: 5, baseDamage: 35, distance: 7, levelUp: -1}
     ]
   }
 
@@ -6149,12 +6447,10 @@
       let realSrc = BattleUtils.getRealTarget(vm.src);
       let realTarget = BattleUtils.getRealTarget(target);
       let damage = window[this.skill.constructor.name].prop.effect[this.skill.lv - 1].baseDamage + Math.floor(realSrc.param(4) / 5);
-      console.log('original damage: ' + damage);
       damage = Math.round(damage * getRandomIntRange(80, 121) / 100);
-      console.log('damage after random: ' + damage);
       realTarget._hp -= damage;
       if (CharUtils.playerCanSeeChar(target)) {
-        TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
+        TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 121));
         TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
         LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc)
           , this.skill.name, LogUtils.getCharName(realTarget), damage));
@@ -6164,7 +6460,8 @@
     if (CharUtils.playerCanSeeChar) {
       LogUtils.addLog(String.format(Message.display('shootProjectile'), LogUtils.getCharName(realSrc), this.name));
     }
-    let data = new ProjectileData(this, '!Flame', 4, 5, hitCharFunc);
+    let data = new ProjectileData(this, '!Flame2', 5
+      , window[this.constructor.name].prop.effect[this.lv - 1].distance, hitCharFunc);
     new Projectile_SingleTarget(src, x, y, data);
     return true;
   }
@@ -6526,7 +6823,13 @@
       value = value * this.paramRate(paramId) + this._buffs[paramId];
       var maxValue = this.paramMax(paramId);
       var minValue = this.paramMin(paramId);
-      return Math.round(value.clamp(minValue, maxValue));
+      let modifier = 1;
+      if (this.bellyStatus == 'FAINT') {
+        modifier = 0.5;
+      } else if (this.bellyStatus == 'WEAK') {
+        modifier = 0.7;
+      }
+      return Math.round(value.clamp(minValue, maxValue) * modifier);
     } else {
       let attrParamId = paramId - 8;
       return (attrParamId == 2) ? this.xparam(attrParamId) : Math.round(this.xparam(paramId - 8) * 100);
@@ -6941,9 +7244,11 @@
       }
       this.popScene();
       var func = function (item) {
-        TimeUtils.afterPlayerMoved(3 * $gameVariables[0].gameTimeAmp);
+        // TODO: implement message & eat when full mechanism
+        TimeUtils.afterPlayerMoved(10 * $gameVariables[0].gameTimeAmp);
+        $gameActors.actor(1).nutrition += item.nutrition;
+        CharUtils.decreaseNutrition($gameActors.actor(1));
         $gameMessage.add("你吃完了" + item.name + ".");
-        // TODO: implement eating effect
       }
       setTimeout(func.bind(null, this.item()), 100);
     }
