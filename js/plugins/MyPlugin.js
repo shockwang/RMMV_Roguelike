@@ -770,39 +770,33 @@
     }
 
     // for test
-    for (let i = 0; i < 10; i++) {
-      $gameParty.gainItem(new Scroll_Identify(), 1);
-      $gameParty.gainItem(new Scroll_EnchantArmor(), 1);
-      $gameParty.gainItem(new Scroll_EnchantWeapon(), 1);
-      $gameParty.gainItem(new Scroll_RemoveCurse(), 1);
-      $gameParty.gainItem(new Scroll_Teleport(), 1);
-      $gameParty.gainItem(new Scroll_DestroyArmor(), 1);
-      $gameParty.gainItem(new Scroll_CreateMonster(), 1);
-      $gameParty.gainItem(new Scroll_ScareMonster(), 1);
-      $gameParty.gainItem(new Potion_Heal(), 1);
-      $gameParty.gainItem(new Potion_Mana(), 1);
-      $gameParty.gainItem(new Potion_Blind(), 1);
-      $gameParty.gainItem(new Potion_Paralyze(), 1);
-      $gameParty.gainItem(new Potion_Sleep(), 1);
-      $gameParty.gainItem(new Potion_Speed(), 1);
-      $gameParty.gainItem(new Potion_Growth(), 1);
-      $gameParty.gainItem(new Potion_LevelUp(), 1);
-      $gameParty.gainItem(new Potion_Invisible(), 1);
-      $gameParty.gainItem(new Potion_SeeInvisible(), 1);
-      $gameParty.gainItem(new Potion_Acid(), 1);
-      $gameParty.gainItem(new Potion_Poison(), 1);
-    }
-    $gameParty.gainItem(new Dog_Tooth(), 1);
-    $gameParty.gainItem(new Dog_Skin(), 1);
-    $gameParty.gainItem(new Dog_Meat(), 1);
-    $gameParty.gainItem(new Dog_Meat(), 1);
-    $gameParty.gainItem(new Dog_Meat(), 1);
-    $gameParty.gainItem(new Dog_Meat(), 1);
-    $gameParty.gainItem(new Dog_Meat(), 1);
+    // for (let i = 0; i < 10; i++) {
+    //   $gameParty.gainItem(new Scroll_Identify(), 1);
+    //   $gameParty.gainItem(new Scroll_EnchantArmor(), 1);
+    //   $gameParty.gainItem(new Scroll_EnchantWeapon(), 1);
+    //   $gameParty.gainItem(new Scroll_RemoveCurse(), 1);
+    //   $gameParty.gainItem(new Scroll_Teleport(), 1);
+    //   $gameParty.gainItem(new Scroll_DestroyArmor(), 1);
+    //   $gameParty.gainItem(new Scroll_CreateMonster(), 1);
+    //   $gameParty.gainItem(new Scroll_ScareMonster(), 1);
+    //   $gameParty.gainItem(new Potion_Heal(), 1);
+    //   $gameParty.gainItem(new Potion_Mana(), 1);
+    //   $gameParty.gainItem(new Potion_Blind(), 1);
+    //   $gameParty.gainItem(new Potion_Paralyze(), 1);
+    //   $gameParty.gainItem(new Potion_Sleep(), 1);
+    //   $gameParty.gainItem(new Potion_Speed(), 1);
+    //   $gameParty.gainItem(new Potion_Growth(), 1);
+    //   $gameParty.gainItem(new Potion_LevelUp(), 1);
+    //   $gameParty.gainItem(new Potion_Invisible(), 1);
+    //   $gameParty.gainItem(new Potion_SeeInvisible(), 1);
+    //   $gameParty.gainItem(new Potion_Acid(), 1);
+    //   $gameParty.gainItem(new Potion_Poison(), 1);
+    // }
+    // $gameParty.gainItem(new Dog_Tooth(), 1);
+    // $gameParty.gainItem(new Dog_Skin(), 1);
 
-    $gameParty._items.push(new Soul_Bite());
-    Soul_Obtained_Action.learnSkill(Soul_Bite);
-    // $gameActors.actor(1).learnSkill(new Skill_Scud());
+    // $gameParty._items.push(new Soul_Bite());
+    // Soul_Obtained_Action.learnSkill(Soul_Bite);
   }
 
   // message window defined here, because it can't be assigned to $gameVariables, will cause save/load crash
@@ -4210,6 +4204,9 @@
         case 'S': // call save/load menu
           SceneManager.push(Scene_Save);
           break;
+        case 'M': // call crafting screen (mix)
+          SceneManager.push(Scene_Craft);
+          break;
       }
     }
     if (this._shouldPreventDefault(event.keyCode)) {
@@ -4448,8 +4445,8 @@
     let weaponDamage = (BattleUtils.rollWeaponDamage(realSrc.param(10)) + weaponBonus) * (1 + realSrc.param(2) / 200);
     let attrDamage = 2 * (realSrc.level / 4 + realSrc.param(2) + realSrc.param(7) / 3);
     let attrDef = (realTarget.level + realTarget.param(3)) / 2 + realTarget.param(6) / 5;
-    let equipDef = (4000 + realTarget.param(8)) / (4000 + realTarget.param(8) * 10);
-    return Math.round(((weaponDamage + attrDamage) * skillAmplify * equipDef - attrDef) / 4 * getRandomIntRange(80, 121) / 100);
+    let equipDef = realTarget.param(8);
+    return Math.round(((weaponDamage + attrDamage) * skillAmplify - equipDef - attrDef) / 4 * getRandomIntRange(80, 121) / 100);
   }
 
   BattleUtils.getWeaponClass = function(realSrc) {
@@ -4918,6 +4915,29 @@
   };
 
   //-----------------------------------------------------------------------------------
+  // EquipTemplate
+  //
+  // deal with BUC states
+
+  EquipTemplate = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  EquipTemplate.prototype = Object.create(ItemTemplate.prototype);
+  EquipTemplate.prototype.constructor = EquipTemplate;
+
+  EquipTemplate.prototype.initialize = function (template) {
+    ItemTemplate.prototype.initialize.call(this, template);
+    if (getRandomInt(10) < 3) {
+      if (getRandomInt(2) == 1) {
+        this.bucState = 1;
+      } else {
+        this.bucState = -1;
+      }
+    }
+  };
+
+  //-----------------------------------------------------------------------------------
   // Feather
   //
   // type: MATERIAL
@@ -5002,24 +5022,23 @@
     this.initialize.apply(this, arguments);
   }
 
-  Dog_Tooth.prototype = Object.create(ItemTemplate.prototype);
+  Dog_Tooth.prototype = Object.create(EquipTemplate.prototype);
   Dog_Tooth.prototype.constructor = Dog_Tooth;
 
   Dog_Tooth.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataWeapons[11]);
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[11]);
     this.name = '犬牙';
     this.description = '剛長出來不久的牙齒';
     this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
     // randomize attributes
     let modifier = getRandomIntRange(0, 3);
+    modifier += this.bucState;
     this.traits[2].value = '1d3';
     if (modifier > 0) {
       this.traits[2].value += '+' + modifier;
     }
     ItemUtils.updateEquipDescription(this);
-    // randomize bucState
-    this.bucState = getRandomIntRange(-1, 2);
-    ItemUtils.updateEquipName(this);
   }
 
   //-----------------------------------------------------------------------------------
@@ -5031,24 +5050,23 @@
     this.initialize.apply(this, arguments);
   }
 
-  Rooster_Tooth.prototype = Object.create(ItemTemplate.prototype);
+  Rooster_Tooth.prototype = Object.create(EquipTemplate.prototype);
   Rooster_Tooth.prototype.constructor = Rooster_Tooth;
 
   Rooster_Tooth.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataWeapons[11]);
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[11]);
     this.name = '雞喙';
     this.description = '被啄到會很痛';
     this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
     // randomize attributes
     let modifier = getRandomIntRange(0, 3);
+    modifier += this.bucState;
     this.traits[2].value = '1d4';
     if (modifier > 0) {
       this.traits[2].value += '+' + modifier;
     }
     ItemUtils.updateEquipDescription(this);
-    // randomize bucState
-    this.bucState = getRandomIntRange(-1, 2);
-    ItemUtils.updateEquipName(this);
   }
 
   //-----------------------------------------------------------------------------------
@@ -5060,24 +5078,23 @@
     this.initialize.apply(this, arguments);
   }
 
-  Cat_Tooth.prototype = Object.create(ItemTemplate.prototype);
+  Cat_Tooth.prototype = Object.create(EquipTemplate.prototype);
   Cat_Tooth.prototype.constructor = Cat_Tooth;
 
   Cat_Tooth.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataWeapons[11]);
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[11]);
     this.name = '貓牙';
     this.description = '尖銳的牙齒';
     this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
     // randomize attributes
     let modifier = getRandomIntRange(0, 3);
+    modifier += this.bucState;
     this.traits[2].value = '1d5';
     if (modifier > 0) {
       this.traits[2].value += '+' + modifier;
     }
     ItemUtils.updateEquipDescription(this);
-    // randomize bucState
-    this.bucState = getRandomIntRange(-1, 2);
-    ItemUtils.updateEquipName(this);
   }
 
   //-----------------------------------------------------------------------------------
@@ -5089,21 +5106,19 @@
     this.initialize.apply(this, arguments);
   }
 
-  Dog_Bone.prototype = Object.create(ItemTemplate.prototype);
+  Dog_Bone.prototype = Object.create(EquipTemplate.prototype);
   Dog_Bone.prototype.constructor = Dog_Bone;
 
   Dog_Bone.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataWeapons[12]);
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[12]);
     this.name = '犬骨';
     this.description = '棒狀的骨頭';
     this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
     // randomize attributes
     this.traits[2].value = '1';
     // TODO: implement magic power amplifier
     ItemUtils.updateEquipDescription(this);
-    // randomize bucState
-    this.bucState = getRandomIntRange(-1, 2);
-    ItemUtils.updateEquipName(this);
   }
 
   //-----------------------------------------------------------------------------------
@@ -5115,24 +5130,23 @@
     this.initialize.apply(this, arguments);
   }
 
-  Rooster_Claw.prototype = Object.create(ItemTemplate.prototype);
+  Rooster_Claw.prototype = Object.create(EquipTemplate.prototype);
   Rooster_Claw.prototype.constructor = Rooster_Claw;
 
   Rooster_Claw.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataWeapons[13]);
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[13]);
     this.name = '雞爪';
     this.description = '調理後會很好吃?';
     this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
     // randomize attributes
     let modifier = getRandomIntRange(0, 3);
+    modifier += this.bucState;
     this.traits[2].value = '2d2';
     if (modifier > 0) {
       this.traits[2].value += '+' + modifier;
     }
     ItemUtils.updateEquipDescription(this);
-    // randomize bucState
-    this.bucState = getRandomIntRange(-1, 2);
-    ItemUtils.updateEquipName(this);
   }
 
   //-----------------------------------------------------------------------------------
@@ -5144,24 +5158,23 @@
     this.initialize.apply(this, arguments);
   }
 
-  Cat_Claw.prototype = Object.create(ItemTemplate.prototype);
+  Cat_Claw.prototype = Object.create(EquipTemplate.prototype);
   Cat_Claw.prototype.constructor = Cat_Claw;
 
   Cat_Claw.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataWeapons[13]);
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[13]);
     this.name = '貓爪';
     this.description = '可以輕易撕開皮膚';
     this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
     // randomize attributes
     let modifier = getRandomIntRange(2, 5);
+    modifier += this.bucState;
     this.traits[2].value = '2d2';
     if (modifier > 0) {
       this.traits[2].value += '+' + modifier;
     }
     ItemUtils.updateEquipDescription(this);
-    // randomize bucState
-    this.bucState = getRandomIntRange(-1, 2);
-    ItemUtils.updateEquipName(this);
   }
 
   //-----------------------------------------------------------------------------------
@@ -5173,16 +5186,17 @@
     this.initialize.apply(this, arguments);
   }
 
-  Dog_Skin.prototype = Object.create(ItemTemplate.prototype);
+  Dog_Skin.prototype = Object.create(EquipTemplate.prototype);
   Dog_Skin.prototype.constructor = Dog_Skin;
 
   Dog_Skin.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataArmors[11]);
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[11]);
     this.name = '犬皮';
     this.description = '髒兮兮的薄皮';
     this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 2);
+    ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
 
@@ -5195,17 +5209,18 @@
     this.initialize.apply(this, arguments);
   }
 
-  Cat_Skin.prototype = Object.create(ItemTemplate.prototype);
+  Cat_Skin.prototype = Object.create(EquipTemplate.prototype);
   Cat_Skin.prototype.constructor = Cat_Skin;
 
   Cat_Skin.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataArmors[11]);
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[11]);
     this.name = '貓皮';
     this.description = '泛著光澤的皮';
     this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 1);
-    ItemUtils.modifyAttr(this.traits[1], 2);
+    ItemUtils.modifyAttr(this.traits[0], 1 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 2 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
 
@@ -7559,6 +7574,276 @@
     }
     this._itemWindow.refresh();
     this._itemWindow.activate();
+  };
+
+  //-----------------------------------------------------------------------------
+  // Window_CraftCommand
+  //
+  // The window for selecting craft command on craft scene.
+
+  function Window_CraftCommand() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_CraftCommand.prototype = Object.create(Window_ShopCommand.prototype);
+  Window_CraftCommand.prototype.constructor = Window_CraftCommand;
+
+  Window_CraftCommand.prototype.makeCommandList = function() {
+    this.addCommand('abc',    'buy');
+    this.addCommand('def',   'sell',   !this._purchaseOnly);
+    this.addCommand('ghi', 'cancel');
+};
+
+  //-----------------------------------------------------------------------------
+  // Scene_Craft
+  //
+  // The scene class of the crafting screen.
+
+  function Scene_Craft() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Scene_Craft.prototype = Object.create(Scene_MenuBase.prototype);
+  Scene_Craft.prototype.constructor = Scene_Craft;
+
+  Scene_Craft.prototype.initialize = function() {
+    this._goods = [];
+    this._purchaseOnly = false;
+    this._item = null;
+    Scene_MenuBase.prototype.initialize.call(this);
+  };
+
+  Scene_Craft.prototype.create = function() {
+    Scene_MenuBase.prototype.create.call(this);
+    this.createHelpWindow();
+    this.createCommandWindow();
+    this.createDummyWindow();
+    this.createNumberWindow();
+    this.createStatusWindow();
+    this.createBuyWindow();
+    this.createCategoryWindow();
+    this.createSellWindow();
+  };
+
+  Scene_Craft.prototype.createCommandWindow = function() {
+    this._commandWindow = new Window_CraftCommand(Graphics.boxWidth, this._purchaseOnly);
+    this._commandWindow.y = this._helpWindow.height;
+    this._commandWindow.setHandler('buy',    this.commandBuy.bind(this));
+    this._commandWindow.setHandler('sell',   this.commandSell.bind(this));
+    this._commandWindow.setHandler('cancel', this.popScene.bind(this));
+    this.addWindow(this._commandWindow);
+  };
+
+  Scene_Craft.prototype.createDummyWindow = function() {
+    var wy = this._commandWindow.y + this._commandWindow.height;
+    var wh = Graphics.boxHeight - wy;
+    this._dummyWindow = new Window_Base(0, wy, Graphics.boxWidth, wh);
+    this.addWindow(this._dummyWindow);
+  };
+
+  Scene_Craft.prototype.createNumberWindow = function() {
+    var wy = this._dummyWindow.y;
+    var wh = this._dummyWindow.height;
+    this._numberWindow = new Window_ShopNumber(0, wy, wh);
+    this._numberWindow.hide();
+    this._numberWindow.setHandler('ok',     this.onNumberOk.bind(this));
+    this._numberWindow.setHandler('cancel', this.onNumberCancel.bind(this));
+    this.addWindow(this._numberWindow);
+  };
+
+  Scene_Craft.prototype.createStatusWindow = function() {
+    var wx = this._numberWindow.width;
+    var wy = this._dummyWindow.y;
+    var ww = Graphics.boxWidth - wx;
+    var wh = this._dummyWindow.height;
+    this._statusWindow = new Window_ShopStatus(wx, wy, ww, wh);
+    this._statusWindow.hide();
+    this.addWindow(this._statusWindow);
+  };
+
+  Scene_Craft.prototype.createBuyWindow = function() {
+    var wy = this._dummyWindow.y;
+    var wh = this._dummyWindow.height;
+    this._buyWindow = new Window_ShopBuy(0, wy, wh, this._goods);
+    this._buyWindow.setHelpWindow(this._helpWindow);
+    this._buyWindow.setStatusWindow(this._statusWindow);
+    this._buyWindow.hide();
+    this._buyWindow.setHandler('ok',     this.onBuyOk.bind(this));
+    this._buyWindow.setHandler('cancel', this.onBuyCancel.bind(this));
+    this.addWindow(this._buyWindow);
+  };
+
+  Scene_Craft.prototype.createCategoryWindow = function() {
+    this._categoryWindow = new Window_ItemCategory();
+    this._categoryWindow.setHelpWindow(this._helpWindow);
+    this._categoryWindow.y = this._dummyWindow.y;
+    this._categoryWindow.hide();
+    this._categoryWindow.deactivate();
+    this._categoryWindow.setHandler('ok',     this.onCategoryOk.bind(this));
+    this._categoryWindow.setHandler('cancel', this.onCategoryCancel.bind(this));
+    this.addWindow(this._categoryWindow);
+  };
+
+  Scene_Craft.prototype.createSellWindow = function() {
+    var wy = this._categoryWindow.y + this._categoryWindow.height;
+    var wh = Graphics.boxHeight - wy;
+    this._sellWindow = new Window_ShopSell(0, wy, Graphics.boxWidth, wh);
+    this._sellWindow.setHelpWindow(this._helpWindow);
+    this._sellWindow.hide();
+    this._sellWindow.setHandler('ok',     this.onSellOk.bind(this));
+    this._sellWindow.setHandler('cancel', this.onSellCancel.bind(this));
+    this._categoryWindow.setItemWindow(this._sellWindow);
+    this.addWindow(this._sellWindow);
+  };
+
+  Scene_Craft.prototype.activateBuyWindow = function() {
+    this._buyWindow.setMoney(this.money());
+    this._buyWindow.show();
+    this._buyWindow.activate();
+    this._statusWindow.show();
+  };
+
+  Scene_Craft.prototype.activateSellWindow = function() {
+    this._categoryWindow.show();
+    this._sellWindow.refresh();
+    this._sellWindow.show();
+    this._sellWindow.activate();
+    this._statusWindow.hide();
+  };
+
+  Scene_Craft.prototype.commandBuy = function() {
+    this._dummyWindow.hide();
+    this.activateBuyWindow();
+  };
+
+  Scene_Craft.prototype.commandSell = function() {
+    this._dummyWindow.hide();
+    this._categoryWindow.show();
+    this._categoryWindow.activate();
+    this._sellWindow.show();
+    this._sellWindow.deselect();
+    this._sellWindow.refresh();
+  };
+
+  Scene_Craft.prototype.onBuyOk = function() {
+    this._item = this._buyWindow.item();
+    this._buyWindow.hide();
+    this._numberWindow.setup(this._item, this.maxBuy(), this.buyingPrice());
+    this._numberWindow.setCurrencyUnit(this.currencyUnit());
+    this._numberWindow.show();
+    this._numberWindow.activate();
+  };
+
+  Scene_Craft.prototype.onBuyCancel = function() {
+    this._commandWindow.activate();
+    this._dummyWindow.show();
+    this._buyWindow.hide();
+    this._statusWindow.hide();
+    this._statusWindow.setItem(null);
+    this._helpWindow.clear();
+  };
+
+  Scene_Craft.prototype.onCategoryOk = function() {
+    this.activateSellWindow();
+    this._sellWindow.select(0);
+  };
+
+  Scene_Craft.prototype.onCategoryCancel = function() {
+    this._commandWindow.activate();
+    this._dummyWindow.show();
+    this._categoryWindow.hide();
+    this._sellWindow.hide();
+  };
+
+  Scene_Craft.prototype.onSellOk = function() {
+    this._item = this._sellWindow.item();
+    this._categoryWindow.hide();
+    this._sellWindow.hide();
+    this._numberWindow.setup(this._item, this.maxSell(), this.sellingPrice());
+    this._numberWindow.setCurrencyUnit(this.currencyUnit());
+    this._numberWindow.show();
+    this._numberWindow.activate();
+    this._statusWindow.setItem(this._item);
+    this._statusWindow.show();
+  };
+
+  Scene_Craft.prototype.onSellCancel = function() {
+    this._sellWindow.deselect();
+    this._categoryWindow.activate();
+    this._statusWindow.setItem(null);
+    this._helpWindow.clear();
+  };
+
+  Scene_Craft.prototype.onNumberOk = function() {
+    SoundManager.playShop();
+    switch (this._commandWindow.currentSymbol()) {
+    case 'buy':
+        this.doBuy(this._numberWindow.number());
+        break;
+    case 'sell':
+        this.doSell(this._numberWindow.number());
+        break;
+    }
+    this.endNumberInput();
+    this._statusWindow.refresh();
+  };
+
+  Scene_Craft.prototype.onNumberCancel = function() {
+    SoundManager.playCancel();
+    this.endNumberInput();
+  };
+
+  Scene_Craft.prototype.doBuy = function(number) {
+    $gameParty.loseGold(number * this.buyingPrice());
+    $gameParty.gainItem(this._item, number);
+  };
+
+  Scene_Craft.prototype.doSell = function(number) {
+    $gameParty.gainGold(number * this.sellingPrice());
+    $gameParty.loseItem(this._item, number);
+  };
+
+  Scene_Craft.prototype.endNumberInput = function() {
+    this._numberWindow.hide();
+    switch (this._commandWindow.currentSymbol()) {
+    case 'buy':
+        this.activateBuyWindow();
+        break;
+    case 'sell':
+        this.activateSellWindow();
+        break;
+    }
+  };
+
+  Scene_Craft.prototype.maxBuy = function() {
+    var max = $gameParty.maxItems(this._item) - $gameParty.numItems(this._item);
+    var price = this.buyingPrice();
+    if (price > 0) {
+        return Math.min(max, Math.floor(this.money() / price));
+    } else {
+        return max;
+    }
+  };
+
+  Scene_Craft.prototype.maxSell = function() {
+    return $gameParty.numItems(this._item);
+  };
+
+  Scene_Craft.prototype.money = function() {
+    // return this._goldWindow.value();
+    return 0;
+  };
+
+  Scene_Craft.prototype.currencyUnit = function() {
+    return this._goldWindow.currencyUnit();
+  };
+
+  Scene_Craft.prototype.buyingPrice = function() {
+    return this._buyWindow.price(this._item);
+  };
+
+  Scene_Craft.prototype.sellingPrice = function() {
+    return Math.floor(this._item.price / 2);
   };
 
   //-----------------------------------------------------------------------------
