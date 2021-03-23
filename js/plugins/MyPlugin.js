@@ -308,6 +308,8 @@
       nonDamageSkillPerformed: '{0}發動了{1}!',
       bleeding: '{0}出血了!',
       recoverFromBleeding: '{0}的出血停止了.',
+      faint: '{0}昏迷了.',
+      recoverFromFaint: '{0}從昏迷中醒來.',
       skillEffectEnd: '{0}身上{1}的效果消失了.',
       attackOutOfEnergy: '{0}想發動攻擊, 但是沒有足夠的體力!',
       askDirection: '往哪個方向?',
@@ -324,6 +326,8 @@
       climbOutFailed: '{0}嘗試爬出地洞, 但是失敗了.',
       climbOutSuccess: '{0}爬出了地洞.',
       magicTrapTriggered: '{0}觸動了魔法陷阱!',
+      eatWhenFull: '你吃的太飽了.',
+      eatingDone: '你吃完了{0}.',
       nutritionUpToFull: '你吃得太撐了!',
       nutritionUpToNormal: '你不再感到飢餓了.',
       nutritionDownToNormal: '你的肚子不那麼撐了.',
@@ -394,6 +398,8 @@
       invisibleCount: 0,
       seeInvisibleCount: 0,
       afraidCount: 0,
+      bleedingCount: 0,
+      faintCount: 0,
       groundHoleTrapped: false,
       skillEffect: [],
       bellyStatus: 'NORMAL' // FAINT, WEAK, HUNGRY, NORMAL, FULL
@@ -465,6 +471,10 @@
               break;
             case 'poisonCount':
               LogUtils.addLog(String.format(Message.display('recoverFromPoison')
+                , LogUtils.getCharName(target)));
+              break;
+            case 'faintCount':
+              LogUtils.addLog(String.format(Message.display('recoverFromFaint')
                 , LogUtils.getCharName(target)));
               break;
           }
@@ -621,16 +631,16 @@
     realTarget.nutrition--;
     if (realTarget.nutrition >= $gameVariables[0].satiety.full) {
       if (isPlayer) {
-        switch (realTarget.bellyStatus) {
+        switch (realTarget.status.bellyStatus) {
           case 'NORMAL': case 'HUNGRY': case 'WEAK': case 'FAINT':
             LogUtils.addLog(Message.display('nutritionUpToFull'));
             break;
         }
       }
-      realTarget.bellyStatus = 'FULL';
+      realTarget.status.bellyStatus = 'FULL';
     } else if (realTarget.nutrition >= $gameVariables[0].satiety.hungry) {
       if (isPlayer) {
-        switch (realTarget.bellyStatus) {
+        switch (realTarget.status.bellyStatus) {
           case 'FULL':
             LogUtils.addLog(Message.display('nutritionDownToNormal'));
             break;
@@ -638,10 +648,10 @@
             LogUtils.addLog(Message.display('nutritionUpToNormal'));
         }
       }
-      realTarget.bellyStatus = 'NORMAL';
+      realTarget.status.bellyStatus = 'NORMAL';
     } else if (realTarget.nutrition >= $gameVariables[0].satiety.weak) {
       if (isPlayer) {
-        switch (realTarget.bellyStatus) {
+        switch (realTarget.status.bellyStatus) {
           case 'FULL': case 'NORMAL':
             LogUtils.addLog(Message.display('nutritionDownToHungry'));
             break;
@@ -650,10 +660,10 @@
             break;
         }
       }
-      realTarget.bellyStatus = 'HUNGRY';
+      realTarget.status.bellyStatus = 'HUNGRY';
     } else if (realTarget.nutrition >= $gameVariables[0].satiety.faint) {
       if (isPlayer) {
-        switch (realTarget.bellyStatus) {
+        switch (realTarget.status.bellyStatus) {
           case 'FULL': case 'NORMAL': case 'HUNGRY':
             LogUtils.addLog(Message.display('nutritionDownToWeak'));
             break;
@@ -662,16 +672,23 @@
             break;
         }
       }
-      realTarget.bellyStatus = 'WEAK';
+      realTarget.status.bellyStatus = 'WEAK';
     } else {
       if (isPlayer) {
-        switch (realTarget.bellyStatus) {
+        switch (realTarget.status.bellyStatus) {
           case 'FULL': case 'NORMAL': case 'HUNGRY': case 'WEAK':
             LogUtils.addLog(Message.display('nutritionDownToFaint'));
             break;
         }
       }
-      realTarget.bellyStatus = 'FAINT';
+      realTarget.status.bellyStatus = 'FAINT';
+      // randomly apply faint status
+      if (getRandomInt(100) < 20 && realTarget.status.faintCount == 0) {
+        if (isPlayer) {
+          LogUtils.addLog(String.format(Message.display('faint'), LogUtils.getCharName(realTarget)));
+        }
+        realTarget.status.faintCount = dice(1, 5);
+      }
     }
   }
 
@@ -710,14 +727,14 @@
     $gameVariables[0].gameTimeAmp = 20;
     // hunger related values
     $gameVariables[0].satiety = {
-      full: 1000,
+      full: 1200,
       hungry: 300,
       weak: 100,
       faint: 0,
       starve: -200
     }
     // define player attributes
-    $gameActors.actor(1).nutrition = 800;
+    $gameActors.actor(1).nutrition = 900;
     $gameActors.actor(1).status = CharUtils.initStatus();
     $gameActors.actor(1).originalAwareDistance = 8;
     $gameActors.actor(1).awareDistance = 8;
@@ -777,6 +794,11 @@
     }
     $gameParty.gainItem(new Dog_Tooth(), 1);
     $gameParty.gainItem(new Dog_Skin(), 1);
+    $gameParty.gainItem(new Dog_Meat(), 1);
+    $gameParty.gainItem(new Dog_Meat(), 1);
+    $gameParty.gainItem(new Dog_Meat(), 1);
+    $gameParty.gainItem(new Dog_Meat(), 1);
+    $gameParty.gainItem(new Dog_Meat(), 1);
 
     $gameParty._items.push(new Soul_Bite());
     Soul_Obtained_Action.learnSkill(Soul_Bite);
@@ -4347,7 +4369,8 @@
         player.moved = false;
         playerDashed = false;
       }
-    } while (player.status.paralyzeCount > 0 || player.status.sleepCount > 0); // check if player unable to move
+    } while (player.status.paralyzeCount > 0 || player.status.sleepCount > 0
+      || player.status.faintCount > 0); // check if player unable to move
 
     // player moveable again
     $gamePlayer._vehicleGettingOn = false;
@@ -4927,7 +4950,7 @@
     this.name = '狗肉';
     this.description = '在一些地區也算美食';
     this.templateName = this.name;
-    this.nutrition = 150;
+    this.nutrition = 250;
   }
 
   //-----------------------------------------------------------------------------------
@@ -4947,7 +4970,7 @@
     this.name = '雞肉';
     this.description = '好吃的雞肉';
     this.templateName = this.name;
-    this.nutrition = 200;
+    this.nutrition = 300;
   }
 
   //-----------------------------------------------------------------------------------
@@ -4967,7 +4990,7 @@
     this.name = '貓肉';
     this.description = '這麼可愛, 你忍心吃?';
     this.templateName = this.name;
-    this.nutrition = 150;
+    this.nutrition = 250;
   }
 
   //-----------------------------------------------------------------------------------
@@ -6824,10 +6847,12 @@
       var maxValue = this.paramMax(paramId);
       var minValue = this.paramMin(paramId);
       let modifier = 1;
-      if (this.bellyStatus == 'FAINT') {
-        modifier = 0.5;
-      } else if (this.bellyStatus == 'WEAK') {
-        modifier = 0.7;
+      if (this.status) {
+        if (this.status.bellyStatus == 'FAINT') {
+          modifier = 0.5;
+        } else if (this.status.bellyStatus == 'WEAK') {
+          modifier = 0.7;
+        }
       }
       return Math.round(value.clamp(minValue, maxValue) * modifier);
     } else {
@@ -7235,22 +7260,29 @@
   };
 
   Scene_EatFood.prototype.onItemOk = function () {
-    $gameParty.setLastItem(this.item());
-    if (this.item()) {
-      // remove item from player inventory
-      $gameParty.loseItem(this.item(), 1);
-      if (this.item().name.includes(groundWord)) {
-        ItemUtils.removeItemFromItemPile($gamePlayer._x, $gamePlayer._y, this.item());
-      }
+    if ($gameActors.actor(1).status.bellyStatus == 'FULL') {
       this.popScene();
-      var func = function (item) {
-        // TODO: implement message & eat when full mechanism
-        TimeUtils.afterPlayerMoved(10 * $gameVariables[0].gameTimeAmp);
-        $gameActors.actor(1).nutrition += item.nutrition;
-        CharUtils.decreaseNutrition($gameActors.actor(1));
-        $gameMessage.add("你吃完了" + item.name + ".");
+      let func = function() {
+        MapUtils.displayMessage(Message.display('eatWhenFull'));
       }
-      setTimeout(func.bind(null, this.item()), 100);
+      setTimeout(func, 100);
+    } else {
+      $gameParty.setLastItem(this.item());
+      if (this.item()) {
+        // remove item from player inventory
+        $gameParty.loseItem(this.item(), 1);
+        if (this.item().name.includes(groundWord)) {
+          ItemUtils.removeItemFromItemPile($gamePlayer._x, $gamePlayer._y, this.item());
+        }
+        this.popScene();
+        var func = function (item) {
+          TimeUtils.afterPlayerMoved(10 * $gameVariables[0].gameTimeAmp);
+          $gameActors.actor(1).nutrition += item.nutrition;
+          CharUtils.decreaseNutrition($gameActors.actor(1));
+          MapUtils.displayMessage(String.format(Message.display('eatingDone'), item.name));
+        }
+        setTimeout(func.bind(null, this.item()), 100);
+      }
     }
     this._itemWindow.refresh();
     this._itemWindow.activate();
