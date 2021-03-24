@@ -4550,6 +4550,7 @@
 
   ItemUtils.potionTemplates = [];
   ItemUtils.scrollTemplates = [];
+  ItemUtils.recipes = [];
 
   ItemUtils.tempObjStack = []; // for get/drop items log
   ItemUtils.displayObjStack = function(stack) {
@@ -5185,14 +5186,16 @@
   Dog_Skin = function() {
     this.initialize.apply(this, arguments);
   }
+  Dog_Skin.itemName = '犬皮';
+  Dog_Skin.itemDescription = '髒兮兮的薄皮';
 
   Dog_Skin.prototype = Object.create(EquipTemplate.prototype);
   Dog_Skin.prototype.constructor = Dog_Skin;
 
   Dog_Skin.prototype.initialize = function () {
     EquipTemplate.prototype.initialize.call(this, $dataArmors[11]);
-    this.name = '犬皮';
-    this.description = '髒兮兮的薄皮';
+    this.name = Dog_Skin.itemName;
+    this.description = Dog_Skin.itemDescription;
     this.templateName = this.name;
     ItemUtils.updateEquipName(this);
     // randomize attributes
@@ -5223,6 +5226,33 @@
     ItemUtils.modifyAttr(this.traits[1], 2 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
+
+  //-----------------------------------------------------------------------------------
+  // Dog_Gloves
+  //
+  // armor type: GLOVES
+
+  Dog_Gloves = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dog_Gloves.itemName = '狗皮手套';
+  Dog_Gloves.itemDescription = '狗皮製的輕薄手套';
+  Dog_Gloves.material = [{itemClass: Dog_Skin, amount: 4}];
+
+  Dog_Gloves.prototype = Object.create(EquipTemplate.prototype);
+  Dog_Gloves.prototype.constructor = Dog_Gloves;
+
+  Dog_Gloves.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[12]);
+    this.name = Dog_Gloves.itemName;
+    this.description = Dog_Gloves.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Dog_Gloves);
 
   //-----------------------------------------------------------------------------------
   // Potion_Heal
@@ -7589,10 +7619,106 @@
   Window_CraftCommand.prototype.constructor = Window_CraftCommand;
 
   Window_CraftCommand.prototype.makeCommandList = function() {
-    this.addCommand('abc',    'buy');
-    this.addCommand('def',   'sell',   !this._purchaseOnly);
-    this.addCommand('ghi', 'cancel');
-};
+    this.addCommand('合成',    'craft');
+    // this.addCommand('強化',   'enforce');
+  };
+
+  //-----------------------------------------------------------------------------
+  // Window_CraftRecipes
+  //
+  // The window for selecting an item to craft on craft screen.
+
+  function Window_CraftRecipes() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_CraftRecipes.prototype = Object.create(Window_ShopBuy.prototype);
+  Window_CraftRecipes.prototype.constructor = Window_CraftRecipes;
+
+  Window_CraftRecipes.prototype.initialize = function(x, y, height, recipes) {
+    Window_ShopBuy.prototype.initialize.call(this, x, y, height, recipes);
+  };
+
+  Window_CraftRecipes.prototype.makeItemList = function() {
+    this._data = this._shopGoods;
+  };
+
+  Window_CraftRecipes.prototype.drawItem = function(index) {
+    var item = this._data[index];
+    var rect = this.itemRect(index);
+    // var priceWidth = 96;
+    rect.width -= this.textPadding();
+    // this.changePaintOpacity(this.isEnabled(item));
+    this.drawItemName(item, rect.x, rect.y, rect.width);
+    // this.drawText(this.price(item), rect.x + rect.width - priceWidth,
+    //               rect.y, priceWidth, 'right');
+    this.changePaintOpacity(true);
+  };
+
+  //-----------------------------------------------------------------------------
+  // Window_CraftStatus
+  //
+  // The window for displaying craft status on craft screen.
+
+  function Window_CraftStatus() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_CraftStatus.prototype = Object.create(Window_Base.prototype);
+  Window_CraftStatus.prototype.constructor = Window_CraftStatus;
+
+  Window_CraftStatus.prototype.initialize = function(x, y, width, height) {
+    Window_Base.prototype.initialize.call(this, x, y, width, height);
+    this._item = null;
+    this.refresh();
+  };
+
+  Window_CraftStatus.prototype.refresh = function() {
+    this.contents.clear();
+    if (this._item) {
+      let msg = '所需材料:';
+      this.drawTextEx(msg, 0, 0);
+      let materials = window[this._item.constructor.name].material;
+      for (let i = 0; i < materials.length; i++) {
+        this.drawItemName(new materials[i].itemClass(), 0, this.lineHeight() * (i + 1), 312, materials[i].amount);
+      }
+      // for (let id in window[this._item.constructor.name].material) {
+      //   msg += window[this._item.constructor.name].material[id].itemName + '\n';
+      // }
+      // this.drawItemName(this._item, 0, this.lineHeight());
+    }
+  };
+
+  Window_CraftStatus.prototype.setItem = function(item) {
+    this._item = item;
+    this.refresh();
+  };
+
+  Window_CraftStatus.prototype.drawItemName = function(item, x, y, width, amount) {
+    width = width || 312;
+    if (item) {
+        var iconBoxWidth = Window_Base._iconWidth + 4;
+        this.resetTextColor();
+        this.drawIcon(item.iconIndex, x + 2, y + 2);
+        this.drawText(ItemUtils.getItemDisplayName(item) + ' x ' + amount, x + iconBoxWidth, y, width - iconBoxWidth);
+    }
+  };
+
+  //-----------------------------------------------------------------------------
+  // Window_CraftHelp
+  //
+  // The window for displaying the description of the selected item on craft screen.
+
+  function Window_CraftHelp() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_CraftHelp.prototype = Object.create(Window_Help.prototype);
+  Window_CraftHelp.prototype.constructor = Window_CraftHelp;
+
+  Window_CraftHelp.prototype.setItem = function(item) {
+    this.setText(item ? window[item.constructor.name].itemDescription : '');
+  };
 
   //-----------------------------------------------------------------------------
   // Scene_Craft
@@ -7607,8 +7733,10 @@
   Scene_Craft.prototype.constructor = Scene_Craft;
 
   Scene_Craft.prototype.initialize = function() {
-    this._goods = [];
-    this._purchaseOnly = false;
+    this._recipes = [];
+    for (let id in ItemUtils.recipes) {
+      this._recipes.push(new ItemUtils.recipes[id]());
+    }
     this._item = null;
     Scene_MenuBase.prototype.initialize.call(this);
   };
@@ -7625,11 +7753,16 @@
     this.createSellWindow();
   };
 
+  Scene_Craft.prototype.createHelpWindow = function() {
+    this._helpWindow = new Window_CraftHelp();
+    this.addWindow(this._helpWindow);
+  };
+
   Scene_Craft.prototype.createCommandWindow = function() {
-    this._commandWindow = new Window_CraftCommand(Graphics.boxWidth, this._purchaseOnly);
+    this._commandWindow = new Window_CraftCommand(Graphics.boxWidth);
     this._commandWindow.y = this._helpWindow.height;
-    this._commandWindow.setHandler('buy',    this.commandBuy.bind(this));
-    this._commandWindow.setHandler('sell',   this.commandSell.bind(this));
+    this._commandWindow.setHandler('craft',    this.commandCraft.bind(this));
+    this._commandWindow.setHandler('enforce',   this.commandEnforce.bind(this));
     this._commandWindow.setHandler('cancel', this.popScene.bind(this));
     this.addWindow(this._commandWindow);
   };
@@ -7656,7 +7789,7 @@
     var wy = this._dummyWindow.y;
     var ww = Graphics.boxWidth - wx;
     var wh = this._dummyWindow.height;
-    this._statusWindow = new Window_ShopStatus(wx, wy, ww, wh);
+    this._statusWindow = new Window_CraftStatus(wx, wy, ww, wh);
     this._statusWindow.hide();
     this.addWindow(this._statusWindow);
   };
@@ -7664,12 +7797,12 @@
   Scene_Craft.prototype.createBuyWindow = function() {
     var wy = this._dummyWindow.y;
     var wh = this._dummyWindow.height;
-    this._buyWindow = new Window_ShopBuy(0, wy, wh, this._goods);
+    this._buyWindow = new Window_CraftRecipes(0, wy, wh, this._recipes);
     this._buyWindow.setHelpWindow(this._helpWindow);
     this._buyWindow.setStatusWindow(this._statusWindow);
     this._buyWindow.hide();
-    this._buyWindow.setHandler('ok',     this.onBuyOk.bind(this));
-    this._buyWindow.setHandler('cancel', this.onBuyCancel.bind(this));
+    this._buyWindow.setHandler('ok',     this.onCraftOk.bind(this));
+    this._buyWindow.setHandler('cancel', this.onCraftCancel.bind(this));
     this.addWindow(this._buyWindow);
   };
 
@@ -7711,12 +7844,12 @@
     this._statusWindow.hide();
   };
 
-  Scene_Craft.prototype.commandBuy = function() {
+  Scene_Craft.prototype.commandCraft = function() {
     this._dummyWindow.hide();
     this.activateBuyWindow();
   };
 
-  Scene_Craft.prototype.commandSell = function() {
+  Scene_Craft.prototype.commandEnforce = function() {
     this._dummyWindow.hide();
     this._categoryWindow.show();
     this._categoryWindow.activate();
@@ -7725,7 +7858,7 @@
     this._sellWindow.refresh();
   };
 
-  Scene_Craft.prototype.onBuyOk = function() {
+  Scene_Craft.prototype.onCraftOk = function() {
     this._item = this._buyWindow.item();
     this._buyWindow.hide();
     this._numberWindow.setup(this._item, this.maxBuy(), this.buyingPrice());
@@ -7734,7 +7867,7 @@
     this._numberWindow.activate();
   };
 
-  Scene_Craft.prototype.onBuyCancel = function() {
+  Scene_Craft.prototype.onCraftCancel = function() {
     this._commandWindow.activate();
     this._dummyWindow.show();
     this._buyWindow.hide();
