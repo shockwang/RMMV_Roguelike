@@ -335,7 +335,9 @@
       nutritionDownToHungry: '你感覺肚子餓了.',
       nutritionUpToWeak: '你感覺身體的機能恢復了少許.',
       nutritionDownToWeak: '你餓到身體開始虛弱了...',
-      nutritionDownToFaint: '你餓到意識不清, 再不吃點東西的話就死定了!'
+      nutritionDownToFaint: '你餓到意識不清, 再不吃點東西的話就死定了!',
+      craftSceneHelpMessage: '你要進行什麼工作?',
+      craftItemDone: '你製造了{0}.'
     },
     display: function(msgName) {
       switch (Message.language) {
@@ -793,7 +795,9 @@
     //   $gameParty.gainItem(new Potion_Poison(), 1);
     // }
     // $gameParty.gainItem(new Dog_Tooth(), 1);
-    // $gameParty.gainItem(new Dog_Skin(), 1);
+    for (let i = 0; i < 4; i++) {
+      $gameParty.gainItem(new Dog_Skin(), 1);
+    }
 
     // $gameParty._items.push(new Soul_Bite());
     // Soul_Obtained_Action.learnSkill(Soul_Bite);
@@ -867,6 +871,11 @@
     messageWindowNonBlocking.contents.clear();
     messageWindowNonBlocking.drawTextEx(msg, 0, 0);
     SceneManager._scene.addChild(messageWindowNonBlocking);
+  }
+
+  MapUtils.addBothLog = function(msg) {
+    MapUtils.displayMessage(msg);
+    LogUtils.addLog(msg);
   }
 
   // used when message console already exists on map
@@ -4819,6 +4828,12 @@
         case 'SKIN':
           imageData = new ImageData('Collections3', 0, 1, 6);
           break;
+        case 'SHOES':
+          imageData = new ImageData('Collections2', 4, 0, 6);
+          break;
+        case 'GLOVES':
+          imageData = new ImageData('Collections2', 6, 1, 6);
+          break;
       }
     } else {
       console.log('ERROR: ItemUtils.updateItemPile: no such type!');
@@ -5186,16 +5201,14 @@
   Dog_Skin = function() {
     this.initialize.apply(this, arguments);
   }
-  Dog_Skin.itemName = '犬皮';
-  Dog_Skin.itemDescription = '髒兮兮的薄皮';
 
   Dog_Skin.prototype = Object.create(EquipTemplate.prototype);
   Dog_Skin.prototype.constructor = Dog_Skin;
 
   Dog_Skin.prototype.initialize = function () {
     EquipTemplate.prototype.initialize.call(this, $dataArmors[11]);
-    this.name = Dog_Skin.itemName;
-    this.description = Dog_Skin.itemDescription;
+    this.name = '犬皮';
+    this.description = '髒兮兮的薄皮';
     this.templateName = this.name;
     ItemUtils.updateEquipName(this);
     // randomize attributes
@@ -5236,7 +5249,7 @@
     this.initialize.apply(this, arguments);
   }
   Dog_Gloves.itemName = '狗皮手套';
-  Dog_Gloves.itemDescription = '狗皮製的輕薄手套';
+  Dog_Gloves.itemDescription = '輕薄的手套';
   Dog_Gloves.material = [{itemClass: Dog_Skin, amount: 4}];
 
   Dog_Gloves.prototype = Object.create(EquipTemplate.prototype);
@@ -5253,6 +5266,33 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dog_Gloves);
+
+  //-----------------------------------------------------------------------------------
+  // Dog_Shoes
+  //
+  // armor type: SHOES
+
+  Dog_Shoes = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dog_Shoes.itemName = '狗皮靴子';
+  Dog_Shoes.itemDescription = '輕薄的靴子';
+  Dog_Shoes.material = [{itemClass: Dog_Skin, amount: 4}];
+
+  Dog_Shoes.prototype = Object.create(EquipTemplate.prototype);
+  Dog_Shoes.prototype.constructor = Dog_Shoes;
+
+  Dog_Shoes.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[13]);
+    this.name = Dog_Shoes.itemName;
+    this.description = Dog_Shoes.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Dog_Shoes);
 
   //-----------------------------------------------------------------------------------
   // Potion_Heal
@@ -7606,6 +7646,40 @@
     this._itemWindow.activate();
   };
 
+  // CraftUtils
+  //
+  // utilities for crafting items
+
+  CraftUtils = function () {
+    throw new Error('This is a static class');
+  }
+
+  CraftUtils.genMaterialArray = function(itemClass) {
+    let materials = itemClass.material;
+    let result = [];
+    for (let id in materials) {
+      result.push({
+        item: new materials[id].itemClass(),
+        amount: materials[id].amount
+      })
+    }
+    return result;
+  }
+
+  CraftUtils.hasMaterialFromRecipe = function(itemClass) {
+    let materials = CraftUtils.genMaterialArray(itemClass);
+    let inventory = $gameParty.allItems();
+    for (let id in materials) {
+      let obj = materials[id];
+      for (let id2 in inventory) {
+        if (inventory[id2].constructor.name == obj.item.constructor.name) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   //-----------------------------------------------------------------------------
   // Window_CraftCommand
   //
@@ -7619,7 +7693,7 @@
   Window_CraftCommand.prototype.constructor = Window_CraftCommand;
 
   Window_CraftCommand.prototype.makeCommandList = function() {
-    this.addCommand('合成',    'craft');
+    this.addCommand('製造',    'craft');
     // this.addCommand('強化',   'enforce');
   };
 
@@ -7646,13 +7720,32 @@
   Window_CraftRecipes.prototype.drawItem = function(index) {
     var item = this._data[index];
     var rect = this.itemRect(index);
-    // var priceWidth = 96;
     rect.width -= this.textPadding();
-    // this.changePaintOpacity(this.isEnabled(item));
+    this.changePaintOpacity(this.isEnabled(item));
     this.drawItemName(item, rect.x, rect.y, rect.width);
-    // this.drawText(this.price(item), rect.x + rect.width - priceWidth,
-    //               rect.y, priceWidth, 'right');
     this.changePaintOpacity(true);
+  };
+
+  Window_CraftRecipes.prototype.isEnabled = function(item) {
+    if (item) {
+      let materials = CraftUtils.genMaterialArray(window[item.constructor.name]);
+      let inventory = $gameParty.allItems();
+      for (let id in inventory) {
+        let item = inventory[id];
+        for (let id2 in materials) {
+          let obj = materials[id2];
+          if (obj.item.constructor.name == item.constructor.name) {
+            obj.amount--;
+            if (obj.amount == 0) {
+              materials.splice(id2, 1);
+            }
+            break;
+          }
+        }
+      }
+      return materials.length == 0;
+    }
+    return false;
   };
 
   //-----------------------------------------------------------------------------
@@ -7676,16 +7769,12 @@
   Window_CraftStatus.prototype.refresh = function() {
     this.contents.clear();
     if (this._item) {
-      let msg = '所需材料:';
+      let msg = '需要材料:';
       this.drawTextEx(msg, 0, 0);
       let materials = window[this._item.constructor.name].material;
       for (let i = 0; i < materials.length; i++) {
         this.drawItemName(new materials[i].itemClass(), 0, this.lineHeight() * (i + 1), 312, materials[i].amount);
       }
-      // for (let id in window[this._item.constructor.name].material) {
-      //   msg += window[this._item.constructor.name].material[id].itemName + '\n';
-      // }
-      // this.drawItemName(this._item, 0, this.lineHeight());
     }
   };
 
@@ -7702,6 +7791,95 @@
         this.drawIcon(item.iconIndex, x + 2, y + 2);
         this.drawText(ItemUtils.getItemDisplayName(item) + ' x ' + amount, x + iconBoxWidth, y, width - iconBoxWidth);
     }
+  };
+
+  //-----------------------------------------------------------------------------
+  // Window_CraftProcedure
+  //
+  // The window for displaying craft procedure on craft screen.
+
+  function Window_CraftProcedure() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_CraftProcedure.prototype = Object.create(Window_Base.prototype);
+  Window_CraftProcedure.prototype.constructor = Window_CraftProcedure;
+
+  Window_CraftProcedure.prototype.initialize = function(x, y, width, height) {
+    Window_Base.prototype.initialize.call(this, x, y, width, height);
+    this._item = null;
+    this.refresh();
+  };
+
+  Window_CraftProcedure.prototype.refresh = function() {
+    this.contents.clear();
+    let msg = '尚缺材料:';
+    this.drawTextEx(msg, 0, 0);
+    let materials = SceneManager._scene._materialShortages;
+    for (let i = 0; i < materials.length; i++) {
+      this.drawItemName(materials[i].item, 0, this.lineHeight() * (i + 1), 312, materials[i].amount);
+    }
+  };
+
+  Window_CraftProcedure.prototype.setItem = function(item) {
+    this._item = item;
+    this.refresh();
+  };
+
+  Window_CraftProcedure.prototype.drawItemName = function(item, x, y, width, amount) {
+    width = width || 312;
+    if (item) {
+        var iconBoxWidth = Window_Base._iconWidth + 4;
+        this.resetTextColor();
+        this.drawIcon(item.iconIndex, x + 2, y + 2);
+        this.drawText(ItemUtils.getItemDisplayName(item) + ' x ' + amount, x + iconBoxWidth, y, width - iconBoxWidth);
+    }
+  };
+
+  //-----------------------------------------------------------------------------
+  // Window_Material
+  //
+  // The window for selecting an material for crafting on craft screen.
+
+  function Window_Material() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_Material.prototype = Object.create(Window_ShopBuy.prototype);
+  Window_Material.prototype.constructor = Window_Material;
+
+  Window_Material.prototype.initialize = function(x, y, height) {
+    Window_ShopBuy.prototype.initialize.call(this, x, y, height, []);
+  };
+
+  Window_Material.prototype.makeItemList = function() {
+    this._data = this._shopGoods;
+  };
+
+  Window_Material.prototype.filterMaterial = function() {
+    this._shopGoods = $gameParty.allItems().filter(function(item) {
+      let shortages = SceneManager._scene._materialShortages;
+      for (let id in shortages) {
+        if (item.constructor.name == shortages[id].item.constructor.name) {
+          return true;
+        }
+      }
+      return false;
+    });
+    this.makeItemList();
+  }
+
+  Window_Material.prototype.drawItem = function(index) {
+    var item = this._data[index];
+    var rect = this.itemRect(index);
+    rect.width -= this.textPadding();
+    this.changePaintOpacity(this.isEnabled(item));
+    this.drawItemName(item, rect.x, rect.y, rect.width);
+    this.changePaintOpacity(true);
+  };
+
+  Window_Material.prototype.isEnabled = function(item) {
+    return item;
   };
 
   //-----------------------------------------------------------------------------
@@ -7735,34 +7913,84 @@
   Scene_Craft.prototype.initialize = function() {
     this._recipes = [];
     for (let id in ItemUtils.recipes) {
-      this._recipes.push(new ItemUtils.recipes[id]());
+      let recipe = ItemUtils.recipes[id];
+      if (CraftUtils.hasMaterialFromRecipe(recipe)) {
+        this._recipes.push(new recipe());
+      }
     }
+    this._materialShortages = []; // element format: {item: itemInstance, amount: integer}
+    this._materialStack = [];
     this._item = null;
     Scene_MenuBase.prototype.initialize.call(this);
   };
 
   Scene_Craft.prototype.create = function() {
     Scene_MenuBase.prototype.create.call(this);
-    this.createHelpWindow();
+    this.createCraftHelpWindow();
+    this.createMaterialHelpWindow();
     this.createCommandWindow();
     this.createDummyWindow();
-    this.createNumberWindow();
-    this.createStatusWindow();
-    this.createBuyWindow();
-    this.createCategoryWindow();
-    this.createSellWindow();
+    this.createProcedureWindow();
+    this.createCraftStatusWindow();
+    this.createCraftWindow();
+    this.createMaterialWindow();
   };
 
-  Scene_Craft.prototype.createHelpWindow = function() {
-    this._helpWindow = new Window_CraftHelp();
-    this.addWindow(this._helpWindow);
+  Scene_Craft.prototype.genMaterialShortages = function() {
+    this._materialShortages = CraftUtils.genMaterialArray(window[this._item.constructor.name]);
+  }
+
+  Scene_Craft.prototype.addMaterial = function(item) {
+    for (let id in this._materialShortages) {
+      let obj = this._materialShortages[id];
+      if (item.constructor.name == obj.item.constructor.name) {
+        obj.amount--;
+        if (obj.amount == 0) {
+          this._materialShortages.splice(id, 1);
+        }
+        this._materialStack.push(item);
+        break;
+      }
+    }
+    return this._materialShortages.length == 0;
+  }
+
+  Scene_Craft.prototype.removeMaterial = function() {
+    let itemPop = this._materialStack.pop();
+    if (itemPop) {
+      let obj;
+      for (let id in this._materialShortages) {
+        if (this._materialShortages[id].item.constructor.name == itemPop.constructor.name) {
+          obj = this._materialShortages[id];
+          break;
+        }
+      }
+      if (obj) {
+        obj.amount++;
+      } else {
+        this._materialShortages.push({item: itemPop, amount: 1});
+      }
+    }
+    return itemPop;
+  }
+
+  Scene_Craft.prototype.createCraftHelpWindow = function() {
+    this._craftHelpWindow = new Window_CraftHelp();
+    this._craftHelpWindow.drawTextEx(Message.display('craftSceneHelpMessage'), 0, 0);
+    this.addWindow(this._craftHelpWindow);
+  };
+
+  Scene_Craft.prototype.createMaterialHelpWindow = function() {
+    this._materialHelpWindow = new Window_Help();
+    this._materialHelpWindow.hide();
+    this.addWindow(this._materialHelpWindow);
   };
 
   Scene_Craft.prototype.createCommandWindow = function() {
     this._commandWindow = new Window_CraftCommand(Graphics.boxWidth);
-    this._commandWindow.y = this._helpWindow.height;
+    this._commandWindow.y = this._craftHelpWindow.height;
     this._commandWindow.setHandler('craft',    this.commandCraft.bind(this));
-    this._commandWindow.setHandler('enforce',   this.commandEnforce.bind(this));
+    // this._commandWindow.setHandler('enforce',   this.commandEnforce.bind(this));
     this._commandWindow.setHandler('cancel', this.popScene.bind(this));
     this.addWindow(this._commandWindow);
   };
@@ -7774,209 +8002,130 @@
     this.addWindow(this._dummyWindow);
   };
 
-  Scene_Craft.prototype.createNumberWindow = function() {
+  Scene_Craft.prototype.createProcedureWindow = function() {
+    var wx = 456;
     var wy = this._dummyWindow.y;
     var wh = this._dummyWindow.height;
-    this._numberWindow = new Window_ShopNumber(0, wy, wh);
-    this._numberWindow.hide();
-    this._numberWindow.setHandler('ok',     this.onNumberOk.bind(this));
-    this._numberWindow.setHandler('cancel', this.onNumberCancel.bind(this));
-    this.addWindow(this._numberWindow);
+    var ww = Graphics.boxWidth - wx;
+    this._procedureWindow = new Window_CraftProcedure(wx, wy, ww, wh);
+    this._procedureWindow.hide();
+    this.addWindow(this._procedureWindow);
   };
 
-  Scene_Craft.prototype.createStatusWindow = function() {
-    var wx = this._numberWindow.width;
+  Scene_Craft.prototype.createCraftStatusWindow = function() {
+    var wx = 456;
     var wy = this._dummyWindow.y;
     var ww = Graphics.boxWidth - wx;
     var wh = this._dummyWindow.height;
-    this._statusWindow = new Window_CraftStatus(wx, wy, ww, wh);
-    this._statusWindow.hide();
-    this.addWindow(this._statusWindow);
+    this._craftStatusWindow = new Window_CraftStatus(wx, wy, ww, wh);
+    this._craftStatusWindow.hide();
+    this.addWindow(this._craftStatusWindow);
   };
 
-  Scene_Craft.prototype.createBuyWindow = function() {
+  Scene_Craft.prototype.createCraftWindow = function() {
     var wy = this._dummyWindow.y;
     var wh = this._dummyWindow.height;
-    this._buyWindow = new Window_CraftRecipes(0, wy, wh, this._recipes);
-    this._buyWindow.setHelpWindow(this._helpWindow);
-    this._buyWindow.setStatusWindow(this._statusWindow);
-    this._buyWindow.hide();
-    this._buyWindow.setHandler('ok',     this.onCraftOk.bind(this));
-    this._buyWindow.setHandler('cancel', this.onCraftCancel.bind(this));
-    this.addWindow(this._buyWindow);
+    this._craftWindow = new Window_CraftRecipes(0, wy, wh, this._recipes);
+    this._craftWindow.setHelpWindow(this._craftHelpWindow);
+    this._craftWindow.setStatusWindow(this._craftStatusWindow);
+    this._craftWindow.hide();
+    this._craftWindow.setHandler('ok',     this.onCraftOk.bind(this));
+    this._craftWindow.setHandler('cancel', this.onCraftCancel.bind(this));
+    this.addWindow(this._craftWindow);
   };
 
-  Scene_Craft.prototype.createCategoryWindow = function() {
-    this._categoryWindow = new Window_ItemCategory();
-    this._categoryWindow.setHelpWindow(this._helpWindow);
-    this._categoryWindow.y = this._dummyWindow.y;
-    this._categoryWindow.hide();
-    this._categoryWindow.deactivate();
-    this._categoryWindow.setHandler('ok',     this.onCategoryOk.bind(this));
-    this._categoryWindow.setHandler('cancel', this.onCategoryCancel.bind(this));
-    this.addWindow(this._categoryWindow);
+  Scene_Craft.prototype.createMaterialWindow = function() {
+    var wy = this._dummyWindow.y;
+    var wh = this._dummyWindow.height;
+    this._materialWindow = new Window_Material(0, wy, wh);
+    this._materialWindow.setHelpWindow(this._materialHelpWindow);
+    this._materialWindow.setStatusWindow(this._procedureWindow);
+    this._materialWindow.hide();
+    this._materialWindow.setHandler('ok',     this.onMaterialOk.bind(this));
+    this._materialWindow.setHandler('cancel', this.onMaterialCancel.bind(this));
+    this.addWindow(this._materialWindow);
   };
 
-  Scene_Craft.prototype.createSellWindow = function() {
-    var wy = this._categoryWindow.y + this._categoryWindow.height;
-    var wh = Graphics.boxHeight - wy;
-    this._sellWindow = new Window_ShopSell(0, wy, Graphics.boxWidth, wh);
-    this._sellWindow.setHelpWindow(this._helpWindow);
-    this._sellWindow.hide();
-    this._sellWindow.setHandler('ok',     this.onSellOk.bind(this));
-    this._sellWindow.setHandler('cancel', this.onSellCancel.bind(this));
-    this._categoryWindow.setItemWindow(this._sellWindow);
-    this.addWindow(this._sellWindow);
-  };
-
-  Scene_Craft.prototype.activateBuyWindow = function() {
-    this._buyWindow.setMoney(this.money());
-    this._buyWindow.show();
-    this._buyWindow.activate();
-    this._statusWindow.show();
-  };
-
-  Scene_Craft.prototype.activateSellWindow = function() {
-    this._categoryWindow.show();
-    this._sellWindow.refresh();
-    this._sellWindow.show();
-    this._sellWindow.activate();
-    this._statusWindow.hide();
+  Scene_Craft.prototype.activateCraftWindow = function() {
+    this._craftWindow.show();
+    this._craftWindow.activate();
+    this._craftStatusWindow.show();
   };
 
   Scene_Craft.prototype.commandCraft = function() {
     this._dummyWindow.hide();
-    this.activateBuyWindow();
+    this.activateCraftWindow();
   };
 
   Scene_Craft.prototype.commandEnforce = function() {
     this._dummyWindow.hide();
     this._categoryWindow.show();
     this._categoryWindow.activate();
-    this._sellWindow.show();
-    this._sellWindow.deselect();
-    this._sellWindow.refresh();
+    this._materialWindow.show();
+    this._materialWindow.deselect();
+    this._materialWindow.refresh();
   };
 
   Scene_Craft.prototype.onCraftOk = function() {
-    this._item = this._buyWindow.item();
-    this._buyWindow.hide();
-    this._numberWindow.setup(this._item, this.maxBuy(), this.buyingPrice());
-    this._numberWindow.setCurrencyUnit(this.currencyUnit());
-    this._numberWindow.show();
-    this._numberWindow.activate();
+    this._item = this._craftWindow.item();
+    this.genMaterialShortages();
+    this._craftWindow.hide();
+    this._craftHelpWindow.hide();
+    this._craftStatusWindow.hide();
+    this._materialHelpWindow.show();
+    this._materialWindow.filterMaterial();
+    this._materialWindow.refresh();
+    this._materialWindow.show();
+    this._materialWindow.activate();
+    this._procedureWindow.show();
   };
 
   Scene_Craft.prototype.onCraftCancel = function() {
     this._commandWindow.activate();
     this._dummyWindow.show();
-    this._buyWindow.hide();
-    this._statusWindow.hide();
-    this._statusWindow.setItem(null);
-    this._helpWindow.clear();
+    this._craftWindow.hide();
+    this._craftStatusWindow.hide();
+    this._craftStatusWindow.setItem(null);
+    this._craftHelpWindow.clear();
+    this._craftHelpWindow.drawTextEx(Message.display('craftSceneHelpMessage'), 0, 0);
   };
 
-  Scene_Craft.prototype.onCategoryOk = function() {
-    this.activateSellWindow();
-    this._sellWindow.select(0);
-  };
-
-  Scene_Craft.prototype.onCategoryCancel = function() {
-    this._commandWindow.activate();
-    this._dummyWindow.show();
-    this._categoryWindow.hide();
-    this._sellWindow.hide();
-  };
-
-  Scene_Craft.prototype.onSellOk = function() {
-    this._item = this._sellWindow.item();
-    this._categoryWindow.hide();
-    this._sellWindow.hide();
-    this._numberWindow.setup(this._item, this.maxSell(), this.sellingPrice());
-    this._numberWindow.setCurrencyUnit(this.currencyUnit());
-    this._numberWindow.show();
-    this._numberWindow.activate();
-    this._statusWindow.setItem(this._item);
-    this._statusWindow.show();
-  };
-
-  Scene_Craft.prototype.onSellCancel = function() {
-    this._sellWindow.deselect();
-    this._categoryWindow.activate();
-    this._statusWindow.setItem(null);
-    this._helpWindow.clear();
-  };
-
-  Scene_Craft.prototype.onNumberOk = function() {
+  Scene_Craft.prototype.onMaterialOk = function() {
     SoundManager.playShop();
-    switch (this._commandWindow.currentSymbol()) {
-    case 'buy':
-        this.doBuy(this._numberWindow.number());
-        break;
-    case 'sell':
-        this.doSell(this._numberWindow.number());
-        break;
+    let item = this._materialWindow.item();
+    this._materialWindow._data.splice(this._materialWindow._data.indexOf(item), 1);
+    if (this.addMaterial(item)) {
+      for (let id in this._materialStack) {
+        $gameParty.loseItem(this._materialStack[id], 1);
+      }
+      $gameParty.gainItem(this._item, 1);
+      this.popScene();
+      var func = function(item) {
+        TimeUtils.afterPlayerMoved();
+        MapUtils.addBothLog(String.format(Message.display('craftItemDone'), ItemUtils.getItemDisplayName(item)));
+      }
+      setTimeout(func, 100, this._item);
     }
-    this.endNumberInput();
-    this._statusWindow.refresh();
+    this._materialWindow.refresh();
+    this._materialWindow.activate();
   };
 
-  Scene_Craft.prototype.onNumberCancel = function() {
+  Scene_Craft.prototype.onMaterialCancel = function() {
     SoundManager.playCancel();
-    this.endNumberInput();
-  };
-
-  Scene_Craft.prototype.doBuy = function(number) {
-    $gameParty.loseGold(number * this.buyingPrice());
-    $gameParty.gainItem(this._item, number);
-  };
-
-  Scene_Craft.prototype.doSell = function(number) {
-    $gameParty.gainGold(number * this.sellingPrice());
-    $gameParty.loseItem(this._item, number);
-  };
-
-  Scene_Craft.prototype.endNumberInput = function() {
-    this._numberWindow.hide();
-    switch (this._commandWindow.currentSymbol()) {
-    case 'buy':
-        this.activateBuyWindow();
-        break;
-    case 'sell':
-        this.activateSellWindow();
-        break;
-    }
-  };
-
-  Scene_Craft.prototype.maxBuy = function() {
-    var max = $gameParty.maxItems(this._item) - $gameParty.numItems(this._item);
-    var price = this.buyingPrice();
-    if (price > 0) {
-        return Math.min(max, Math.floor(this.money() / price));
+    let item = this.removeMaterial();
+    if (item) {
+      this._materialWindow._data.push(item);
+      this._materialWindow.refresh();
+      this._materialWindow.activate();
     } else {
-        return max;
+      this._materialHelpWindow.hide();
+      this._materialWindow.hide();
+      this._procedureWindow.hide();
+      this._craftWindow.show();
+      this._craftHelpWindow.show();
+      this._craftStatusWindow.show();
+      this._craftWindow.activate();
     }
-  };
-
-  Scene_Craft.prototype.maxSell = function() {
-    return $gameParty.numItems(this._item);
-  };
-
-  Scene_Craft.prototype.money = function() {
-    // return this._goldWindow.value();
-    return 0;
-  };
-
-  Scene_Craft.prototype.currencyUnit = function() {
-    return this._goldWindow.currencyUnit();
-  };
-
-  Scene_Craft.prototype.buyingPrice = function() {
-    return this._buyWindow.price(this._item);
-  };
-
-  Scene_Craft.prototype.sellingPrice = function() {
-    return Math.floor(this._item.price / 2);
   };
 
   //-----------------------------------------------------------------------------
