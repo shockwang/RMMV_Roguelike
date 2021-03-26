@@ -3,11 +3,12 @@
 (function () {
   var MapData = function(floorId, original, x, y) {
     this.base = floorId;
-    this.bush = 0;
-    this.decorate1 = 0;
-    this.decorate2 = 0;
-    this.shadow = 0;
-    this.region = 0;
+    // command those variables for storage size issue, and also not used yet
+    // this.bush = 0;
+    // this.decorate1 = 0;
+    // this.decorate2 = 0;
+    // this.shadow = 0;
+    // this.region = 0;
 
     // data added for explored/visible
     this.isExplored = false;
@@ -98,8 +99,6 @@
   var ceilingCenter = 6752;
   var floorCenter = 2816;
   var warFogCenter = 3536;
-  var upStair = 19;
-  var downStair = 27;
 
   var dungeonDepth = 10;
 
@@ -112,7 +111,11 @@
   var roomPercentage = 0.6;
   var doorPercentage = 0.5;
   var secretDoorPercentage = 0.5;
-  var removeDeadEndPercentage = 0.5;
+  var removeDeadEndPercentage = 1;
+  var mobSpawnPercentage = 0.02;
+  var mobRespawnPercentage = 0.3;
+  var trapSpawnPercentage = 0.02;
+  var itemSpawnPercentage = 0.02;
 
   // word attached
   var groundWord = '(地上)';
@@ -795,9 +798,9 @@
     //   $gameParty.gainItem(new Potion_Poison(), 1);
     // }
     // $gameParty.gainItem(new Dog_Tooth(), 1);
-    for (let i = 0; i < 4; i++) {
-      $gameParty.gainItem(new Dog_Skin(), 1);
-    }
+    // for (let i = 0; i < 4; i++) {
+    //   $gameParty.gainItem(new Dog_Skin(), 1);
+    // }
 
     // $gameParty._items.push(new Soul_Bite());
     // Soul_Obtained_Action.learnSkill(Soul_Bite);
@@ -1177,14 +1180,6 @@
           mapArray[warFogOffset + index] = warFogCenter;
         }
         index++;
-      }
-    }
-    // draw stairs
-    for (var i in $gameVariables[$gameMap.mapId()].stairList) {
-      var stair = $gameVariables[$gameMap.mapId()].stairList[i];
-      if (mapData[stair.x][stair.y].isExplored) {
-        var index = stairOffset + stair.y * mapData.length + stair.x;
-        mapArray[index] = mapData[stair.x][stair.y].decorate2;
       }
     }
 
@@ -2048,7 +2043,7 @@
   MapUtils.setupNewMap = function (mapId) {
     // first load map
     console.log("first load map: " + mapId);
-    var rawMap = MapUtils.generateMapData(genMapRoomsFullMaze, 10, 10);
+    var rawMap = MapUtils.generateMapData(genMapRoomsFullMaze, 20, 10);
     rawMap = MapUtils.removeDeadEnds(rawMap);
     MapUtils.setupSecretDoor(mapId, rawMap);
     var newMapData = MapUtils.translateMap(rawMap, mapId);
@@ -2060,7 +2055,7 @@
   }
 
   MapUtils.generateNewMapMobs = function (mapId, floors) {
-    let mobCounts = Math.floor(floors.length * 0.02);
+    let mobCounts = Math.floor(floors.length * mobSpawnPercentage);
     for (let i = 0; i < mobCounts; i++) {
       while (true) {
         let floor = floors[Math.randomInt(floors.length)];
@@ -2069,6 +2064,57 @@
           if (mobClass) {
             new mobClass(floor.x, floor.y);
           }
+          break;
+        }
+      }
+    }
+  }
+
+  MapUtils.addMobToNowMap = function() {
+    let mapId = $gameMap._mapId;
+    let floors = MapUtils.findMapDataFloor($gameVariables[mapId].mapData);
+    let mapEvts = $gameMap.events();
+    let nowMobCount = 0;
+    for (let id in mapEvts) {
+      if (mapEvts[id].type == 'MOB') {
+        nowMobCount++;
+      }
+    }
+    let mobNum = Math.floor(floors.length * mobSpawnPercentage * mobRespawnPercentage);
+    if (nowMobCount < mobNum) {
+      while (true) {
+        let floor = floors[Math.randomInt(floors.length)];
+        if (MapUtils.isTileAvailableForMob(mapId, floor.x, floor.y)
+          && !$gameVariables[mapId].mapData[floor.x][floor.y].isVisible) {
+          // only generate mob out of player's sight
+          let mobClass = CharUtils.spawnMob(mapId);
+          if (mobClass) {
+            new mobClass(floor.x, floor.y);
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  MapUtils.generateNewMapItems = function(mapId, floors) {
+    let itemCount = Math.floor(floors.length * itemSpawnPercentage);
+    for (let i = 0; i < itemCount; i++) {
+      while (true) {
+        let floor = floors[getRandomInt(floors.length)];
+        // do not place item on trap that can cause position movement
+        let evts = $gameMap.eventsXy(floor.x, floor.y);
+        let trap;
+        for (let id in evts) {
+          if (evts[id].type == 'TRAP') {
+            trap = evts[id];
+            break;
+          }
+        }
+        if (trap && trap instanceof Trap_Teleport) {
+          // can not place item, do nothing
+        } else {
+          ItemUtils.addItemToItemPile(floor.x, floor.y, ItemUtils.spawnItem(mapId));
           break;
         }
       }
@@ -2136,7 +2182,6 @@
                 newStair.x = candidate.x;
                 newStair.y = candidate.y;
                 $gameVariables[targetMapId].stairList.push(newStair);
-                $gameVariables[targetMapId].mapData[newStair.x][newStair.y].decorate2 = downStair;
                 // no need to deal with connect information
                 stairDownCreated++;
               }
@@ -2170,7 +2215,6 @@
                   newStair.toX = toConnect.x;
                   newStair.toY = toConnect.y;
                   $gameVariables[targetMapId].stairList.push(newStair);
-                  targetMapData[newStair.x][newStair.y].decorate2 = upStair;
 
                   toConnect.toMapId = targetMapId;
                   toConnect.toX = newStair.x;
@@ -2193,8 +2237,9 @@
             var setupEvents = function (nowMapId, targetMapId, nowStair) {
               if (SceneManager.isCurrentSceneStarted()) {
                 let floors = MapUtils.findMapDataFloor($gameVariables[targetMapId].mapData);
-                MapUtils.generateNewMapMobs(targetMapId, floors);
                 TrapUtils.generateTraps(targetMapId, floors);
+                MapUtils.generateNewMapMobs(targetMapId, floors);
+                MapUtils.generateNewMapItems(targetMapId, floors);
                 MapUtils.drawEvents($gameVariables[targetMapId].mapData);
                 SceneManager.goto(Scene_Map);
               } else {
@@ -2974,7 +3019,7 @@
     let mobInitData = {
       name: '大雞',
       exp: 33,
-      params: [1, 1, 14, 10, 1, 5, 9, 3],
+      params: [1, 1, 10, 10, 1, 5, 9, 3],
       level: 3
     }
     Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
@@ -3093,7 +3138,7 @@
     let mobInitData = {
       name: '狼',
       exp: 50,
-      params: [1, 1, 18, 10, 10, 10, 10, 3],
+      params: [1, 1, 14, 10, 10, 10, 10, 3],
       level: 6
     }
     Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
@@ -3124,17 +3169,17 @@
 
   Wolf.prototype.looting = function () {
     var lootings = [];
-    if (getRandomInt(10) < 3) {
-      lootings.push(new Cat_Meat());
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Wolf_Tooth());
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Cat_Tooth());
+      lootings.push(new Wolf_Skin());
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Cat_Claw());
+      lootings.push(new Wolf_Claw());
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Cat_Skin());
+      lootings.push(new Wolf_Bone());
     }
 
     for (var id in lootings) {
@@ -3461,7 +3506,7 @@
         , ItemUtils.getItemDisplayName($gameVariables[0].fireProjectileInfo.item)
         , LogUtils.getCharName(realTarget)));
     }
-    $gameVariables[0].fireProjectileInfo.item.onQuaff(evt);
+    $gameVariables[0].fireProjectileInfo.item.onQuaff(evt, true);
     return true;
   }
 
@@ -3633,8 +3678,17 @@
   TrapUtils.trapTemplates = [];
 
   TrapUtils.generateTraps = function(mapId, floors) {
+    // generate upsatir/downstair
+    for (let id in $gameVariables[mapId].stairList) {
+      let stairData = $gameVariables[mapId].stairList[id];
+      if (1 == stairData.type) {
+        new DownStair(stairData.x, stairData.y);
+      } else {
+        new UpStair(stairData.x, stairData.y);
+      }
+    }
     // TODO: implement trap generating mechanism
-    let trapCounts = Math.round(floors.length * 0.01);
+    let trapCounts = Math.round(floors.length * trapSpawnPercentage);
     for (let i = 0; i < trapCounts; i++) {
       while (true) {
         let floor = floors[Math.randomInt(floors.length)];
@@ -3686,7 +3740,7 @@
   }
 
   TrapUtils.drawTrap = function(event) {
-    if (event.trap.isRevealed) {
+    if (event.trap.isRevealed && $gameVariables[$gameMap._mapId].mapData[event._x][event._y].isExplored) {
       let imageData = event.trap.imageData;
       let opacity;
       if ($gameVariables[$gameMap._mapId].mapData[event._x][event._y].isVisible) {
@@ -3892,6 +3946,54 @@
   TrapUtils.trapTemplates[1] = Trap_Teleport;
   TrapUtils.trapTemplates[2] = Trap_GroundHole;
   TrapUtils.trapTemplates[3] = Trap_MagicEffect;
+
+  //-----------------------------------------------------------------------------------
+  // UpStair
+  //
+  // class for up stair, borrow prototype from Game_Trap
+
+  UpStair = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  UpStair.prototype = Object.create(Game_Trap.prototype);
+  UpStair.prototype.constructor = UpStair;
+
+  UpStair.prototype.initStatus = function (event) {
+    Game_Trap.prototype.initStatus.call(this, event);
+    this.trap.trapClass = 'UpStair';
+    this.trap.imageData = new ImageData('Stair', 3, 2, 6);
+    this.trap.name = '往上的樓梯';
+    this.trap.isRevealed = true;
+  }
+
+  UpStair.prototype.triggered = function(target) {
+    // nothing
+  }
+
+  //-----------------------------------------------------------------------------------
+  // DownStair
+  //
+  // class for down stair, borrow prototype from Game_Trap
+
+  DownStair = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  DownStair.prototype = Object.create(Game_Trap.prototype);
+  DownStair.prototype.constructor = DownStair;
+
+  DownStair.prototype.initStatus = function (event) {
+    Game_Trap.prototype.initStatus.call(this, event);
+    this.trap.trapClass = 'DownStair';
+    this.trap.imageData = new ImageData('Stair', 3, 2, 8);
+    this.trap.name = '往下的樓梯';
+    this.trap.isRevealed = true;
+  }
+
+  DownStair.prototype.triggered = function(target) {
+    // nothing
+  }
 
   //-----------------------------------------------------------------------------------
   // Input
@@ -4331,6 +4433,9 @@
             }
           }
         }
+        if (gameTurn % 20 == 0) {
+          MapUtils.addMobToNowMap();
+        }
         // update all mobs & items
         let done;
         do {
@@ -4559,6 +4664,20 @@
 
   ItemUtils.potionTemplates = [];
   ItemUtils.scrollTemplates = [];
+  ItemUtils.lootingTemplates = {
+    skin: [],
+    tooth: [],
+    claw: [],
+    bone: [],
+    material: []
+  }
+  ItemUtils.EquipTemplates = {
+    helmet: [],
+    gloves: [],
+    shoes: [],
+    shield: [],
+    coat: []
+  }
   ItemUtils.recipes = [];
 
   ItemUtils.tempObjStack = []; // for get/drop items log
@@ -4834,6 +4953,15 @@
         case 'GLOVES':
           imageData = new ImageData('Collections2', 6, 1, 6);
           break;
+        case 'SHIELD':
+          imageData = new ImageData('Collections2', 4, 0, 2);
+          break;
+        case 'HELMET':
+          imageData = new ImageData('Collections2', 7, 1, 4);
+          break;
+        case 'COAT':
+          imageData = new ImageData('Collections2', 4, 1, 4);
+          break;
       }
     } else {
       console.log('ERROR: ItemUtils.updateItemPile: no such type!');
@@ -4911,6 +5039,91 @@
     ItemUtils.updateEquipDescription(equip);
   }
 
+  ItemUtils.spawnItemFromList = function(list, dungeonLevel) {
+    let probs = []; // item: {itemClass: class, prob: float}
+    for (let id in list) {
+      let p = 100 - Math.abs(dungeonLevel - list[id].spawnLevel) * 20;
+      p = (p < 0) ? 0 : p;
+      probs.push({itemClass: list[id], prob: p});
+    }
+    let totalProb = 0;
+    for (let id in probs) {
+      totalProb += probs[id].prob;
+    }
+    for (let id in probs) {
+      probs[id].prob /= totalProb;
+    }
+    probs.sort(function(a, b) {
+      return b.prob - a.prob;
+    });
+    let indicator = getRandomInt(100) / 100;
+    let compareProb = 0;
+    for (let id in probs) {
+      compareProb += probs[id].prob;
+      if (indicator < compareProb) {
+        return new probs[id].itemClass();
+      }
+    }
+    return null;
+  }
+
+  ItemUtils.spawnItem = function(dungeonLevel) {
+    let list;
+    let itemType = getRandomInt(100);
+    if (itemType < 80) {
+      // spawn material
+      let indicator = getRandomInt(5);
+      switch (indicator) {
+        case 0: // skin
+          list = ItemUtils.lootingTemplates.skin;
+          break;
+        case 1: // tooth
+          list = ItemUtils.lootingTemplates.tooth;
+          break;
+        case 2: // claw
+          list = ItemUtils.lootingTemplates.claw;
+          break;
+        case 3: // bone
+          list = ItemUtils.lootingTemplates.bone;
+          break;
+        case 4: // material
+          list = ItemUtils.lootingTemplates.material;
+          break;
+      }
+      return ItemUtils.spawnItemFromList(list, dungeonLevel);
+    } else if (itemType < 95) {
+      // spawn scroll/potion
+      if (getRandomInt(2) == 0) {
+        // scroll
+        list = ItemUtils.scrollTemplates;
+      } else {
+        list = ItemUtils.potionTemplates;
+      }
+      return new list[getRandomInt(list.length)]();
+    } else {
+      // spawn equipment
+      let indicator = getRandomInt(5);
+      switch (indicator) {
+        case 0: // helmet
+          list = ItemUtils.EquipTemplates.helmet;
+          break;
+        case 1: // gloves
+          list = ItemUtils.EquipTemplates.gloves;
+          break;
+        case 2: // shoes
+          list = ItemUtils.EquipTemplates.shoes;
+          break;
+        case 3: // shield
+          list = ItemUtils.EquipTemplates.shield;
+          break;
+        case 4: // coat
+          list = ItemUtils.EquipTemplates.coat;
+          break;
+      }
+      return ItemUtils.spawnItemFromList(list, dungeonLevel);
+    }
+  }
+
   //-----------------------------------------------------------------------------------
   // ItemTemplate
   //
@@ -4961,6 +5174,7 @@
   Feather = function() {
     this.initialize.apply(this, arguments);
   }
+  Feather.spawnLevel = 3;
 
   Feather.prototype = Object.create(ItemTemplate.prototype);
   Feather.prototype.constructor = Feather;
@@ -4968,6 +5182,7 @@
   Feather.prototype.initialize = function () {
     ItemTemplate.prototype.initialize.call(this, $dataItems[12]);
   }
+  ItemUtils.lootingTemplates.material.push(Feather);
 
   //-----------------------------------------------------------------------------------
   // Dog_Meat
@@ -4986,7 +5201,7 @@
     this.name = '狗肉';
     this.description = '在一些地區也算美食';
     this.templateName = this.name;
-    this.nutrition = 250;
+    this.nutrition = 200;
   }
 
   //-----------------------------------------------------------------------------------
@@ -5006,7 +5221,7 @@
     this.name = '雞肉';
     this.description = '好吃的雞肉';
     this.templateName = this.name;
-    this.nutrition = 300;
+    this.nutrition = 250;
   }
 
   //-----------------------------------------------------------------------------------
@@ -5026,7 +5241,7 @@
     this.name = '貓肉';
     this.description = '這麼可愛, 你忍心吃?';
     this.templateName = this.name;
-    this.nutrition = 250;
+    this.nutrition = 200;
   }
 
   //-----------------------------------------------------------------------------------
@@ -5037,6 +5252,7 @@
   Dog_Tooth = function() {
     this.initialize.apply(this, arguments);
   }
+  Dog_Tooth.spawnLevel = 1;
 
   Dog_Tooth.prototype = Object.create(EquipTemplate.prototype);
   Dog_Tooth.prototype.constructor = Dog_Tooth;
@@ -5053,9 +5269,12 @@
     this.traits[2].value = '1d3';
     if (modifier > 0) {
       this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
     }
     ItemUtils.updateEquipDescription(this);
   }
+  ItemUtils.lootingTemplates.tooth.push(Dog_Tooth);
 
   //-----------------------------------------------------------------------------------
   // Rooster_Tooth
@@ -5065,6 +5284,7 @@
   Rooster_Tooth = function() {
     this.initialize.apply(this, arguments);
   }
+  Rooster_Tooth.spawnLevel = 3;
 
   Rooster_Tooth.prototype = Object.create(EquipTemplate.prototype);
   Rooster_Tooth.prototype.constructor = Rooster_Tooth;
@@ -5081,9 +5301,12 @@
     this.traits[2].value = '1d4';
     if (modifier > 0) {
       this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
     }
     ItemUtils.updateEquipDescription(this);
   }
+  ItemUtils.lootingTemplates.tooth.push(Rooster_Tooth);
 
   //-----------------------------------------------------------------------------------
   // Cat_Tooth
@@ -5093,6 +5316,7 @@
   Cat_Tooth = function() {
     this.initialize.apply(this, arguments);
   }
+  Cat_Tooth.spawnLevel = 4;
 
   Cat_Tooth.prototype = Object.create(EquipTemplate.prototype);
   Cat_Tooth.prototype.constructor = Cat_Tooth;
@@ -5109,9 +5333,44 @@
     this.traits[2].value = '1d5';
     if (modifier > 0) {
       this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
     }
     ItemUtils.updateEquipDescription(this);
   }
+  ItemUtils.lootingTemplates.tooth.push(Cat_Tooth);
+
+  //-----------------------------------------------------------------------------------
+  // Wolf_Tooth
+  //
+  // weapon type: TOOTH
+
+  Wolf_Tooth = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Wolf_Tooth.spawnLevel = 6;
+
+  Wolf_Tooth.prototype = Object.create(EquipTemplate.prototype);
+  Wolf_Tooth.prototype.constructor = Wolf_Tooth;
+
+  Wolf_Tooth.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[11]);
+    this.name = '狼牙';
+    this.description = '堅韌的牙齒';
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(0, 3);
+    modifier += this.bucState;
+    this.traits[2].value = '1d6';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    ItemUtils.updateEquipDescription(this);
+  }
+  ItemUtils.lootingTemplates.tooth.push(Wolf_Tooth);
 
   //-----------------------------------------------------------------------------------
   // Dog_Bone
@@ -5121,6 +5380,7 @@
   Dog_Bone = function() {
     this.initialize.apply(this, arguments);
   }
+  Dog_Bone.spawnLevel = 1;
 
   Dog_Bone.prototype = Object.create(EquipTemplate.prototype);
   Dog_Bone.prototype.constructor = Dog_Bone;
@@ -5136,6 +5396,33 @@
     // TODO: implement magic power amplifier
     ItemUtils.updateEquipDescription(this);
   }
+  ItemUtils.lootingTemplates.bone.push(Dog_Bone);
+
+  //-----------------------------------------------------------------------------------
+  // Wolf_Bone
+  //
+  // weapon type: BONE
+
+  Wolf_Bone = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Wolf_Bone.spawnLevel = 6;
+
+  Wolf_Bone.prototype = Object.create(EquipTemplate.prototype);
+  Wolf_Bone.prototype.constructor = Wolf_Bone;
+
+  Wolf_Bone.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[12]);
+    this.name = '狼骨';
+    this.description = '又輕又堅韌的骨頭';
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    this.traits[2].value = '2';
+    // TODO: implement magic power amplifier
+    ItemUtils.updateEquipDescription(this);
+  }
+  ItemUtils.lootingTemplates.bone.push(Wolf_Bone);
 
   //-----------------------------------------------------------------------------------
   // Rooster_Claw
@@ -5145,6 +5432,7 @@
   Rooster_Claw = function() {
     this.initialize.apply(this, arguments);
   }
+  Rooster_Claw.spawnLevel = 3;
 
   Rooster_Claw.prototype = Object.create(EquipTemplate.prototype);
   Rooster_Claw.prototype.constructor = Rooster_Claw;
@@ -5161,9 +5449,12 @@
     this.traits[2].value = '2d2';
     if (modifier > 0) {
       this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
     }
     ItemUtils.updateEquipDescription(this);
   }
+  ItemUtils.lootingTemplates.claw.push(Rooster_Claw);
 
   //-----------------------------------------------------------------------------------
   // Cat_Claw
@@ -5173,6 +5464,7 @@
   Cat_Claw = function() {
     this.initialize.apply(this, arguments);
   }
+  Cat_Claw.spawnLevel = 4;
 
   Cat_Claw.prototype = Object.create(EquipTemplate.prototype);
   Cat_Claw.prototype.constructor = Cat_Claw;
@@ -5189,9 +5481,44 @@
     this.traits[2].value = '2d2';
     if (modifier > 0) {
       this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
     }
     ItemUtils.updateEquipDescription(this);
   }
+  ItemUtils.lootingTemplates.claw.push(Cat_Claw);
+
+  //-----------------------------------------------------------------------------------
+  // Wolf_Claw
+  //
+  // weapon type: CLAW
+
+  Wolf_Claw = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Wolf_Claw.spawnLevel = 6;
+
+  Wolf_Claw.prototype = Object.create(EquipTemplate.prototype);
+  Wolf_Claw.prototype.constructor = Wolf_Claw;
+
+  Wolf_Claw.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[13]);
+    this.name = '狼爪';
+    this.description = '粗長又銳利的爪';
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(2, 5);
+    modifier += this.bucState;
+    this.traits[2].value = '2d3';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    ItemUtils.updateEquipDescription(this);
+  }
+  ItemUtils.lootingTemplates.claw.push(Wolf_Claw);
 
   //-----------------------------------------------------------------------------------
   // Dog_Skin
@@ -5201,6 +5528,7 @@
   Dog_Skin = function() {
     this.initialize.apply(this, arguments);
   }
+  Dog_Skin.spawnLevel = 1;
 
   Dog_Skin.prototype = Object.create(EquipTemplate.prototype);
   Dog_Skin.prototype.constructor = Dog_Skin;
@@ -5215,6 +5543,7 @@
     ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
+  ItemUtils.lootingTemplates.skin.push(Dog_Skin);
 
   //-----------------------------------------------------------------------------------
   // Cat_Skin
@@ -5224,6 +5553,7 @@
   Cat_Skin = function() {
     this.initialize.apply(this, arguments);
   }
+  Cat_Skin.spawnLevel = 4;
 
   Cat_Skin.prototype = Object.create(EquipTemplate.prototype);
   Cat_Skin.prototype.constructor = Cat_Skin;
@@ -5235,10 +5565,36 @@
     this.templateName = this.name;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 1 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 1);
     ItemUtils.modifyAttr(this.traits[1], 2 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
+  ItemUtils.lootingTemplates.skin.push(Cat_Skin);
+
+  //-----------------------------------------------------------------------------------
+  // Wolf_Skin
+  //
+  // armor type: SKIN
+
+  Wolf_Skin = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Wolf_Skin.spawnLevel = 6;
+
+  Wolf_Skin.prototype = Object.create(EquipTemplate.prototype);
+  Wolf_Skin.prototype.constructor = Wolf_Skin;
+
+  Wolf_Skin.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[11]);
+    this.name = '狼皮';
+    this.description = '堅韌的毛皮';
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 3 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.lootingTemplates.skin.push(Wolf_Skin);
 
   //-----------------------------------------------------------------------------------
   // Dog_Gloves
@@ -5248,6 +5604,8 @@
   Dog_Gloves = function() {
     this.initialize.apply(this, arguments);
   }
+  Dog_Gloves.spawnLevel = 1;
+
   Dog_Gloves.itemName = '狗皮手套';
   Dog_Gloves.itemDescription = '輕薄的手套';
   Dog_Gloves.material = [{itemClass: Dog_Skin, amount: 4}];
@@ -5266,6 +5624,7 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dog_Gloves);
+  ItemUtils.EquipTemplates.gloves.push(Dog_Gloves);
 
   //-----------------------------------------------------------------------------------
   // Dog_Shoes
@@ -5275,6 +5634,8 @@
   Dog_Shoes = function() {
     this.initialize.apply(this, arguments);
   }
+  Dog_Shoes.spawnLevel = 1;
+
   Dog_Shoes.itemName = '狗皮靴子';
   Dog_Shoes.itemDescription = '輕薄的靴子';
   Dog_Shoes.material = [{itemClass: Dog_Skin, amount: 4}];
@@ -5293,6 +5654,221 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dog_Shoes);
+  ItemUtils.EquipTemplates.shoes.push(Dog_Shoes);
+
+  //-----------------------------------------------------------------------------------
+  // Dog_Shield
+  //
+  // armor type: SHIELD
+
+  Dog_Shield = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dog_Shield.spawnLevel = 1;
+
+  Dog_Shield.itemName = '狗皮盾';
+  Dog_Shield.itemDescription = '簡單的輕盾';
+  Dog_Shield.material = [{itemClass: Dog_Skin, amount: 2}, {itemClass: Dog_Bone, amount: 2}];
+
+  Dog_Shield.prototype = Object.create(EquipTemplate.prototype);
+  Dog_Shield.prototype.constructor = Dog_Shield;
+
+  Dog_Shield.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[14]);
+    this.name = Dog_Shield.itemName;
+    this.description = Dog_Shield.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 3 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Dog_Shield);
+  ItemUtils.EquipTemplates.shield.push(Dog_Shield);
+
+  //-----------------------------------------------------------------------------------
+  // Dog_Helmet
+  //
+  // armor type: HELMET
+
+  Dog_Helmet = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dog_Helmet.spawnLevel = 1;
+
+  Dog_Helmet.itemName = '狗皮帽';
+  Dog_Helmet.itemDescription = '輕薄的皮帽';
+  Dog_Helmet.material = [{itemClass: Dog_Skin, amount: 4}];
+
+  Dog_Helmet.prototype = Object.create(EquipTemplate.prototype);
+  Dog_Helmet.prototype.constructor = Dog_Helmet;
+
+  Dog_Helmet.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[15]);
+    this.name = Dog_Helmet.itemName;
+    this.description = Dog_Helmet.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Dog_Helmet);
+  ItemUtils.EquipTemplates.helmet.push(Dog_Helmet);
+
+  //-----------------------------------------------------------------------------------
+  // Dog_Coat
+  //
+  // armor type: COAT
+
+  Dog_Coat = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dog_Coat.spawnLevel = 1;
+
+  Dog_Coat.itemName = '狗皮大衣';
+  Dog_Coat.itemDescription = '輕薄的大衣';
+  Dog_Coat.material = [{itemClass: Dog_Skin, amount: 8}];
+
+  Dog_Coat.prototype = Object.create(EquipTemplate.prototype);
+  Dog_Coat.prototype.constructor = Dog_Coat;
+
+  Dog_Coat.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[16]);
+    this.name = Dog_Coat.itemName;
+    this.description = Dog_Coat.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Dog_Coat);
+  ItemUtils.EquipTemplates.coat.push(Dog_Coat);
+
+  //-----------------------------------------------------------------------------------
+  // Cat_Gloves
+  //
+  // armor type: GLOVES
+
+  Cat_Gloves = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Cat_Gloves.spawnLevel = 4;
+
+  Cat_Gloves.itemName = '貓皮手套';
+  Cat_Gloves.itemDescription = '泛著光澤的手套';
+  Cat_Gloves.material = [{itemClass: Cat_Skin, amount: 4}];
+
+  Cat_Gloves.prototype = Object.create(EquipTemplate.prototype);
+  Cat_Gloves.prototype.constructor = Cat_Gloves;
+
+  Cat_Gloves.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[12]);
+    this.name = Cat_Gloves.itemName;
+    this.description = Cat_Gloves.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 1);
+    ItemUtils.modifyAttr(this.traits[1], 2 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Cat_Gloves);
+  ItemUtils.EquipTemplates.gloves.push(Cat_Gloves);
+
+  //-----------------------------------------------------------------------------------
+  // Cat_Shoes
+  //
+  // armor type: SHOES
+
+  Cat_Shoes = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Cat_Shoes.spawnLevel = 4;
+
+  Cat_Shoes.itemName = '貓皮靴子';
+  Cat_Shoes.itemDescription = '泛著光澤的靴子';
+  Cat_Shoes.material = [{itemClass: Cat_Skin, amount: 4}];
+
+  Cat_Shoes.prototype = Object.create(EquipTemplate.prototype);
+  Cat_Shoes.prototype.constructor = Cat_Shoes;
+
+  Cat_Shoes.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[13]);
+    this.name = Cat_Shoes.itemName;
+    this.description = Cat_Shoes.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 1);
+    ItemUtils.modifyAttr(this.traits[1], 2 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Cat_Shoes);
+  ItemUtils.EquipTemplates.shoes.push(Cat_Shoes);
+
+  //-----------------------------------------------------------------------------------
+  // Cat_Helmet
+  //
+  // armor type: HELMET
+
+  Cat_Helmet = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Cat_Helmet.spawnLevel = 4;
+
+  Cat_Helmet.itemName = '貓皮帽';
+  Cat_Helmet.itemDescription = '泛著光澤的皮帽';
+  Cat_Helmet.material = [{itemClass: Cat_Skin, amount: 4}];
+
+  Cat_Helmet.prototype = Object.create(EquipTemplate.prototype);
+  Cat_Helmet.prototype.constructor = Cat_Helmet;
+
+  Cat_Helmet.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[15]);
+    this.name = Cat_Helmet.itemName;
+    this.description = Cat_Helmet.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 1);
+    ItemUtils.modifyAttr(this.traits[1], 2 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Cat_Helmet);
+  ItemUtils.EquipTemplates.helmet.push(Cat_Helmet);
+
+  //-----------------------------------------------------------------------------------
+  // Cat_Coat
+  //
+  // armor type: COAT
+
+  Cat_Coat = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Cat_Coat.spawnLevel = 4;
+
+  Cat_Coat.itemName = '貓皮大衣';
+  Cat_Coat.itemDescription = '泛著光澤的大衣';
+  Cat_Coat.material = [{itemClass: Cat_Skin, amount: 8}];
+
+  Cat_Coat.prototype = Object.create(EquipTemplate.prototype);
+  Cat_Coat.prototype.constructor = Cat_Coat;
+
+  Cat_Coat.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[16]);
+    this.name = Cat_Coat.itemName;
+    this.description = Cat_Coat.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 2);
+    ItemUtils.modifyAttr(this.traits[1], 4 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Cat_Coat);
+  ItemUtils.EquipTemplates.coat.push(Cat_Coat);
 
   //-----------------------------------------------------------------------------------
   // Potion_Heal
@@ -5313,7 +5889,7 @@
     this.description = '回復些許生命力';
   }
 
-  Potion_Heal.prototype.onQuaff = function(user) {
+  Potion_Heal.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
     let value = 50;
     realUser.setHp(realUser._hp + value);
@@ -5323,7 +5899,9 @@
       let msg = String.format(Message.display('quaffPotionHeal'), LogUtils.getCharName(realUser)
         , value);
       LogUtils.addLog(msg);
-      ItemUtils.identifyObject(this);
+      if (identifyObject) {
+        ItemUtils.identifyObject(this);
+      }
     }
   }
 
@@ -5346,7 +5924,7 @@
     this.description = '回復些許魔力';
   }
 
-  Potion_Mana.prototype.onQuaff = function(user) {
+  Potion_Mana.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
     let value = 20;
     realUser.setMp(realUser._mp + value);
@@ -5355,7 +5933,9 @@
       TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', value));
       let msg = String.format(Message.display('quaffPotionMana'), LogUtils.getCharName(realUser)
         , value);
-      ItemUtils.identifyObject(this);
+        if (identifyObject) {
+          ItemUtils.identifyObject(this);
+        }
       LogUtils.addLog(msg);
     }
   }
@@ -5379,7 +5959,7 @@
     this.description = '暫時喪失視力';
   }
 
-  Potion_Blind.prototype.onQuaff = function(user) {
+  Potion_Blind.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
     realUser.status.blindCount = 20;
     if (user == $gamePlayer) {
@@ -5389,7 +5969,9 @@
       TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 60));
       TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '失明'));
       let msg = String.format(Message.display('blind'), LogUtils.getCharName(realUser));
-      ItemUtils.identifyObject(this);
+      if (identifyObject) {
+        ItemUtils.identifyObject(this);
+      }
       LogUtils.addLog(msg);
     }
   }
@@ -5413,14 +5995,16 @@
     this.description = '暫時麻痺無法行動';
   }
 
-  Potion_Paralyze.prototype.onQuaff = function(user) {
+  Potion_Paralyze.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
     realUser.status.paralyzeCount = 5;
     if (CharUtils.playerCanSeeChar(user)) {
       TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 64));
       TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '麻痺'));
       let msg = String.format(Message.display('paralyze'), LogUtils.getCharName(realUser));
-      ItemUtils.identifyObject(this);
+      if (identifyObject) {
+        ItemUtils.identifyObject(this);
+      }
       LogUtils.addLog(msg);
     }
   }
@@ -5444,14 +6028,16 @@
     this.description = '陷入沉睡';
   }
 
-  Potion_Sleep.prototype.onQuaff = function(user) {
+  Potion_Sleep.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
     realUser.status.sleepCount = 20;
     if (CharUtils.playerCanSeeChar(user)) {
       TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 62));
       TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '睡眠'));
       let msg = String.format(Message.display('sleep'), LogUtils.getCharName(realUser));
-      ItemUtils.identifyObject(this);
+      if (identifyObject) {
+        ItemUtils.identifyObject(this);
+      }
       LogUtils.addLog(msg);
     }
   }
@@ -5475,14 +6061,16 @@
     this.description = '暫時提升行動速度';
   }
 
-  Potion_Speed.prototype.onQuaff = function(user) {
+  Potion_Speed.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
     realUser.status.speedUpCount = 20;
     if (CharUtils.playerCanSeeChar(user)) {
       TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 51));
       TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '加速'));
       let msg = String.format(Message.display('speedUp'), LogUtils.getCharName(realUser));
-      ItemUtils.identifyObject(this);
+      if (identifyObject) {
+        ItemUtils.identifyObject(this);
+      }
       LogUtils.addLog(msg);
     }
   }
@@ -5506,7 +6094,7 @@
     this.description = '能力值增長';
   }
 
-  Potion_Growth.prototype.onQuaff = function(user) {
+  Potion_Growth.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
     let index = getRandomIntRange(2, 8);
     realUser._paramPlus[index]++;
@@ -5515,7 +6103,9 @@
       TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '能力提昇'));
       let msg = String.format(Message.display('growth'), LogUtils.getCharName(realUser)
         , ItemUtils.getAttributeName(index));
-      ItemUtils.identifyObject(this);
+      if (identifyObject) {
+        ItemUtils.identifyObject(this);
+      }
       LogUtils.addLog(msg);
     }
   }
@@ -5539,12 +6129,14 @@
     this.description = '提升等級';
   }
 
-  Potion_LevelUp.prototype.onQuaff = function(user) {
+  Potion_LevelUp.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
     if (CharUtils.playerCanSeeChar(user)) {
       TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 46));
       TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '升級'));
-      ItemUtils.identifyObject(this);
+      if (identifyObject) {
+        ItemUtils.identifyObject(this);
+      }
       if (user != $gamePlayer) {
         let msg = String.format(Message.display('levelUp'), LogUtils.getCharName(realUser));
         LogUtils.addLog(msg);
@@ -5576,7 +6168,7 @@
     this.description = '暫時隱形';
   }
 
-  Potion_Invisible.prototype.onQuaff = function(user) {
+  Potion_Invisible.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
     realUser.status.invisibleCount = 20;
     if (user == $gamePlayer) {
@@ -5586,7 +6178,9 @@
       TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 35));
       TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '隱形'));
       let msg = String.format(Message.display('invisible'), LogUtils.getCharName(realUser));
-      ItemUtils.identifyObject(this);
+      if (identifyObject) {
+        ItemUtils.identifyObject(this);
+      }
       LogUtils.addLog(msg);
     }
   }
@@ -5610,14 +6204,16 @@
     this.description = '暫時可看見隱形的生物';
   }
 
-  Potion_SeeInvisible.prototype.onQuaff = function(user) {
+  Potion_SeeInvisible.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
     realUser.status.seeInvisibleCount = 40;
     if (CharUtils.playerCanSeeChar(user)) {
       AudioManager.playSe({name: "Ice4", pan: 0, pitch: 100, volume: 100});
       TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '偵測隱形'));
       let msg = String.format(Message.display('seeInvisible'), LogUtils.getCharName(realUser));
-      ItemUtils.identifyObject(this);
+      if (identifyObject) {
+        ItemUtils.identifyObject(this);
+      }
       LogUtils.addLog(msg);
     }
   }
@@ -5641,7 +6237,7 @@
     this.description = '造成酸蝕傷害';
   }
 
-  Potion_Acid.prototype.onQuaff = function(user) {
+  Potion_Acid.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
     let damage = 30;
     realUser._hp -= damage;
@@ -5663,7 +6259,9 @@
       TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 39));
       TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '酸蝕'));
       LogUtils.addLog(msg);
-      ItemUtils.identifyObject(this);
+      if (identifyObject) {
+        ItemUtils.identifyObject(this);
+      }
     }
     BattleUtils.checkTargetAlive(null, realUser, user);
   }
@@ -5687,14 +6285,16 @@
     this.description = '中毒';
   }
 
-  Potion_Poison.prototype.onQuaff = function(user) {
+  Potion_Poison.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
     realUser.status.poisonCount = 10;
     if (CharUtils.playerCanSeeChar(user)) {
       TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 59));
       TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '中毒'));
       let msg = String.format(Message.display('poison'), LogUtils.getCharName(realUser));
-      ItemUtils.identifyObject(this);
+      if (identifyObject) {
+        ItemUtils.identifyObject(this);
+      }
       LogUtils.addLog(msg);
     }
   }
@@ -5734,7 +6334,7 @@
     this.description = '鑑定身上的一件物品';
   }
 
-  Scroll_Identify.prototype.onRead = function(user) {
+  Scroll_Identify.prototype.onRead = function(user, identifyObject) {
     if (user == $gamePlayer) {
       let items = $gameParty.allItems().filter(function(item){
         return !ItemUtils.checkItemIdentified(item) && item.name != '鑑定卷軸';
@@ -5744,7 +6344,9 @@
         let toIdentify = items[getRandomInt(items.length)];
         let unknownName = ItemUtils.getItemDisplayName(toIdentify);
         ItemUtils.identifyObject(toIdentify);
-        ItemUtils.identifyObject(this);
+        if (identifyObject) {
+          ItemUtils.identifyObject(this);
+        }
         msg = String.format(Message.display('scrollIdentifyRead'), unknownName, toIdentify.name);
       } else {
         msg = Message.display('scrollReadNoEffect');
@@ -5773,7 +6375,7 @@
     this.description = '強化一件裝備中的防具';
   }
 
-  Scroll_EnchantArmor.prototype.onRead = function(user) {
+  Scroll_EnchantArmor.prototype.onRead = function(user, identifyObject) {
     if (user == $gamePlayer) {
       let equips = $gameActors.actor(1).equips().filter(function(item) {
         if (item) {
@@ -5803,7 +6405,9 @@
           }
           ItemUtils.enchantEquip(equip, 1);
         }
-        ItemUtils.identifyObject(this);
+        if (identifyObject) {
+          ItemUtils.identifyObject(this);
+        }
       } else {
         msg = Message.display('scrollReadNoEffect');
       }
@@ -5831,7 +6435,7 @@
     this.description = '強化裝備中的武器';
   }
 
-  Scroll_EnchantWeapon.prototype.onRead = function(user) {
+  Scroll_EnchantWeapon.prototype.onRead = function(user, identifyObject) {
     if (user == $gamePlayer) {
       let equips = $gameActors.actor(1).equips().filter(function(item) {
         if (item) {
@@ -5861,7 +6465,9 @@
           }
           ItemUtils.enchantEquip(equip, 1);
         }
-        ItemUtils.identifyObject(this);
+        if (identifyObject) {
+          ItemUtils.identifyObject(this);
+        }
       } else {
         msg = Message.display('scrollReadNoEffect');
       }
@@ -5889,7 +6495,7 @@
     this.description = '解除一件裝備中的詛咒';
   }
 
-  Scroll_RemoveCurse.prototype.onRead = function(user) {
+  Scroll_RemoveCurse.prototype.onRead = function(user, identifyObject) {
     if (user == $gamePlayer) {
       let equips = $gameActors.actor(1).equips().filter(function(item) {
         if (item) {
@@ -5903,7 +6509,9 @@
         msg = String.format(Message.display('scrollRemoveCurseRead'), equip.name);
         equip.bucState = 0;
         ItemUtils.updateEquipName(equip);
-        ItemUtils.identifyObject(this);
+        if (identifyObject) {
+          ItemUtils.identifyObject(this);
+        }
       } else {
         msg = Message.display('scrollReadNoEffect');
       }
@@ -5931,7 +6539,7 @@
     this.description = '傳送至地圖的某處';
   }
 
-  Scroll_Teleport.prototype.onRead = function(user) {
+  Scroll_Teleport.prototype.onRead = function(user, identifyObject) {
     let floors = MapUtils.findMapDataFloor($gameVariables[$gameMap._mapId].mapData);
     let floor = null;
     while (true) {
@@ -5965,7 +6573,9 @@
     if (user != $gamePlayer && CharUtils.playerCanSeeChar(user)) {
       LogUtils.addLog(String.format(Message.display('seeTeleportAppear'), LogUtils.getCharName(realUser)));
     }
-    ItemUtils.identifyObject(this);
+    if (identifyObject) {
+      ItemUtils.identifyObject(this);
+    }
   }
 
   //-----------------------------------------------------------------------------------
@@ -5987,7 +6597,7 @@
     this.description = '摧毀一件裝備中的防具';
   }
 
-  Scroll_DestroyArmor.prototype.onRead = function(user) {
+  Scroll_DestroyArmor.prototype.onRead = function(user, identifyObject) {
     if (user == $gamePlayer) {
       let equips = $gameActors.actor(1).equips().filter(function(item) {
         if (item) {
@@ -6006,7 +6616,9 @@
             break;
           }
         }
-        ItemUtils.identifyObject(this);
+        if (identifyObject) {
+          ItemUtils.identifyObject(this);
+        }
       } else {
         msg = Message.display('scrollReadNoEffect');
       }
@@ -6034,7 +6646,7 @@
     this.description = '在身邊召喚怪物';
   }
 
-  Scroll_CreateMonster.prototype.onRead = function(user) {
+  Scroll_CreateMonster.prototype.onRead = function(user, identifyObject) {
     if (user == $gamePlayer) {
       let blocks = MapUtils.findAdjacentBlocks($gamePlayer);
       let msg, targetFloor;
@@ -6053,7 +6665,9 @@
         new Chick(targetFloor.x, targetFloor.y);
         MapUtils.refreshMap();
         msg = Message.display('scrollCreateMonsterRead');
-        ItemUtils.identifyObject(this);
+        if (identifyObject) {
+          ItemUtils.identifyObject(this);
+        }
       } else {
         msg = Message.display('scrollReadNoEffect');
       }
@@ -6081,7 +6695,7 @@
     this.description = '一段時間內嚇退敵人';
   }
 
-  Scroll_ScareMonster.prototype.onRead = function(user) {
+  Scroll_ScareMonster.prototype.onRead = function(user, identifyObject) {
     if (user == $gamePlayer) {
       let msg = Message.display('scrollScareMonsterRead');
       LogUtils.addLog(msg);
@@ -6097,7 +6711,9 @@
         }
       }
       if (seeMonsterScared) {
-        ItemUtils.identifyObject(this);
+        if (identifyObject) {
+          ItemUtils.identifyObject(this);
+        }
       }
       MapUtils.displayMessage(msg);
     }
@@ -7364,7 +7980,7 @@
           TimeUtils.afterPlayerMoved(10 * $gameVariables[0].gameTimeAmp);
           $gameActors.actor(1).nutrition += item.nutrition;
           CharUtils.decreaseNutrition($gameActors.actor(1));
-          MapUtils.displayMessage(String.format(Message.display('eatingDone'), item.name));
+          MapUtils.addBothLog(String.format(Message.display('eatingDone'), item.name));
         }
         setTimeout(func.bind(null, this.item()), 100);
       }
@@ -7462,7 +8078,7 @@
       this.popScene();
       var func = function (item) {
         LogUtils.addLog(String.format(Message.display('quaffPotion'), ItemUtils.getItemDisplayName(item)));
-        item.onQuaff($gamePlayer);
+        item.onQuaff($gamePlayer, true);
         var func2 = function() {
           if (!$gameVariables[0].messageFlag) {
             TimeUtils.afterPlayerMoved();
@@ -7550,7 +8166,7 @@
       this.popScene();
       var func = function (item) {
         LogUtils.addLog(String.format(Message.display('readScroll'), ItemUtils.getItemDisplayName(item)));
-        item.onRead($gamePlayer);
+        item.onRead($gamePlayer, true);
         var func2 = function() {
           if (!$gameVariables[0].messageFlag) {
             TimeUtils.afterPlayerMoved();
