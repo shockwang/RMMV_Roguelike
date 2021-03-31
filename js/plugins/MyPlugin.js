@@ -340,7 +340,20 @@
       nutritionDownToWeak: '你餓到身體開始虛弱了...',
       nutritionDownToFaint: '你餓到意識不清, 再不吃點東西的話就死定了!',
       craftSceneHelpMessage: '你要進行什麼工作?',
-      craftItemDone: '你製造了{0}.'
+      craftItemDone: '你製造了{0}.',
+      notDirection: '這不是一個方向.',
+      noStairDown: '這裡沒有往下的樓梯.',
+      noStairUp: '這裡沒有往上的樓梯.',
+      noItemGround: '這裡沒有東西可以撿.',
+      noItemInventory: '你的身上沒有任何物品.',
+      noEnergy: '你氣喘吁吁, 沒有足夠的體力攻擊!',
+      noMana: '你的魔力不夠了...',
+      skillLevelUp: '你的{0}更加熟練了!',
+      noDoor: '這個方向沒有門哦.',
+      doorOpened: '這扇門已經是打開的了.',
+      doorClosed: '這扇門已經是關上的了.',
+      doorLocked: '這扇門是鎖著的.',
+      doorStucked: '這扇門被什麼卡住了, 關不起來.'
     },
     display: function(msgName) {
       switch (Message.language) {
@@ -774,6 +787,9 @@
       $gameVariables[0].hotkeys[i] = null;
     }
 
+    // show status window
+    SceneManager._scene._myWindow.show();
+
     // for test
     // for (let i = 0; i < 10; i++) {
     //   $gameParty.gainItem(new Scroll_Identify(), 1);
@@ -798,9 +814,6 @@
     //   $gameParty.gainItem(new Potion_Poison(), 1);
     // }
     // $gameParty.gainItem(new Dog_Tooth(), 1);
-    // for (let i = 0; i < 4; i++) {
-    //   $gameParty.gainItem(new Dog_Skin(), 1);
-    // }
 
     // $gameParty._items.push(new Soul_Bite());
     // Soul_Obtained_Action.learnSkill(Soul_Bite);
@@ -2230,6 +2243,16 @@
                 break;
               }
             }
+            if (targetMapId == 2) {
+              // do not generate upstair on dungeon level 1
+              let stairList = $gameVariables[targetMapId].stairList;
+              for (let id in stairList) {
+                if (stairList[id].type == 0) {
+                  stairList.splice(id, 1);
+                  break;
+                }
+              }
+            }
             $gamePlayer.reserveTransfer(targetMapId, nowStair.toX, nowStair.toY, 0, 2);
             MapUtils.transferNearbyMobs(nowMapId, targetMapId, nowStair.x, nowStair.y, nowStair.toX, nowStair.toY);
 
@@ -3254,18 +3277,18 @@
     }
     if (!door) {
       if (character == $gamePlayer) {
-        MapUtils.updateMessage('這個方向沒有門哦.');
+        MapUtils.updateMessage(Message.display('noDoor'));
       }
       return false;
     }
     if (door.status == 2) {
       if (character == $gamePlayer) {
-        MapUtils.updateMessage("這扇門已經是打開的了.");
+        MapUtils.updateMessage(Message.display('doorOpened'));
       }
       return false;
     } else if (door.status == 0) {
       if (character == $gamePlayer) {
-        MapUtils.updateMessage("這扇門是鎖著的.");
+        MapUtils.updateMessage(Message.display('doorLocked'));
       }
       return false;
     }
@@ -3295,20 +3318,20 @@
     }
     if (!door) {
       if (character == $gamePlayer) {
-        MapUtils.updateMessage("這個方向沒有門哦.");
+        MapUtils.updateMessage(Message.display('noDoor'));
       }
       return false;
     }
     if (door.status != 2) {
       if (character == $gamePlayer) {
-        MapUtils.updateMessage("這扇門已經是關上的了.");
+        MapUtils.updateMessage(Message.display('doorClosed'));
       }
       return false;
     }
     // check if there's object blocked the doorway
     if (events.length > 1 || $gamePlayer.pos(x, y) || ItemUtils.findMapItemPileEvent(x, y)) {
       if (character == $gamePlayer) {
-        MapUtils.updateMessage("這扇門被什麼卡住了, 關不起來.");
+        MapUtils.updateMessage(Message.display('doorStucked'));
       }
       return false;
     }
@@ -4068,7 +4091,7 @@
         SceneManager._scene.removeChild(logWindow);
         break;
       default:
-        MapUtils.updateMessage('這不是一個方向.');
+        MapUtils.updateMessage(Message.display('notDirection'));
         x = -1, y = -1;
         break;
     }
@@ -4203,7 +4226,7 @@
             LogUtils.addLog(Message.display('goDownstair'));
             player.moved = true;
           } else {
-            MapUtils.displayMessage("這裡沒有往下的樓梯.");
+            MapUtils.displayMessage(Message.display('notStairDown'));
           }
           break;
         case '<': // go up
@@ -4220,20 +4243,36 @@
             LogUtils.addLog(Message.display('goUpstair'));
             player.moved = true;
           } else {
-            MapUtils.displayMessage("這裡沒有往上的樓梯.");
+            MapUtils.displayMessage(Message.display('noStairUp'));
           }
           break;
         case 'g': // pick things up from the ground
-          if (ItemUtils.findMapItemPileEvent($gamePlayer._x, $gamePlayer._y)) {
-            SceneManager.push(Scene_GetItem);
+          let itemPile = ItemUtils.findMapItemPileEvent($gamePlayer._x, $gamePlayer._y);
+          if (itemPile) {
+            if (itemPile.itemPile.objectStack.length == 1) {
+              let obj = itemPile.itemPile.objectStack[0];
+              ItemUtils.removeItemFromItemPile($gamePlayer._x, $gamePlayer._y, obj);
+              $gameParty.gainItem(obj, 1);
+              LogUtils.addLog(String.format(Message.display('getItems'), ItemUtils.getItemDisplayName(obj)));
+              TimeUtils.afterPlayerMoved();
+            } else {
+              SceneManager.push(Scene_GetItem);
+            }
           } else {
-            MapUtils.displayMessage("這裡沒有東西可以撿.");
+            MapUtils.displayMessage(Message.display('noItemGround'));
           }
           break;
         case 'd': // drop things from player inventory
-          if (Object.keys($gameParty._items).length == 0 && Object.keys($gameParty._weapons).length == 0
-            && Object.keys($gameParty._armors).length == 0) {
-            MapUtils.displayMessage("你的身上沒有任何物品.");
+          let items = $gameParty.allItemsExceptSouls();
+          if (items.length == 0) {
+            MapUtils.displayMessage(Message.display('noItemInventory'));
+          } else if (items.length == 1) {
+            let obj = items[0];
+            $gameParty.loseItem(obj, 1);
+            // setup item to itemPile on the ground
+            ItemUtils.addItemToItemPile($gamePlayer._x, $gamePlayer._y, obj);
+            LogUtils.addLog(String.format(Message.display('dropItems'), ItemUtils.getItemDisplayName(obj)));
+            TimeUtils.afterPlayerMoved();
           } else {
             SceneManager.push(Scene_DropItem);
           }
@@ -4241,17 +4280,16 @@
         case 'o': // open a door
           $gameVariables[0].directionalAction = Game_Door.prototype.openDoor;
           $gameVariables[0].directionalFlag = true;
-          MapUtils.displayMessage('開哪個方向的門?');
+          MapUtils.displayMessage(Message.display('askDirection'));
           break;
         case 'c': // close a door
           $gameVariables[0].directionalAction = Game_Door.prototype.closeDoor;
           $gameVariables[0].directionalFlag = true;
-          MapUtils.displayMessage('關哪個方向的門?');
+          MapUtils.displayMessage(Message.display('askDirection'));
           break;
         case 'i': // open inventory
-          if (Object.keys($gameParty._items).length == 0 && Object.keys($gameParty._weapons).length == 0
-            && Object.keys($gameParty._armors).length == 0) {
-            MapUtils.displayMessage("你的身上沒有任何物品.");
+          if ($gameParty.allItemsExceptSouls().length == 0) {
+            MapUtils.displayMessage(Message.display('noItemInventory'));
           } else {
             SceneManager.push(Scene_Item);
           }
@@ -4595,7 +4633,7 @@
     var realTarget = BattleUtils.getRealTarget(target);
     if (realSrc._tp < 5) {
       if (src == $gamePlayer) {
-        MapUtils.displayMessage('你氣喘吁吁, 沒有足夠的體力攻擊!');
+        MapUtils.displayMessage(Message.display('noEnergy'));
       }
       return false;
     } else {
@@ -4612,7 +4650,7 @@
         weaponBonus = prop.effect[index].atk;
         weaponSkill.exp += ($gameParty.hasSoul(Soul_Chick)) ? 1.05 : 1;
         if (prop.effect[index].levelUp != -1 && weaponSkill.exp >= prop.effect[index].levelUp) {
-          $gameMessage.add('你的' + weaponSkill.name + '更加熟練了!');
+          MapUtils.addBothLog(String.format(Message.display('skillLevelUp'), weaponSkill.name));
           weaponSkill.lv++;
           weaponSkill.exp = 0;
         }
@@ -4643,7 +4681,7 @@
 
   BattleUtils.playerDied = function (msg) {
     // TODO: implement statistics data/log
-    $gameMessage.add(msg);
+    MapUtils.displayMessage(msg);
     var waitFunction = function () {
       if ($gameMessage.isBusy()) {
         setTimeout(waitFunction, 100);
@@ -6351,8 +6389,7 @@
       } else {
         msg = Message.display('scrollReadNoEffect');
       }
-      MapUtils.displayMessage(msg);
-      LogUtils.addLog(msg);
+      MapUtils.addBothLog(msg);
     }
   }
 
@@ -6411,8 +6448,7 @@
       } else {
         msg = Message.display('scrollReadNoEffect');
       }
-      MapUtils.displayMessage(msg);
-      LogUtils.addLog(msg);
+      MapUtils.addBothLog(msg);
     }
   }
 
@@ -6471,8 +6507,7 @@
       } else {
         msg = Message.display('scrollReadNoEffect');
       }
-      MapUtils.displayMessage(msg);
-      LogUtils.addLog(msg);
+      MapUtils.addBothLog(msg);
     }
   }
 
@@ -6515,8 +6550,7 @@
       } else {
         msg = Message.display('scrollReadNoEffect');
       }
-      MapUtils.displayMessage(msg);
-      LogUtils.addLog(msg);
+      MapUtils.addBothLog(msg);
     }
   }
 
@@ -6559,12 +6593,7 @@
 
     user.setPosition(floor.x, floor.y);
     if (user == $gamePlayer) {
-      let screenX = ($gamePlayer._x - 10.125 < 0) ? 0 : $gamePlayer._x - 10.125;
-      screenX = (screenX + 20 > $gameMap.width()) ? $gameMap.width() - 20 : screenX;
-      let screenY = ($gamePlayer._y - 7.75 < 0) ? 0 : $gamePlayer._y - 7.75;
-      screenY = (screenY + 17 > $gameMap.height()) ? $gameMap.height() - 17 : screenY;
-      $gameMap._displayX = screenX;
-      $gameMap._displayY = screenY;
+      $gamePlayer.center(floor.x, floor.y);
       LogUtils.addLog(Message.display('scrollTeleportRead'));
     }
     MapUtils.refreshMap();
@@ -6622,8 +6651,7 @@
       } else {
         msg = Message.display('scrollReadNoEffect');
       }
-      MapUtils.displayMessage(msg);
-      LogUtils.addLog(msg);
+      MapUtils.addBothLog(msg);
     }
   }
 
@@ -6671,8 +6699,7 @@
       } else {
         msg = Message.display('scrollReadNoEffect');
       }
-      MapUtils.displayMessage(msg);
-      LogUtils.addLog(msg);
+      MapUtils.addBothLog(msg);
     }
   }
 
@@ -6818,14 +6845,14 @@
     if (realSrc._tp < skill.tpCost) {
       if (realSrc == $gameActors.actor(1)) {
         setTimeout(function() {
-          MapUtils.displayMessage('你氣喘吁吁, 沒有足夠的體力攻擊!');
+          MapUtils.displayMessage(Message.display('noEnergy'));
         }, 100);
       }
       return false;
     } else if (realSrc._mp < skill.mpCost) {
       if (realSrc == $gameActors.actor(1)) {
         setTimeout(function() {
-          MapUtils.displayMessage('你的魔力不夠了...');
+          MapUtils.displayMessage(Message.display('noMana'));
         }, 100);
       }
       return false;
@@ -6837,7 +6864,7 @@
     if (realSrc == $gameActors.actor(1)) {
       skill.exp++;
       if (prop.effect[index].levelUp != -1 && skill.exp >= prop.effect[index].levelUp) {
-        $gameMessage.add('你的' + skill.name + '更加熟練了!');
+        MapUtils.addBothLog(String.format(Message.display('skillLevelUp'), skill.name));
         skill.lv++;
         skill.exp = 0;
       }
@@ -7206,10 +7233,10 @@
     }
   }
 
-  //-----------------------------------------------------------------------------------
   // Window_GetDropItemList
-  //
-  // class for items on the map, inherit from Window_ItemList
+  // 
+  // The window for items get/drop
+
   function Window_GetDropItemList() {
     this.initialize.apply(this, arguments);
   }
@@ -7221,27 +7248,18 @@
     Window_ItemList.prototype.initialize.call(this, x, y, width, height);
   };
 
-  // always return true, because every item can be got/dropped
-  Window_GetDropItemList.prototype.isEnabled = function (item) {
-    return item;
-  };
-
-  //-----------------------------------------------------------------------------
-  // Window_GetDropItemCategory
-  //
-  // The window for selecting a category of items get/drop
-
-  function Window_GetDropItemCategory() {
-    this.initialize.apply(this, arguments);
+  Window_GetDropItemList.prototype.includes = function (item) {
+    try {
+      var prop = JSON.parse(item.note);
+      return prop.type && prop.type != "SOUL";
+    } catch (e) {
+      // do nothing
+    }
+    return false;
   }
 
-  Window_GetDropItemCategory.prototype = Object.create(Window_ItemCategory.prototype);
-  Window_GetDropItemCategory.prototype.constructor = Window_GetDropItemCategory;
-
-  Window_GetDropItemCategory.prototype.makeCommandList = function() {
-    this.addCommand(TextManager.item,    'item');
-    this.addCommand(TextManager.weapon,  'weapon');
-    this.addCommand(TextManager.armor,   'armor');
+  Window_GetDropItemList.prototype.isEnabled = function(item) {
+    return item;
   };
 
   //-----------------------------------------------------------------------------------
@@ -7272,34 +7290,25 @@
     ItemUtils.tempObjStack.length = 0;
   };
 
+  Scene_GetItem.prototype.create = function() {
+    Scene_ItemBase.prototype.create.call(this);
+    this.createHelpWindow();
+    this.createItemWindow();
+    this.createActorWindow();
+  };
+
   // override this function so it creates Window_GetDropItemList window
   Scene_GetItem.prototype.createItemWindow = function () {
-    var wy = this._categoryWindow.y + this._categoryWindow.height;
+    var wy = this._helpWindow.y + this._helpWindow.height;
     var wh = Graphics.boxHeight - wy;
     this._itemWindow = new Window_GetDropItemList(0, wy, Graphics.boxWidth, wh);
     this._itemWindow.setHelpWindow(this._helpWindow);
     this._itemWindow.setHandler('ok', this.onItemOk.bind(this));
-    this._itemWindow.setHandler('cancel', this.onItemCancel.bind(this));
+    this._itemWindow.setHandler('cancel', this.popSceneAndRestoreItems.bind(this));
     this.addWindow(this._itemWindow);
-    this._categoryWindow.setItemWindow(this._itemWindow);
+    this.activateItemWindow();
+    this._itemWindow.selectLast();
   };
-
-  // override this, so we can change $gameParty items back when popScene
-  Scene_GetItem.prototype.createCategoryWindow = function () {
-    this._categoryWindow = new Window_GetDropItemCategory();
-    this._categoryWindow.setHelpWindow(this._helpWindow);
-    this._helpWindow.drawTextEx('請選擇要撿起的物品.', 0, 0);
-    this._categoryWindow.y = this._helpWindow.height;
-    this._categoryWindow.setHandler('ok', this.onCategoryOk.bind(this));
-    this._categoryWindow.setHandler('cancel', this.popSceneAndRestoreItems.bind(this));
-    this.addWindow(this._categoryWindow);
-  };
-
-  // override this to show hint message
-  Scene_GetItem.prototype.onItemCancel = function () {
-    Scene_Item.prototype.onItemCancel.call(this);
-    this._helpWindow.drawTextEx('請選擇要撿起的物品.', 0, 0);
-  }
 
   Scene_GetItem.prototype.popSceneAndRestoreItems = function () {
     // restore $gameParty items
@@ -7333,6 +7342,10 @@
       ItemUtils.addItemToSet(this.item(), this.tempItems, this.tempWeapons, this.tempArmors);
       ItemUtils.tempObjStack.push(this.item());
       ItemUtils.updateItemPile(itemPileEvent);
+      // pop scene if itemPile is empty
+      if (itemPile.objectStack.length == 0) {
+        this.popSceneAndRestoreItems();
+      }
     }
     this._itemWindow.refresh();
     this._itemWindow.activate();
@@ -7356,34 +7369,25 @@
     ItemUtils.tempObjStack.length = 0;
   };
 
+  Scene_DropItem.prototype.create = function() {
+    Scene_ItemBase.prototype.create.call(this);
+    this.createHelpWindow();
+    this.createItemWindow();
+    this.createActorWindow();
+  };
+
   // override this function so it creates Window_GetDropItemList window
   Scene_DropItem.prototype.createItemWindow = function () {
-    var wy = this._categoryWindow.y + this._categoryWindow.height;
+    var wy = this._helpWindow.y + this._helpWindow.height;
     var wh = Graphics.boxHeight - wy;
     this._itemWindow = new Window_GetDropItemList(0, wy, Graphics.boxWidth, wh);
     this._itemWindow.setHelpWindow(this._helpWindow);
     this._itemWindow.setHandler('ok', this.onItemOk.bind(this));
-    this._itemWindow.setHandler('cancel', this.onItemCancel.bind(this));
+    this._itemWindow.setHandler('cancel', this.popScene.bind(this));
     this.addWindow(this._itemWindow);
-    this._categoryWindow.setItemWindow(this._itemWindow);
+    this.activateItemWindow();
+    this._itemWindow.selectLast();
   };
-
-  // override this to show hint message
-  Scene_DropItem.prototype.createCategoryWindow = function () {
-    this._categoryWindow = new Window_GetDropItemCategory();
-    this._categoryWindow.setHelpWindow(this._helpWindow);
-    this._helpWindow.drawTextEx('請選擇要丟下的物品.', 0, 0);
-    this._categoryWindow.y = this._helpWindow.height;
-    this._categoryWindow.setHandler('ok', this.onCategoryOk.bind(this));
-    this._categoryWindow.setHandler('cancel', this.popScene.bind(this));
-    this.addWindow(this._categoryWindow);
-  };
-
-  // override this to show hint message
-  Scene_DropItem.prototype.onItemCancel = function () {
-    Scene_Item.prototype.onItemCancel.call(this);
-    this._helpWindow.drawTextEx('請選擇要丟下的物品.', 0, 0);
-  }
 
   Scene_DropItem.prototype.onItemOk = function () {
     $gameParty.setLastItem(this.item());
@@ -7394,6 +7398,11 @@
       // setup item to itemPile on the ground
       ItemUtils.addItemToItemPile($gamePlayer._x, $gamePlayer._y, this.item());
       ItemUtils.tempObjStack.push(this.item());
+      // check if inventory is empty
+      let items = $gameParty.allItemsExceptSouls();
+      if (items.length == 0) {
+        this.popScene();
+      }
     }
     this._itemWindow.refresh();
     this._itemWindow.activate();
@@ -7805,6 +7814,18 @@
       }
     }
     return false;
+  }
+
+  Game_Party.prototype.allItemsExceptSouls = function() {
+    return this.allItems().filter(function(item) {
+      try {
+        var prop = JSON.parse(item.note);
+        return prop.type && prop.type != "SOUL";
+      } catch (e) {
+        // do nothing
+      }
+      return false;
+    })
   }
 
   //-----------------------------------------------------------------------------------
