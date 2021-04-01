@@ -212,6 +212,8 @@
     result.items[11] = new ImageData('Meat', 0, 2, 2);
     // material
     result.items[12] = new ImageData('Collections3', 0, 1, 2); // feather
+    // projectile
+    result.items[13] = new ImageData('Collections1', 7, 1, 8); // dart
   
     result.weapons = [];
     // long sword
@@ -281,6 +283,8 @@
       throwItem: '{0}丟出了{1}!',
       throwPotionHit: '{0}在{1}頭上碎裂開來!',
       throwPotionCrash: '{0}碎裂開來, 你聞到一股奇怪的味道...',
+      throwItemHitObstacle: '{0}撞到障礙物, 落在地上.',
+      throwItemBroken: '{0}壞掉了!',
       monsterFlee: '{0}轉身逃跑!',
       recoverFromAfraid: '{0}恢復鎮定了.',
       bumpWall: '{0}撞在牆上.',
@@ -814,6 +818,9 @@
     //   $gameParty.gainItem(new Potion_Poison(), 1);
     // }
     // $gameParty.gainItem(new Dog_Tooth(), 1);
+    for (let i = 0; i < 10; i++) {
+      $gameParty.gainItem(new Dart_Lv1(), 1);
+    }
 
     // $gameParty._items.push(new Soul_Bite());
     // Soul_Obtained_Action.learnSkill(Soul_Bite);
@@ -3641,6 +3648,75 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Projectile_Item
+
+  Projectile_Item = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Projectile_Item.prototype = Object.create(Game_Projectile.prototype);
+  Projectile_Item.prototype.constructor = Projectile_Item;
+
+  Projectile_Item.prototype.initialize = function (src, x, y) {
+    Game_Projectile.prototype.initialize.call(this, src, x, y);
+    // setup images
+    let imageData = ItemUtils.getImageData($gameVariables[0].fireProjectileInfo.item);
+    this._originalPattern = imageData.pattern;
+    this.setPattern(imageData.pattern);
+    this._direction = imageData.direction;
+    this.setImage(imageData.image, imageData.imageIndex);
+    this.distance = 5;
+  };
+
+  Projectile_Item.prototype.createProjectile = function(src, x, y) {
+    let projectile = new Projectile_Item(src, x, y);
+    if ($gameVariables[$gameMap._mapId].mapData[src._x][src._y].isVisible) {
+      let realSrc = BattleUtils.getRealTarget(src);
+      LogUtils.addLog(String.format(Message.display('throwItem'), LogUtils.getCharName(realSrc)
+        , ItemUtils.getItemDisplayName($gameVariables[0].fireProjectileInfo.item)));
+    }
+    projectile.action();
+    // lose item
+    if (src == $gamePlayer) {
+      $gameParty.loseItem($gameVariables[0].fireProjectileInfo.item, 1);
+    } else {
+      // TODO: implement mob inventory
+    }
+    $gameVariables[0].messageFlag = false;
+    return true;
+  }
+
+  Projectile_Item.prototype.hitCharacter = function(vm, evt) {
+    TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
+    vm.distanceCount = 99;
+    TimeUtils.animeQueue.push(new AnimeObject(null, 'SE', "Crash"));
+    BattleUtils.projectileAttack(vm.src, evt, $gameVariables[0].fireProjectileInfo.item);
+    return false;
+  }
+
+  Projectile_Item.prototype.hitDoor = function(vm) {
+    TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
+    vm.distanceCount = 99;
+    TimeUtils.animeQueue.push(new AnimeObject(null, 'SE', "Crash"));
+    if ($gameVariables[$gameMap._mapId].mapData[vm._x][vm._y].isVisible) {
+      LogUtils.addLog(String.format(Message.display('throwItemHitObstacle')
+        , ItemUtils.getItemDisplayName($gameVariables[0].fireProjectileInfo.item)));
+    }
+    return false;
+  }
+
+  Projectile_Item.prototype.hitWall = function(vm) {
+    return this.hitDoor(vm);
+  }
+
+  Projectile_Item.prototype.action = function () {
+    let vanish = Game_Projectile.prototype.action.call(this);
+    if (!vanish) {
+      ItemUtils.addItemToItemPile(this._x, this._y, $gameVariables[0].fireProjectileInfo.item);
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
   // Game_ItemPile
   //
   // The game object class for a itemPile on map, inherit from Game_Event
@@ -4679,6 +4755,57 @@
     return true;
   }
 
+  // for throwing projectile to enemy
+  BattleUtils.projectileAttack = function (src, target, item) {
+    var realSrc = BattleUtils.getRealTarget(src);
+    var realTarget = BattleUtils.getRealTarget(target);
+
+    // calculate the damage
+    let weaponBonus = 0;
+    if (realSrc == $gameActors.actor(1)) {
+      let weaponSkill;
+      for (let id in realSrc._skills) {
+        if (realSrc._skills[id].constructor.name == Skill_Throwing.name) {
+          weaponSkill = realSrc._skills[id];
+          break;
+        }
+      }
+      if (weaponSkill) {
+        let prop = window[weaponSkill.constructor.name].prop;
+        let index = weaponSkill.lv;
+        weaponBonus = prop.effect[index].atk;
+        weaponSkill.exp += ($gameParty.hasSoul(Soul_Chick)) ? 1.05 : 1;
+        if (prop.effect[index].levelUp != -1 && weaponSkill.exp >= prop.effect[index].levelUp) {
+          MapUtils.addBothLog(String.format(Message.display('skillLevelUp'), weaponSkill.name));
+          weaponSkill.lv++;
+          weaponSkill.exp = 0;
+        }
+      } else {
+        let skillClass = BattleUtils.getWeaponClass(realSrc);
+        let newWeaponSkill = new skillClass();
+        realSrc._skills.push(newWeaponSkill);
+        newWeaponSkill.lv = 0;
+        newWeaponSkill.exp = 1;
+      }
+    }
+
+    // TODO: implement projectile damage
+    let value = BattleUtils.calcPhysicalDamage(realSrc, realTarget, weaponBonus, 1);
+    TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
+    LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc)
+      , item.name, LogUtils.getCharName(realTarget), value));
+    realTarget._hp -= value;
+    CharUtils.updateSleepCountWhenHit(realTarget);
+    // hit animation
+    TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 16));
+    BattleUtils.checkTargetAlive(realSrc, realTarget, target);
+    if (src == $gamePlayer) {
+      $gameActors.actor(1).attacked = true;
+      TimeUtils.afterPlayerMoved();
+    }
+    return true;
+  }
+
   BattleUtils.playerDied = function (msg) {
     // TODO: implement statistics data/log
     MapUtils.displayMessage(msg);
@@ -4833,7 +4960,7 @@
         } else {
           return false;
         }
-      case 'FOOD': case 'SKILL': case 'SOUL': case 'MATERIAL':
+      case 'FOOD': case 'SKILL': case 'SOUL': case 'MATERIAL': case 'DART':
         // no need to identify
         return true;
       default:
@@ -5221,6 +5348,26 @@
     ItemTemplate.prototype.initialize.call(this, $dataItems[12]);
   }
   ItemUtils.lootingTemplates.material.push(Feather);
+
+  //-----------------------------------------------------------------------------------
+  // Dart_Lv1
+  //
+  // type: DART
+
+  Dart_Lv1 = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dart_Lv1.spawnLevel = 1;
+
+  Dart_Lv1.prototype = Object.create(ItemTemplate.prototype);
+  Dart_Lv1.prototype.constructor = Dart_Lv1;
+
+  Dart_Lv1.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[13]);
+    this.name = '飛鏢';
+    this.description = '射向敵人造成傷害';
+    this.templateName = this.name;
+  }
 
   //-----------------------------------------------------------------------------------
   // Dog_Meat
@@ -6768,7 +6915,7 @@
   Soul_Chick.prototype.initialize = function () {
     ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
     this.name = '雛鳥之魂';
-    this.description = '獲得經驗值+5%';
+    this.description = '你感受到了雛鳥那份奮鬥不懈的心!';
   }
 
   //-----------------------------------------------------------------------------------
@@ -6964,6 +7111,70 @@
       {lv: 8, atk: 28, levelUp: 450},
       {lv: 9, atk: 35, levelUp: 500},
       {lv: 10, atk: 40, levelUp: -1}
+    ]
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Skill_Throwing
+
+  Skill_Throwing = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_Throwing.prototype = Object.create(ItemTemplate.prototype);
+  Skill_Throwing.prototype.constructor = Skill_Throwing;
+
+  Skill_Throwing.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[11]);
+    this.name = '投擲';
+    this.description = '投擲物品的技術';
+    this.iconIndex = 78;
+    this.lv = 0;
+    this.exp = 0;
+  }
+
+  Skill_Throwing.prop = {
+    type: "SKILL",
+    subType:"PASSIVE",
+    effect: [
+      {lv: 0, atk: 0, levelUp: 20},
+      {lv: 1, atk: 2, levelUp: 20},
+      {lv: 2, atk: 5, levelUp: 40},
+      {lv: 3, atk: 8, levelUp: 60},
+      {lv: 4, atk: 10, levelUp: 80},
+      {lv: 5, atk: 12, levelUp: 100},
+      {lv: 6, atk: 15, levelUp: 150},
+      {lv: 7, atk: 20, levelUp: 300},
+      {lv: 8, atk: 28, levelUp: 450},
+      {lv: 9, atk: 35, levelUp: 500},
+      {lv: 10, atk: 40, levelUp: -1}
+    ]
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Skill_Chick
+
+  Skill_Chick = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_Chick.prototype = Object.create(ItemTemplate.prototype);
+  Skill_Chick.prototype.constructor = Skill_Chick;
+
+  Skill_Chick.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[11]);
+    this.name = '雛鳥之魂';
+    this.description = '獲得經驗值+5%';
+    this.iconIndex = 77;
+    this.lv = 1;
+    this.exp = 0;
+  }
+
+  Skill_Chick.prop = {
+    type: "SKILL",
+    subType:"PASSIVE",
+    effect: [
+      {lv: 1, levelUp: -1}
     ]
   }
 
@@ -8221,7 +8432,7 @@
   Window_ProjectileList.prototype.includes = function (item) {
     try {
       var prop = JSON.parse(item.note);
-      return prop.type && prop.type == "POTION";
+      return prop.type && (prop.type == "POTION" || prop.type == "DART");
     } catch (e) {
       // do nothing
     }
@@ -8258,7 +8469,7 @@
   Scene_FireProjectile.prototype.createItemWindow = function () {
     var wy = this._helpWindow.y + this._helpWindow.height;
     var wh = Graphics.boxHeight - wy;
-    this._itemWindow = new Window_PotionList(0, wy, Graphics.boxWidth, wh);
+    this._itemWindow = new Window_ProjectileList(0, wy, Graphics.boxWidth, wh);
     this._itemWindow.setHelpWindow(this._helpWindow);
     this._itemWindow.setHandler('ok', this.onItemOk.bind(this));
     this._itemWindow.setHandler('cancel', this.popScene.bind(this));
@@ -8273,7 +8484,12 @@
       $gameVariables[0].fireProjectileInfo.item = this.item();
       this.popScene();
       var func = function () {
-        $gameVariables[0].directionalAction = Projectile_Potion.prototype.createProjectile;
+        let prop = JSON.parse($gameVariables[0].fireProjectileInfo.item.note);
+        if (prop.type == 'POTION') {
+          $gameVariables[0].directionalAction = Projectile_Potion.prototype.createProjectile;
+        } else {
+          $gameVariables[0].directionalAction = Projectile_Item.prototype.createProjectile;
+        }
         $gameVariables[0].directionalFlag = true;
         MapUtils.displayMessage('往哪個方向投擲?');
       }
