@@ -54,6 +54,82 @@
         length = this.textWidth(value);
         this.drawText(value, x + 30, y, length, 'right');
     }
+
+    My_Window.prototype.drawPlayerHp = function(actor, x, y) {
+        this.changeTextColor(this.systemColor());
+        let msg = 'HP:';
+        let length = this.textWidth(msg);
+        this.drawText(msg, x, y, length);
+        x += length;
+        this.resetTextColor();
+        let hpPercentage = actor.hp / actor.mhp;
+        if (hpPercentage < 0.25) {
+            this.changeTextColor('#FFFF00');
+        }
+        msg = '' + actor.hp;
+        length = this.textWidth(msg);
+        this.drawText(msg, x, y, length);
+    }
+
+    My_Window.prototype.drawPlayerMp = function(actor, x, y) {
+        this.changeTextColor(this.systemColor());
+        let msg = 'MP:';
+        let length = this.textWidth(msg);
+        this.drawText(msg, x, y, length);
+        x += length;
+        this.resetTextColor();
+        let hpPercentage = actor.mp / actor.mmp;
+        if (hpPercentage < 0.25) {
+            this.changeTextColor('#FFFF00');
+        }
+        msg = '' + actor.mp;
+        length = this.textWidth(msg);
+        this.drawText(msg, x, y, length);
+    }
+
+    My_Window.prototype.drawPlayerTp = function(actor, x, y) {
+        this.changeTextColor(this.systemColor());
+        let msg = 'EN:';
+        let length = this.textWidth(msg);
+        this.drawText(msg, x, y, length);
+        x += length;
+        this.resetTextColor();
+        let hpPercentage = actor.tp / 100;
+        if (hpPercentage < 0.25) {
+            this.changeTextColor('#FFFF00');
+        }
+        msg = '' + actor.tp;
+        length = this.textWidth(msg);
+        this.drawText(msg, x, y, length);
+    }
+
+    My_Window.prototype.drawPlayerTp = function(actor, x, y) {
+        this.changeTextColor(this.systemColor());
+        let msg = 'EN:';
+        let length = this.textWidth(msg);
+        this.drawText(msg, x, y, length);
+        x += length;
+        this.resetTextColor();
+        let hpPercentage = actor.tp / 100;
+        if (hpPercentage < 0.25) {
+            this.changeTextColor('#FFFF00');
+        }
+        msg = '' + actor.tp;
+        length = this.textWidth(msg);
+        this.drawText(msg, x, y, length);
+    }
+
+    My_Window.prototype.drawDungeonDepth = function(x, y) {
+        this.changeTextColor(this.systemColor());
+        let msg = 'Dlv:';
+        let length = this.textWidth(msg);
+        this.drawText(msg, x, y, length);
+        x += length;
+        this.resetTextColor();
+        msg = '' + ($gameMap.mapId() - 1);
+        length = this.textWidth(msg);
+        this.drawText(msg, x, y, length);
+    }
     
     Window_Base.prototype.drawActorLevel = function(actor, x, y) {
         this.changeTextColor(this.systemColor());
@@ -157,18 +233,26 @@
         offset += width + 5;
         this.drawActorLevel(actor, offset, 0);
         offset += 60;
-        this.drawActorHp(actor, offset, 0, 155);
-        offset += 160;
-        this.drawActorMp(actor, offset, 0, 155);
-        offset += 160;
-        this.drawActorTp(actor, offset, 0, 155);
-        offset += 160;
+        // this.drawActorHp(actor, offset, 0, 155);
+        // offset += 160;
+        this.drawPlayerHp(actor, offset, 0);
+        offset += 100;
+        // this.drawActorMp(actor, offset, 0, 155);
+        // offset += 160;
+        this.drawPlayerMp(actor, offset, 0);
+        offset += 100;
+        // this.drawActorTp(actor, offset, 0, 155);
+        // offset += 160;
+        this.drawPlayerTp(actor, offset, 0);
+        offset += 100;
         if ($gameVariables[0]) {
             var value = "T:" + Math.round($gameVariables[0].gameTime / $gameVariables[0].gameTimeAmp);
             width = this.textWidth(value);
             this.drawGameTime(offset, 0);
-            offset += width + 10;
+            offset += width + 20;
         }
+        this.drawDungeonDepth(offset, 0);
+        offset += 80;
         this.drawActorStatus(actor, offset, 0);
         offset += 200;
         //this.drawActorIcons(actor, offset, 0, 300);

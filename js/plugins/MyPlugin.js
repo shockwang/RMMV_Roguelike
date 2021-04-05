@@ -91,6 +91,11 @@
     this.distance = distance;
   }
 
+  var RouteData = function(mapBlock, weight) {
+    this.mapBlock = mapBlock;
+    this.weight = weight;
+  }
+
   var FLOOR = '□';
   var WALL = '■';
   var DOOR = 'Ｄ';
@@ -123,6 +128,7 @@
   var dashTpCost = 20;
   var walkTpRecover = 3;
   var restTpRecover = 6;
+  var mobTraceRouteMaxDistance = 15;
 
   // word attached
   var groundWord = '(地上)';
@@ -342,6 +348,13 @@
       magicTrapTriggered: '{0}觸動了魔法陷阱!',
       eatWhenFull: '你吃的太飽了.',
       eatingDone: '你吃完了{0}.',
+      foodRot: '你身上的{0}腐爛了...',
+      foodRotAway : '你身上{0}徹底分解了.',
+      foodRotGround: '地上的{0}腐爛了...',
+      foodRotAwayGround: '地上{0}徹底分解了.',
+      rotten: '腐爛的',
+      rottenDescription: '它腐爛了...',
+      eatRottenEffected: '你吃了腐爛的食物, 感到十分難受!',
       nutritionUpToFull: '你吃得太撐了!',
       nutritionUpToNormal: '你不再感到飢餓了.',
       nutritionDownToNormal: '你的肚子不那麼撐了.',
@@ -367,10 +380,15 @@
       doorLocked: '這扇門是鎖著的.',
       doorStucked: '這扇門被什麼卡住了, 關不起來.',
       strUp: '你的肌肉變得更強壯了!',
+      strDown: '你的肌肉軟化了...',
       vitUp: '你的身體變得更結實了!',
+      vitDown: '你的身體變得更脆弱了...',
       intUp: '你的思緒變得更清晰了!',
+      intDown: '你的思緒變得更混濁了...',
       wisUp: '你變得更加睿智了!',
-      agiUp: '你的動作變得更靈活了!'
+      wisDown: '你變得更加愚笨了...',
+      agiUp: '你的動作變得更靈活了!',
+      agiDown: '你的動作變得更笨拙了...'
     },
     display: function(msgName) {
       switch (Message.language) {
@@ -572,6 +590,10 @@
       return true;
     }
     return false;
+  }
+
+  CharUtils.playerCanSeeBlock = function(x, y) {
+    return $gameVariables[$gameMap._mapId].mapData[x][y].isVisible && $gameActors.actor(1).status.blindCount == 0;
   }
 
   CharUtils.updateHpMp = function(target) {
@@ -931,10 +953,13 @@
     // for (let i = 0; i < 10; i++) {
     //   $gameParty.gainItem(new Dart_Lv1_T1(), 1);
     // }
+    // $gameParty.gainItem(new Chicken_Meat(), 1);
+    // $gameParty.gainItem(new Dog_Meat(), 1);
+    // $gameParty.gainItem(new Cat_Meat(), 1);
+    // $gameParty.gainItem(new Wolf_Meat(), 1);
 
-    // $gameParty._items.push(new Soul_Bite());
-    // Soul_Obtained_Action.learnSkill(Soul_Bite);
-    // $gameActors.actor(1).learnSkill(new Skill_DarkFire());
+    // $gameParty._items.push(new Soul_Scud());
+    // Soul_Obtained_Action.learnSkill(Skill_Hide);
   }
 
   // message window defined here, because it can't be assigned to $gameVariables, will cause save/load crash
@@ -2092,76 +2117,95 @@
     return result;
   }
 
-  // find route between two events (not very useful...put away by now)
-  MapUtils.findShortestRoute = function (x1, y1, x2, y2) {
+  // find route between two events (using Dijkstra's algorithm)
+  MapUtils.findShortestRoute = function (x1, y1, x2, y2, maxPathLength) {
     var mapData = $gameVariables[$gameMap.mapId()].mapData;
     var path = [], explored = [];
-    if (mapData[x1][y1].originalTile != FLOOR || mapData[x2][y2].originalTile != FLOOR) {
-      console.log("MapUtils.findShortestRoute() error: point not on FLOOR.");
-      return null;
-    }
-    var hasPath = true, dstReached = false;
-    var curX = x1, curY = y1;
-    var nextX, nextY;
-    // first add src point being explored
-    explored.push(mapData[x1][y1]);
-    while (hasPath && !dstReached) {
-      hasPath = false;
-      for (var i = 0; i < 8; i++) {
-        nextX = curX, nextY = curY;
-        var nextCoordinate = getNearbyCoordinate(curX, curY, i);
-        nextX = nextCoordinate.x;
-        nextY = nextCoordinate.y;
-        if (mapData[nextX][nextY].originalTile == FLOOR
-          && !explored.includes(mapData[nextX][nextY])
-          && !path.includes(mapData[nextX][nextY])) {
-          hasPath = true;
-          // check if destination reached
-          if (nextX == x2 && nextY == y2) {
-            dstReached = true;
-          } else {
-            //console.log("node pushed. x: %d, y: %d", nextX, nextY);
-            path.push(mapData[nextX][nextY]);
-            explored.push(mapData[nextX][nextY]);
-            curX = nextX;
-            curY = nextY;
+
+    explored.push(new RouteData(mapData[x1][y1], 0));
+    let steps = 0, reached = false;
+    while (steps < maxPathLength && !reached) {
+      // find all elements fit now steps
+      let toExpend = explored.filter(function(routeData) {
+        return routeData.weight == steps;
+      })
+      steps++;
+      // explore from point & update weight
+      for (let id in toExpend) {
+        if (reached) {
+          break;
+        }
+        let node = toExpend[id];
+        for (let i = 0; i < 8; i++) {
+          let coordinate = MapUtils.getNearbyCoordinate(node.mapBlock.x, node.mapBlock.y, i);
+          // check if node already exists
+          let exists = explored.filter(function(routeData) {
+            return routeData.mapBlock.x == coordinate.x && routeData.mapBlock.y == coordinate.y;
+          })
+          if (exists[0]) { // block already explored, check & update weight
+            exists[0].weight = (steps < exists[0].weight) ? steps : exists[0].weight;
+          } else { // block not exists, add to exploredList
+            let mapBlock = mapData[coordinate.x][coordinate.y];
+            let tile = mapBlock.originalTile;
+            let weight = -1;
+            if (tile == FLOOR) {
+              // check if mob on it
+              let mob = $gameMap.eventsXy(coordinate.x, coordinate.y).filter(function(evt) {
+                return evt.type == 'MOB';
+              })
+              if (mob[0] && !(mob[0]._x == x2 && mob[0]._y == y2)) {
+                // mob on it & it's not destination
+                weight = -1;
+              } else {
+                weight = steps;
+              }
+            } else if (tile == DOOR) {
+              let openedDoor = $gameMap.eventsXy(coordinate.x, coordinate.y).filter(function(evt) {
+                return evt.type == 'DOOR' && evt.status == 2;
+              })
+              if (openedDoor[0]) {
+                weight = steps;
+              }
+            }
+            explored.push(new RouteData(mapBlock, weight));
+            if (coordinate.x == x2 && coordinate.y == y2) {
+              reached = true;
+              break;
+            }
           }
-          break;
-        }
-      }
-      if (!hasPath) {
-        // dead end, try to go back and try another node from the current path
-        path.pop();
-        if (path.length > 0) {
-          var lastNode = path[path.length - 1];
-          curX = lastNode.x;
-          curY = lastNode.y;
-          hasPath = true;
         }
       }
     }
-    console.log("original path length: %d", path.length);
-    for (var i = 0; i < path.length; i++) {
-      console.log("x: %d, y: %d", path[i].x, path[i].y);
-    }
-    // refine the path
-    var index = 0;
-    while (index < path.length) {
-      for (var i = path.length - 1; i > index; i--) {
-        if (MapUtils.isNearBy(path[index].x, path[index].y, path[i].x, path[i].y)
-          && i - index > 1) {
-          // redundant path between path[index] & path[i]
-          path.splice(index + 1, i - index - 1);
-          break;
+
+    if (reached) {
+      // rollback path
+      path.push(explored[explored.length - 1]);
+      while (steps > 1) {
+        steps--;
+        let nodes = explored.filter(function(routeData) {
+          return routeData.weight == steps;
+        })
+        let nodesBefore = explored.filter(function(routeData) {
+          return routeData.weight == steps - 1;
+        })
+        let nodeAfter = path[path.length - 1];
+        let candidates = [];
+        for (let id in nodes) {
+          let node = nodes[id];
+          for (let id2 in nodesBefore) {
+            let nodeBefore = nodesBefore[id2];
+            if (MapUtils.isNearBy(node.mapBlock.x, node.mapBlock.y, nodeAfter.mapBlock.x, nodeAfter.mapBlock.y) &&
+              MapUtils.isNearBy(node.mapBlock.x, node.mapBlock.y, nodeBefore.mapBlock.x, nodeBefore.mapBlock.y)) {
+              candidates.push(node);
+            }
+          }
         }
+        path.push(candidates[getRandomInt(candidates.length)]);
       }
-      index++;
+      path.reverse();
+      return path;
     }
-    console.log("refined path length: %d", path.length);
-    for (var i = 0; i < path.length; i++) {
-      console.log("x: %d, y: %d", path[i].x, path[i].y);
-    }
-    return path;
+    return null;
   }
 
   MapUtils.isNearBy = function (x1, y1, x2, y2) {
@@ -2755,7 +2799,7 @@
       this.mob._exp = mobInitData.exp;
       this.mob.level = mobInitData.level;
       this.mob._tp = 100;
-      this.mob.awareDistance = 8;
+      this.mob.awareDistance = 10;
       this.mob.status = CharUtils.initStatus();
       this.mob._skills = [];
       this.mob.moved = false;
@@ -2820,7 +2864,14 @@
             if (data && this.projectileAction(data.directionX, data.directionY, data.distance)) {
               // already done action
             } else {
-              this.moveTowardCharacter($gamePlayer);
+              // find route to player
+              let path = MapUtils.findShortestRoute(this._x, this._y
+                , $gamePlayer._x, $gamePlayer._y, mobTraceRouteMaxDistance);
+              if (path) {
+                this.moveTowardPosition(path[0].mapBlock.x, path[0].mapBlock.y);
+              } else {
+                this.moveTowardCharacter($gamePlayer);
+              }
             }
           }
         } else {
@@ -2854,6 +2905,27 @@
   // define projectile action (target in line)
   Game_Mob.prototype.projectileAction = function(x, y, distance) {
     return false;
+  }
+
+  Game_Mob.prototype.moveTowardPosition = function(x, y) {
+    var horz = 0, vert = 0;
+    var sx = this.deltaXFrom(x);
+    var sy = this.deltaYFrom(y);
+    if (sx > 0) {
+      horz = 4;
+    } else if (sx < 0) {
+      horz = 6;
+    }
+    if (sy > 0) {
+      vert = 8;
+    } else if (sy < 0) {
+      vert = 2;
+    }
+    if (sx == 0 || sy == 0) {
+      this.moveStraight((sx == 0) ? vert : horz);
+    } else {
+      this.moveDiagonally(horz, vert);
+    }
   }
 
   // Override moveTowardCharacter() function so mobs can move diagonally
@@ -2890,24 +2962,7 @@
       }
     }
     for (var i = 0; i < candidate.length; i++) {
-      var horz = 0, vert = 0;
-      var sx = this.deltaXFrom(candidate[i].x);
-      var sy = this.deltaYFrom(candidate[i].y);
-      if (sx > 0) {
-        horz = 4;
-      } else if (sx < 0) {
-        horz = 6;
-      }
-      if (sy > 0) {
-        vert = 8;
-      } else if (sy < 0) {
-        vert = 2;
-      }
-      if (sx == 0 || sy == 0) {
-        this.moveStraight((sx == 0) ? vert : horz);
-      } else {
-        this.moveDiagonally(horz, vert);
-      }
+      this.moveTowardPosition(candidate[i].x, candidate[i].y);
       if (this.isMovementSucceeded()) {
         break;
       }
@@ -2948,24 +3003,7 @@
       }
     }
     for (var i = 0; i < candidate.length; i++) {
-      var horz = 0, vert = 0;
-      var sx = this.deltaXFrom(candidate[i].x);
-      var sy = this.deltaYFrom(candidate[i].y);
-      if (sx > 0) {
-        horz = 4;
-      } else if (sx < 0) {
-        horz = 6;
-      }
-      if (sy > 0) {
-        vert = 8;
-      } else if (sy < 0) {
-        vert = 2;
-      }
-      if (sx == 0 || sy == 0) {
-        this.moveStraight((sx == 0) ? vert : horz);
-      } else {
-        this.moveDiagonally(horz, vert);
-      }
+      this.moveTowardPosition(candidate[i].x, candidate[i].y);
       if (this.isMovementSucceeded()) {
         break;
       }
@@ -3195,6 +3233,67 @@
   CharUtils.mobTemplates.push(Rooster);
 
   //-----------------------------------------------------------------------------------
+  // Rat
+
+  Rat = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Rat.baseDungeonLevel = 4;
+
+  Rat.prototype = Object.create(Game_Mob.prototype);
+  Rat.prototype.constructor = Rat;
+
+  Rat.prototype.initialize = function (x, y, fromData) {
+    let mobInitData = {
+      name: '老鼠',
+      exp: 36,
+      params: [1, 1, 12, 5, 0, 0, 15, 10],
+      level: 4
+    }
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
+    this.setImage('Mice', 1);
+    if (!fromData) {
+      this.mob.mobClass = 'Rat';
+      this.mob._skills.push(new Skill_Hide());
+    }
+  }
+
+  Rat.prototype.targetInSightAction = function(target) {
+    if (getRandomInt(100) < 40 && this.mob.status.invisibleCount == 0) { // Skill_Hide
+      let skill = this.mob._skills[0];
+      if (SkillUtils.canPerform(this.mob, skill)) {
+        skill.action(this);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Rat.prototype.looting = function () {
+    // var lootings = [];
+    // if (getRandomInt(10) < 3) {
+    //   lootings.push(new Chicken_Meat());
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Rooster_Tooth());
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Rooster_Claw());
+    // }
+    // if (getRandomInt(100) < 50) {
+    //   lootings.push(new Feather());
+    // }
+
+    // for (var id in lootings) {
+    //   ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    // }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_EatRot);
+    }
+  }
+  CharUtils.mobTemplates.push(Rat);
+
+  //-----------------------------------------------------------------------------------
   // Cat
 
   Cat = function () {
@@ -3229,7 +3328,7 @@
   }
 
   Cat.prototype.projectileAction = function(x, y, distance) {
-    if (getRandomInt(100) < 40) { // Skill_DarkFire
+    if (getRandomInt(100) < 80) { // Skill_DarkFire
       let skill = this.mob._skills[1];
       if (distance <= window[skill.constructor.name].prop.effect[skill.lv - 1].distance
         && SkillUtils.canPerform(this.mob, skill)) {
@@ -4702,6 +4801,9 @@
     // check trap
     TrapUtils.checkTrapStepped($gamePlayer);
 
+    // update food status
+    ItemUtils.updateFoodStatus();
+
     do {
       player.lastTimeMoved += timeSpent;
       let tempTimeSpent = timeSpent;
@@ -5428,7 +5530,7 @@
         return new probs[id].itemClass();
       }
     }
-    return null;
+    return new list[getRandomInt(list.length)]();
   }
 
   ItemUtils.spawnItem = function(dungeonLevel) {
@@ -5485,6 +5587,65 @@
           break;
       }
       return ItemUtils.spawnItemFromList(list, dungeonLevel);
+    }
+  }
+
+  ItemUtils.checkFoodTime = function(food, isInventory, itemPileEvent) {
+    if (food.duration) {
+      if (food.status == 'FRESH'
+        && $gameVariables[0].gameTime - food.producedTime >= food.duration * $gameVariables[0].gameTimeAmp) {
+        if (isInventory) {
+          LogUtils.addLog(String.format(Message.display('foodRot'), food.name));
+        } else if (CharUtils.playerCanSeeBlock(itemPileEvent._x, itemPileEvent._y)) {
+          LogUtils.addLog(String.format(Message.display('foodRotGround'), food.name));
+        }
+        food.name = Message.display('rotten') + food.name;
+        food.description += '\n' + Message.display('rottenDescription');
+        food.status = 'ROTTEN';
+        food.producedTime = $gameVariables[0].gameTime;
+      } else if ($gameVariables[0].gameTime - food.producedTime >= food.duration * $gameVariables[0].gameTimeAmp * 2) {
+        if (isInventory) {
+          LogUtils.addLog(String.format(Message.display('foodRotAway'), food.name));
+          $gameParty._items.splice($gameParty._items.indexOf(food), 1);
+        } else if (CharUtils.playerCanSeeBlock(itemPileEvent._x, itemPileEvent._y)) {
+          LogUtils.addLog(String.format(Message.display('foodRotAwayGround'), food.name));
+          ItemUtils.removeItemFromItemPile(itemPileEvent._x, itemPileEvent._y, food);
+        }
+      }
+    }
+  }
+
+  ItemUtils.updateFoodStatus = function() {
+    // update player inventory
+    let foodList = $gameParty._items.filter(function(item) {
+      if (item) {
+        let prop = JSON.parse(item.note);
+        return prop.type == 'FOOD';
+      }
+      return false;
+    });
+    for (let id in foodList) {
+      let food = foodList[id];
+      ItemUtils.checkFoodTime(food, true);
+    }
+
+    // update itemPiles
+    let itemPiles = $gameMap.events().filter(function(item) {
+      return item.type == 'ITEM_PILE';
+    });
+    for (let id in itemPiles) {
+      let evt = itemPiles[id];
+      let foodList = evt.itemPile.objectStack.filter(function(item) {
+        if (item) {
+          let prop = JSON.parse(item.note);
+          return prop.type == 'FOOD';
+        }
+        return false;
+      });
+      for (let id2 in foodList) {
+        let food = foodList[id2];
+        ItemUtils.checkFoodTime(food, false, evt);
+      }
     }
   }
 
@@ -5566,6 +5727,9 @@
     this.description = '在一些地區也算美食';
     this.templateName = this.name;
     this.nutrition = 250;
+    this.duration = 100;
+    this.status = 'FRESH'; // FRESH, ROTTEN
+    this.producedTime = $gameVariables[0].gameTime;
   }
 
   //-----------------------------------------------------------------------------------
@@ -5586,6 +5750,9 @@
     this.description = '好吃的雞肉';
     this.templateName = this.name;
     this.nutrition = 250;
+    this.duration = 100;
+    this.status = 'FRESH';
+    this.producedTime = $gameVariables[0].gameTime;
   }
 
   //-----------------------------------------------------------------------------------
@@ -5606,6 +5773,9 @@
     this.description = '這麼可愛, 你忍心吃?';
     this.templateName = this.name;
     this.nutrition = 250;
+    this.duration = 100;
+    this.status = 'FRESH';
+    this.producedTime = $gameVariables[0].gameTime;
   }
 
   //-----------------------------------------------------------------------------------
@@ -5626,6 +5796,9 @@
     this.description = '又硬又結實的肉';
     this.templateName = this.name;
     this.nutrition = 300;
+    this.duration = 100;
+    this.status = 'FRESH';
+    this.producedTime = $gameVariables[0].gameTime;
   }
 
   //-----------------------------------------------------------------------------------
@@ -5990,7 +6163,7 @@
   }
   Dart_Lv1_T1.spawnLevel = 1;
 
-  Dart_Lv1_T1.itemName = '飛鏢';
+  Dart_Lv1_T1.itemName = '飛鏢Lv1';
   Dart_Lv1_T1.itemDescription = '射向敵人造成傷害';
   Dart_Lv1_T1.material = [{itemClass: Feather, amount: 1}, {itemClass: Dog_Tooth, amount: 1}];
 
@@ -6017,7 +6190,7 @@
   }
   Dart_Lv1_T2.spawnLevel = 1;
 
-  Dart_Lv1_T2.itemName = '飛鏢';
+  Dart_Lv1_T2.itemName = '飛鏢Lv1';
   Dart_Lv1_T2.itemDescription = '射向敵人造成傷害';
   Dart_Lv1_T2.material = [{itemClass: Feather, amount: 1}, {itemClass: Rooster_Tooth, amount: 1}];
 
@@ -6033,6 +6206,60 @@
   }
   ItemUtils.recipes.push(Dart_Lv1_T2);
   ItemUtils.lootingTemplates.material.push(Dart_Lv1_T2);
+
+  //-----------------------------------------------------------------------------------
+  // Dart_Lv2_T1
+  //
+  // type: DART
+
+  Dart_Lv2_T1 = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dart_Lv2_T1.spawnLevel = 4;
+
+  Dart_Lv2_T1.itemName = '飛鏢Lv2';
+  Dart_Lv2_T1.itemDescription = '射向敵人造成傷害';
+  Dart_Lv2_T1.material = [{itemClass: Feather, amount: 1}, {itemClass: Cat_Tooth, amount: 1}];
+
+  Dart_Lv2_T1.prototype = Object.create(ItemTemplate.prototype);
+  Dart_Lv2_T1.prototype.constructor = Dart_Lv2_T1;
+
+  Dart_Lv2_T1.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[13]);
+    this.damage = '1d12';
+    this.name = Dart_Lv2_T1.itemName;
+    this.description = Dart_Lv2_T1.itemDescription + '\n投擲傷害' + this.damage;
+    this.templateName = this.name;
+  }
+  ItemUtils.recipes.push(Dart_Lv2_T1);
+  ItemUtils.lootingTemplates.material.push(Dart_Lv2_T1);
+
+  //-----------------------------------------------------------------------------------
+  // Dart_Lv2_T2
+  //
+  // type: DART
+
+  Dart_Lv2_T2 = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dart_Lv2_T2.spawnLevel = 4;
+
+  Dart_Lv2_T2.itemName = '飛鏢Lv2';
+  Dart_Lv2_T2.itemDescription = '射向敵人造成傷害';
+  Dart_Lv2_T2.material = [{itemClass: Feather, amount: 1}, {itemClass: Wolf_Tooth, amount: 1}];
+
+  Dart_Lv2_T2.prototype = Object.create(ItemTemplate.prototype);
+  Dart_Lv2_T2.prototype.constructor = Dart_Lv2_T2;
+
+  Dart_Lv2_T2.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[13]);
+    this.damage = '1d12';
+    this.name = Dart_Lv2_T2.itemName;
+    this.description = Dart_Lv2_T2.itemDescription + '\n投擲傷害' + this.damage;
+    this.templateName = this.name;
+  }
+  ItemUtils.recipes.push(Dart_Lv2_T2);
+  ItemUtils.lootingTemplates.material.push(Dart_Lv2_T2);
 
   //-----------------------------------------------------------------------------------
   // Dog_Gloves
@@ -6307,6 +6534,156 @@
   };
   ItemUtils.recipes.push(Cat_Coat);
   ItemUtils.EquipTemplates.coat.push(Cat_Coat);
+
+  //-----------------------------------------------------------------------------------
+  // Wolf_Gloves
+  //
+  // armor type: GLOVES
+
+  Wolf_Gloves = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Wolf_Gloves.spawnLevel = 6;
+
+  Wolf_Gloves.itemName = '狼皮手套';
+  Wolf_Gloves.itemDescription = '堅韌的手套';
+  Wolf_Gloves.material = [{itemClass: Wolf_Skin, amount: 4}];
+
+  Wolf_Gloves.prototype = Object.create(EquipTemplate.prototype);
+  Wolf_Gloves.prototype.constructor = Wolf_Gloves;
+
+  Wolf_Gloves.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[12]);
+    this.name = Wolf_Gloves.itemName;
+    this.description = Wolf_Gloves.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 3 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Wolf_Gloves);
+  ItemUtils.EquipTemplates.gloves.push(Wolf_Gloves);
+
+  //-----------------------------------------------------------------------------------
+  // Wolf_Shoes
+  //
+  // armor type: SHOES
+
+  Wolf_Shoes = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Wolf_Shoes.spawnLevel = 6;
+
+  Wolf_Shoes.itemName = '狼皮靴子';
+  Wolf_Shoes.itemDescription = '堅韌的靴子';
+  Wolf_Shoes.material = [{itemClass: Wolf_Skin, amount: 4}];
+
+  Wolf_Shoes.prototype = Object.create(EquipTemplate.prototype);
+  Wolf_Shoes.prototype.constructor = Wolf_Shoes;
+
+  Wolf_Shoes.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[13]);
+    this.name = Wolf_Shoes.itemName;
+    this.description = Wolf_Shoes.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 3 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Wolf_Shoes);
+  ItemUtils.EquipTemplates.shoes.push(Wolf_Shoes);
+
+  //-----------------------------------------------------------------------------------
+  // Wolf_Shield
+  //
+  // armor type: SHIELD
+
+  Wolf_Shield = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Wolf_Shield.spawnLevel = 6;
+
+  Wolf_Shield.itemName = '狼皮盾';
+  Wolf_Shield.itemDescription = '堅韌的輕盾';
+  Wolf_Shield.material = [{itemClass: Wolf_Skin, amount: 2}, {itemClass: Wolf_Bone, amount: 2}];
+
+  Wolf_Shield.prototype = Object.create(EquipTemplate.prototype);
+  Wolf_Shield.prototype.constructor = Wolf_Shield;
+
+  Wolf_Shield.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[14]);
+    this.name = Wolf_Shield.itemName;
+    this.description = Wolf_Shield.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Wolf_Shield);
+  ItemUtils.EquipTemplates.shield.push(Wolf_Shield);
+
+  //-----------------------------------------------------------------------------------
+  // Wolf_Helmet
+  //
+  // armor type: HELMET
+
+  Wolf_Helmet = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Wolf_Helmet.spawnLevel = 6;
+
+  Wolf_Helmet.itemName = '狼皮帽';
+  Wolf_Helmet.itemDescription = '堅韌的皮帽';
+  Wolf_Helmet.material = [{itemClass: Wolf_Skin, amount: 4}];
+
+  Wolf_Helmet.prototype = Object.create(EquipTemplate.prototype);
+  Wolf_Helmet.prototype.constructor = Wolf_Helmet;
+
+  Wolf_Helmet.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[15]);
+    this.name = Wolf_Helmet.itemName;
+    this.description = Wolf_Helmet.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 3 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Wolf_Helmet);
+  ItemUtils.EquipTemplates.helmet.push(Wolf_Helmet);
+
+  //-----------------------------------------------------------------------------------
+  // Wolf_Coat
+  //
+  // armor type: COAT
+
+  Wolf_Coat = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Wolf_Coat.spawnLevel = 6;
+
+  Wolf_Coat.itemName = '狼皮大衣';
+  Wolf_Coat.itemDescription = '堅韌的大衣';
+  Wolf_Coat.material = [{itemClass: Wolf_Skin, amount: 8}];
+
+  Wolf_Coat.prototype = Object.create(EquipTemplate.prototype);
+  Wolf_Coat.prototype.constructor = Wolf_Coat;
+
+  Wolf_Coat.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[16]);
+    this.name = Wolf_Coat.itemName;
+    this.description = Wolf_Coat.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 5 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Wolf_Coat);
+  ItemUtils.EquipTemplates.coat.push(Wolf_Coat);
 
   //-----------------------------------------------------------------------------------
   // Potion_Heal
@@ -7188,6 +7565,38 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Soul_Hide
+
+  Soul_Hide = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Soul_Hide.prototype = Object.create(ItemTemplate.prototype);
+  Soul_Hide.prototype.constructor = Soul_Hide;
+
+  Soul_Hide.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
+    this.name = '隱匿';
+    this.description = '你學會隱藏自己的身影';
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Soul_EatRot
+
+  Soul_EatRot = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Soul_EatRot.prototype = Object.create(ItemTemplate.prototype);
+  Soul_EatRot.prototype.constructor = Soul_EatRot;
+
+  Soul_EatRot.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
+    this.name = '食腐';
+    this.description = '你的胃能安全消化腐爛的食物';
+  }
+
+  //-----------------------------------------------------------------------------------
   // Soul_Clever
 
   Soul_Clever = function() {
@@ -7329,7 +7738,8 @@
       }, 100);
     } else if (prop.subType == 'RANGE') {
       skill.action($gamePlayer);
-      switch ($gameVariables[0].fireProjectileInfo.skill.stypeId) {
+      $gameActors.actor(1).attacked = true;
+      switch (skill.stypeId) {
         case 1: // magic
           CharUtils.playerGainIntExp(1);
           break;
@@ -7641,6 +8051,90 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Skill_Hide
+
+  Skill_Hide = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_Hide.prototype = Object.create(ItemTemplate.prototype);
+  Skill_Hide.prototype.constructor = Skill_Hide;
+
+  Skill_Hide.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[12]);
+    this.name = '隱匿';
+    this.description = '隱藏自己的身影一段時間';
+    this.mpCost = 5;
+    this.tpCost = 50;
+    this.lv = 1;
+    this.exp = 0;
+  }
+
+  Skill_Hide.prop = {
+    type: "SKILL",
+    subType: "RANGE",
+    effect: [
+      {lv: 1, turn: 5, levelUp: 50},
+      {lv: 2, turn: 6, levelUp: 150},
+      {lv: 3, turn: 7, levelUp: 300},
+      {lv: 4, turn: 8, levelUp: 450},
+      {lv: 5, turn: 10, levelUp: -1}
+    ]
+  }
+
+  Skill_Hide.prototype.action = function(src) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    CharUtils.decreaseMp(realSrc, this.mpCost);
+    CharUtils.decreaseTp(realSrc, this.tpCost);
+
+    if (CharUtils.playerCanSeeChar(src)) {
+      if (src == $gamePlayer) {
+        $gamePlayer.setOpacity(64);
+      }
+      TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 35));
+      TimeUtils.animeQueue.push(new AnimeObject(src, 'POP_UP', this.name));
+      LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
+        , LogUtils.getCharName(realSrc), this.name));
+    }
+    let index = this.lv - 1;
+    if (realSrc.status.invisibleCount < Skill_Hide.prop.effect[index].turn) {
+      realSrc.status.invisibleCount = Skill_Hide.prop.effect[index].turn;
+    }
+    return true;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Skill_EatRot
+
+  Skill_EatRot = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_EatRot.prototype = Object.create(ItemTemplate.prototype);
+  Skill_EatRot.prototype.constructor = Skill_EatRot;
+
+  Skill_EatRot.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[11]);
+    this.name = '食腐';
+    this.description = '安全食用腐爛的食物, 並獲得更多營養';
+    this.iconIndex = 77;
+    this.lv = 1;
+    this.exp = 0;
+  }
+
+  Skill_EatRot.prop = {
+    type: "SKILL",
+    subType:"PASSIVE",
+    effect: [
+      {lv: 1, nutritionPercentage: 0.6, levelUp: 10},
+      {lv: 2, nutritionPercentage: 0.65, levelUp: 30},
+      {lv: 3, nutritionPercentage: 0.7, levelUp: 60},
+      {lv: 4, nutritionPercentage: 0.75, levelUp: 90},
+      {lv: 5, nutritionPercentage: 0.8, levelUp: -1}
+    ]
+  }
+
+  //-----------------------------------------------------------------------------------
   // Skill_DarkFire
 
   Skill_DarkFire = function() {
@@ -7698,7 +8192,7 @@
       }
       BattleUtils.checkTargetAlive(realSrc, realTarget, target);
     }
-    if (CharUtils.playerCanSeeChar) {
+    if (CharUtils.playerCanSeeChar(src)) {
       LogUtils.addLog(String.format(Message.display('shootProjectile'), LogUtils.getCharName(realSrc), this.name));
     }
     let data = new ProjectileData(this, '!Flame2', 5
@@ -8334,6 +8828,22 @@
     return item && item.etypeId && item.etypeId != 1;
   };
 
+  // modify this so we can generate maps dynamically
+  DataManager.loadMapData = function(mapId) {
+    if (mapId > 0) {
+      var filename;
+      if (mapId == 1) {
+        filename = 'Map%1.json'.format(mapId.padZero(3));
+      } else {
+        filename = 'Map002.json';
+      }
+      this._mapLoader = ResourceHandler.createLoader('data/' + filename, this.loadDataFile.bind(this, '$dataMap', filename));
+      this.loadDataFile('$dataMap', filename);
+    } else {
+      this.makeEmptyMap();
+    }
+  };
+
   //-----------------------------------------------------------------------------
   // Window_Base
   //
@@ -8494,9 +9004,35 @@
         this.popScene();
         var func = function (item) {
           TimeUtils.afterPlayerMoved(10 * $gameVariables[0].gameTimeAmp);
-          $gameActors.actor(1).nutrition += item.nutrition;
+          let msg = String.format(Message.display('eatingDone'), item.name);
+          if (item.status == 'FRESH') {
+            $gameActors.actor(1).nutrition += item.nutrition;
+          } else {
+            // TODO: implement eat rotten food skill
+            $gameActors.actor(1).nutrition += Math.floor(item.nutrition / 2);
+            msg += '\n' + Message.display('eatRottenEffected');
+            let attrId = getRandomInt(5);
+            switch (attrId) {
+              case 0:
+                msg += '\n' + Message.display('strDown');
+                break;
+              case 1:
+                msg += '\n' + Message.display('vitDown');
+                break;
+              case 2:
+                msg += '\n' + Message.display('intDown');
+                break;
+              case 3:
+                msg += '\n' + Message.display('wisDown');
+                break;
+              case 4:
+                msg += '\n' + Message.display('agiDown');
+                break;
+            }
+            $gameActors.actor(1)._paramPlus[attrId + 2] -= 1;
+          }
           CharUtils.decreaseNutrition($gamePlayer);
-          MapUtils.addBothLog(String.format(Message.display('eatingDone'), item.name));
+          MapUtils.addBothLog(msg);
         }
         setTimeout(func.bind(null, this.item()), 100);
       }
