@@ -78,8 +78,8 @@
         this.drawText(msg, x, y, length);
         x += length;
         this.resetTextColor();
-        let hpPercentage = actor.mp / actor.mmp;
-        if (hpPercentage < 0.25) {
+        let mpPercentage = actor.mp / actor.mmp;
+        if (mpPercentage < 0.25) {
             this.changeTextColor('#FFFF00');
         }
         msg = '' + actor.mp;
@@ -94,24 +94,8 @@
         this.drawText(msg, x, y, length);
         x += length;
         this.resetTextColor();
-        let hpPercentage = actor.tp / 100;
-        if (hpPercentage < 0.25) {
-            this.changeTextColor('#FFFF00');
-        }
-        msg = '' + actor.tp;
-        length = this.textWidth(msg);
-        this.drawText(msg, x, y, length);
-    }
-
-    My_Window.prototype.drawPlayerTp = function(actor, x, y) {
-        this.changeTextColor(this.systemColor());
-        let msg = 'EN:';
-        let length = this.textWidth(msg);
-        this.drawText(msg, x, y, length);
-        x += length;
-        this.resetTextColor();
-        let hpPercentage = actor.tp / 100;
-        if (hpPercentage < 0.25) {
+        let tpPercentage = actor.tp / 100;
+        if (tpPercentage < 0.25) {
             this.changeTextColor('#FFFF00');
         }
         msg = '' + actor.tp;

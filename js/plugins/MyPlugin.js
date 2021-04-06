@@ -355,6 +355,7 @@
       rotten: '腐爛的',
       rottenDescription: '它腐爛了...',
       eatRottenEffected: '你吃了腐爛的食物, 感到十分難受!',
+      eatRottenUneffected: '你的身體能夠消化腐爛的食物.',
       nutritionUpToFull: '你吃得太撐了!',
       nutritionUpToNormal: '你不再感到飢餓了.',
       nutritionDownToNormal: '你的肚子不那麼撐了.',
@@ -781,7 +782,7 @@
   }
 
   CharUtils.playerGainStrExp = function(value) {
-    $gameVariables[0].paramsExperience.str += $gameParty.hasSoul(Soul_Chick) ? value * 1.05 : value;
+    $gameVariables[0].paramsExperience.str += Soul_Chick.expAfterAmplify(value);
     if ($gameVariables[0].paramsExperience.str >= 30 + $gameActors.actor(1)._paramPlus[2] * 2) {
       $gameActors.actor(1)._paramPlus[2]++;
       $gameVariables[0].paramsExperience.str = 0;
@@ -792,7 +793,7 @@
   }
 
   CharUtils.playerGainVitExp = function(value) {
-    $gameVariables[0].paramsExperience.vit += $gameParty.hasSoul(Soul_Chick) ? value * 1.05 : value;
+    $gameVariables[0].paramsExperience.vit += Soul_Chick.expAfterAmplify(value);
     if ($gameVariables[0].paramsExperience.vit >= $gameActors.actor(1)._hp + $gameActors.actor(1)._paramPlus[3] * 5) {
       $gameActors.actor(1)._paramPlus[3]++;
       $gameVariables[0].paramsExperience.vit = 0;
@@ -803,7 +804,7 @@
   }
 
   CharUtils.playerGainIntExp = function(value) {
-    $gameVariables[0].paramsExperience.int += $gameParty.hasSoul(Soul_Chick) ? value * 1.05 : value;
+    $gameVariables[0].paramsExperience.int += Soul_Chick.expAfterAmplify(value);
     if ($gameVariables[0].paramsExperience.int >= 10 + $gameActors.actor(1)._paramPlus[4] * 2) {
       $gameActors.actor(1)._paramPlus[4]++;
       $gameVariables[0].paramsExperience.int = 0;
@@ -814,7 +815,7 @@
   }
 
   CharUtils.playerGainWisExp = function(value) {
-    $gameVariables[0].paramsExperience.wis += $gameParty.hasSoul(Soul_Chick) ? value * 1.05 : value;
+    $gameVariables[0].paramsExperience.wis += Soul_Chick.expAfterAmplify(value);
     if ($gameVariables[0].paramsExperience.wis >= $gameActors.actor(1)._mp + $gameActors.actor(1)._paramPlus[5] * 5) {
       $gameActors.actor(1)._paramPlus[5]++;
       $gameVariables[0].paramsExperience.wis = 0;
@@ -825,7 +826,7 @@
   }
 
   CharUtils.playerGainAgiExp = function(value) {
-    $gameVariables[0].paramsExperience.agi += $gameParty.hasSoul(Soul_Chick) ? value * 1.05 : value;
+    $gameVariables[0].paramsExperience.agi += Soul_Chick.expAfterAmplify(value);
     if ($gameVariables[0].paramsExperience.agi >= 200 + $gameActors.actor(1)._paramPlus[6] * 10) {
       $gameActors.actor(1)._paramPlus[6]++;
       $gameVariables[0].paramsExperience.agi = 0;
@@ -952,14 +953,15 @@
     // $gameParty.gainItem(new Dog_Tooth(), 1);
     // for (let i = 0; i < 10; i++) {
     //   $gameParty.gainItem(new Dart_Lv1_T1(), 1);
+    //   $gameParty.gainItem(new Potion_Invisible(), 1);
     // }
     // $gameParty.gainItem(new Chicken_Meat(), 1);
     // $gameParty.gainItem(new Dog_Meat(), 1);
     // $gameParty.gainItem(new Cat_Meat(), 1);
     // $gameParty.gainItem(new Wolf_Meat(), 1);
 
-    // $gameParty._items.push(new Soul_Scud());
-    // Soul_Obtained_Action.learnSkill(Skill_Hide);
+    // $gameParty._items.push(new Soul_EatRot());
+    // Soul_Obtained_Action.learnSkill(Skill_EatRot);
   }
 
   // message window defined here, because it can't be assigned to $gameVariables, will cause save/load crash
@@ -2641,6 +2643,10 @@
             break;
           }
         }
+        // check player's position
+        if (x2 == $gamePlayer._x && y2 == $gamePlayer._y) {
+          canPass = false;
+        }
         return canPass;
       }
     } else { // original logic
@@ -3665,6 +3671,10 @@
         for (let id in events) {
           let evt = events[id];
           if (evt.type == 'DOOR' && evt.status != 2) { // hit closed door
+            vanish = this.hitDoor(this);
+          } else if ($gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(this._x, this._y)]
+            && !$gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(this._x, this._y)].isRevealed) {
+            // secret door not revealed yet
             vanish = this.hitDoor(this);
           } else if (evt.type == 'MOB') { // hit character
             vanish = this.hitCharacter(this, evt);
@@ -4852,22 +4862,21 @@
         } while (!done);
         // update trap record
         TrapUtils.updateLastTriggered();
-
-        // play queued anime
-        CharUtils.updateStatus($gamePlayer);
-        TimeUtils.playAnime();
-        // deal with energy calculation
-        if (playerDashed) {
-          // huge movement, do nothing
-        } else {
-          CharUtils.updateTp($gamePlayer);
-        }
-        MapUtils.refreshMap();
-
-        player.attacked = false;
-        player.moved = false;
-        playerDashed = false;
       }
+      // play queued anime
+      CharUtils.updateStatus($gamePlayer);
+      TimeUtils.playAnime();
+      // deal with energy calculation
+      if (playerDashed) {
+        // huge movement, do nothing
+      } else {
+        CharUtils.updateTp($gamePlayer);
+      }
+      MapUtils.refreshMap();
+
+      player.attacked = false;
+      player.moved = false;
+      playerDashed = false;
     } while (player.status.paralyzeCount > 0 || player.status.sleepCount > 0
       || player.status.faintCount > 0); // check if player unable to move
 
@@ -4903,7 +4912,7 @@
       } else {
         target.looting();
         if (realSrc) {
-          let exp = $gameParty.hasSoul(Soul_Chick) ? Math.round(realTarget.exp() * 1.05) : realTarget.exp();
+          let exp = Math.round(Soul_Chick.expAfterAmplify(realTarget.exp()));
           realSrc.gainExpLvGap(realTarget, exp);
         }
         // remove target event from $dataMap.events
@@ -5015,7 +5024,7 @@
         let prop = window[weaponSkill.constructor.name].prop;
         let index = weaponSkill.lv;
         weaponBonus = prop.effect[index].atk;
-        weaponSkill.exp += ($gameParty.hasSoul(Soul_Chick)) ? 1.05 : 1;
+        weaponSkill.exp += Soul_Chick.expAfterAmplify(1);
         if (prop.effect[index].levelUp != -1 && weaponSkill.exp >= prop.effect[index].levelUp) {
           let msg = String.format(Message.display('skillLevelUp'), weaponSkill.name);
           $gameMessage.add(msg);
@@ -5068,7 +5077,7 @@
         let prop = window[weaponSkill.constructor.name].prop;
         let index = weaponSkill.lv;
         weaponBonus = prop.effect[index].atk;
-        weaponSkill.exp += ($gameParty.hasSoul(Soul_Chick)) ? 1.05 : 1;
+        weaponSkill.exp += Soul_Chick.expAfterAmplify(1);
         if (prop.effect[index].levelUp != -1 && weaponSkill.exp >= prop.effect[index].levelUp) {
           let msg = String.format(Message.display('skillLevelUp'), weaponSkill.name);
           $gameMessage.add(msg);
@@ -7548,6 +7557,11 @@
     this.description = '你感受到了雛鳥那份奮鬥不懈的心!';
   }
 
+  // only used by player
+  Soul_Chick.expAfterAmplify = function(value) {
+    return ($gameParty.hasSoul(Soul_Chick) ? value * 1.05 : value);
+  }
+
   //-----------------------------------------------------------------------------------
   // Soul_Bite
 
@@ -7671,7 +7685,7 @@
 
   SkillUtils.gainSkillExp = function(realSrc, skill, index, prop) {
     if (realSrc == $gameActors.actor(1)) {
-      skill.exp++;
+      skill.exp += Soul_Chick.expAfterAmplify(1);
       if (prop.effect[index].levelUp != -1 && skill.exp >= prop.effect[index].levelUp) {
         let msg = String.format(Message.display('skillLevelUp'), skill.name)
         $gameMessage.add(msg);
@@ -7755,6 +7769,15 @@
     for (let i = 0; i < 10; i++) {
       if ($gameVariables[0].hotkeys[i] == skill) {
         return i;
+      }
+    }
+    return null;
+  }
+
+  SkillUtils.getSkillInstance = function(realTarget, skillClass) {
+    for (let id in realTarget._skills) {
+      if (realTarget._skills[id].constructor.name == skillClass.name) {
+        return realTarget._skills[id];
       }
     }
     return null;
@@ -8812,6 +8835,8 @@
     })
   }
 
+  Game_Party.prototype.gainExp
+
   //-----------------------------------------------------------------------------------
   // DataManager
   //
@@ -9009,27 +9034,36 @@
             $gameActors.actor(1).nutrition += item.nutrition;
           } else {
             // TODO: implement eat rotten food skill
-            $gameActors.actor(1).nutrition += Math.floor(item.nutrition / 2);
-            msg += '\n' + Message.display('eatRottenEffected');
-            let attrId = getRandomInt(5);
-            switch (attrId) {
-              case 0:
-                msg += '\n' + Message.display('strDown');
-                break;
-              case 1:
-                msg += '\n' + Message.display('vitDown');
-                break;
-              case 2:
-                msg += '\n' + Message.display('intDown');
-                break;
-              case 3:
-                msg += '\n' + Message.display('wisDown');
-                break;
-              case 4:
-                msg += '\n' + Message.display('agiDown');
-                break;
+            if ($gameParty.hasSoul(Soul_EatRot)) {
+              msg += '\n' + Message.display('eatRottenUneffected');
+              let skill = SkillUtils.getSkillInstance($gameActors.actor(1), Skill_EatRot);
+              let index = skill.lv - 1;
+              $gameActors.actor(1).nutrition
+                += Math.floor(item.nutrition * Skill_EatRot.prop.effect[index].nutritionPercentage);
+              SkillUtils.gainSkillExp($gameActors.actor(1), skill, index, Skill_EatRot.prop);
+            } else {
+              $gameActors.actor(1).nutrition += Math.floor(item.nutrition / 2);
+              msg += '\n' + Message.display('eatRottenEffected');
+              let attrId = getRandomInt(5);
+              switch (attrId) {
+                case 0:
+                  msg += '\n' + Message.display('strDown');
+                  break;
+                case 1:
+                  msg += '\n' + Message.display('vitDown');
+                  break;
+                case 2:
+                  msg += '\n' + Message.display('intDown');
+                  break;
+                case 3:
+                  msg += '\n' + Message.display('wisDown');
+                  break;
+                case 4:
+                  msg += '\n' + Message.display('agiDown');
+                  break;
+              }
+              $gameActors.actor(1)._paramPlus[attrId + 2] -= 1;
             }
-            $gameActors.actor(1)._paramPlus[attrId + 2] -= 1;
           }
           CharUtils.decreaseNutrition($gamePlayer);
           MapUtils.addBothLog(msg);
