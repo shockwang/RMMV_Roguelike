@@ -96,6 +96,12 @@
     this.weight = weight;
   }
 
+  var DisplacementData = function(moveFunc, param1, param2) {
+    this.moveFunc = moveFunc;
+    this.param1 = param1;
+    this.param2 = param2;
+  }
+
   var FLOOR = '□';
   var WALL = '■';
   var DOOR = 'Ｄ';
@@ -328,8 +334,11 @@
       nonDamageSkillPerformed: '{0}發動了{1}!',
       bleeding: '{0}出血了!',
       recoverFromBleeding: '{0}的出血停止了.',
+      bleedingDamage: '{0}受到了{1}點出血傷害.',
       faint: '{0}昏迷了.',
       recoverFromFaint: '{0}從昏迷中醒來.',
+      breakArmor: '{0}的護甲被穿透了!',
+      breakArmorRecovered: '{0}的護甲強度恢復了.',
       skillEffectEnd: '{0}身上{1}的效果消失了.',
       attackOutOfEnergy: '{0}想發動攻擊, 但是沒有足夠的體力!',
       askDirection: '往哪個方向?',
@@ -454,6 +463,7 @@
       afraidCount: 0,
       bleedingCount: 0,
       faintCount: 0,
+      breakArmorCount: 0,
       groundHoleTrapped: false,
       skillEffect: [],
       bellyStatus: 'NORMAL' // FAINT, WEAK, HUNGRY, NORMAL, FULL
@@ -482,6 +492,16 @@
           if ($gameVariables[$gameMap._mapId].mapData[event._x][event._y].isVisible) {
             TimeUtils.animeQueue.push(new AnimeObject(event, 'POP_UP', -1 * value));
             LogUtils.addLog(String.format(Message.display('poisonDamage'), LogUtils.getCharName(target)
+              , value));
+          }
+          BattleUtils.checkTargetAlive(null, target, event);
+        } else if (id == 'bleedingCount') {
+          let value = Math.round(target.mhp / 100);
+          value = (value < 1) ? 1 : value;
+          CharUtils.decreaseHp(target, value);
+          if ($gameVariables[$gameMap._mapId].mapData[event._x][event._y].isVisible) {
+            TimeUtils.animeQueue.push(new AnimeObject(event, 'POP_UP', -1 * value));
+            LogUtils.addLog(String.format(Message.display('bleedingDamage'), LogUtils.getCharName(target)
               , value));
           }
           BattleUtils.checkTargetAlive(null, target, event);
@@ -529,6 +549,14 @@
               break;
             case 'faintCount':
               LogUtils.addLog(String.format(Message.display('recoverFromFaint')
+                , LogUtils.getCharName(target)));
+              break;
+            case 'bleedingCount':
+              LogUtils.addLog(String.format(Message.display('recoverFromBleeding')
+                , LogUtils.getCharName(target)));
+              break;
+            case 'breakArmorCount':
+              LogUtils.addLog(String.format(Message.display('breakArmorRecovered')
                 , LogUtils.getCharName(target)));
               break;
           }
@@ -955,13 +983,13 @@
     //   $gameParty.gainItem(new Dart_Lv1_T1(), 1);
     //   $gameParty.gainItem(new Potion_Invisible(), 1);
     // }
-    // $gameParty.gainItem(new Chicken_Meat(), 1);
-    // $gameParty.gainItem(new Dog_Meat(), 1);
-    // $gameParty.gainItem(new Cat_Meat(), 1);
-    // $gameParty.gainItem(new Wolf_Meat(), 1);
+    // $gameParty.gainItem(new Dog_Helmet(), 1);
+    // $gameParty.gainItem(new Dog_Coat(), 1);
+    // $gameParty.gainItem(new Dog_Gloves(), 1);
+    // $gameParty.gainItem(new Dog_Shoes(), 1);
 
-    // $gameParty._items.push(new Soul_EatRot());
-    // Soul_Obtained_Action.learnSkill(Skill_EatRot);
+    // $gameParty._items.push(new Soul_Bite());
+    Soul_Obtained_Action.learnSkill(Skill_Charge);
   }
 
   // message window defined here, because it can't be assigned to $gameVariables, will cause save/load crash
@@ -978,7 +1006,6 @@
     messageWindowNonBlocking.opacity = 0;
     logWindow = new Window_Base(0, 100, Graphics.boxWidth, Graphics.boxHeight - 100);
   }
-
 
   // log related
   var LogUtils = {
@@ -1562,6 +1589,47 @@
       }
     }
     return result;
+  }
+
+  MapUtils.getDisplacementData = function(srcX, srcY, x, y) {
+    let moveFunc = 'moveStraight';
+    let param1 = 6, param2;
+    if (srcX == x && srcY == y) {
+      // target self
+      moveFunc = '';
+    } else if (srcX == x) {
+      if (y - 1 == srcY) {
+        param1 = 2;
+      } else {
+        param1 = 8;
+      }
+    } else if (srcY == y) {
+      if (x - 1 == srcX) {
+        param1 = 6;
+      } else {
+        param1 = 4;
+      }
+    } else {
+      moveFunc = 'moveDiagonally';
+      if (x - 1 == srcX) {
+        if (y - 1 == srcY) {
+          param1 = 6;
+          param2 = 2;
+        } else {
+          param1 = 6;
+          param2 = 8;
+        }
+      } else {
+        if (y - 1 == srcY) {
+          param1 = 4;
+          param2 = 2;
+        } else {
+          param1 = 4;
+          param2 = 8;
+        }
+      }
+    }
+    return new DisplacementData(moveFunc, param1, param2);
   }
 
   var RNG = [
@@ -2851,7 +2919,8 @@
         } else if (!CharUtils.canSee(this.mob, $gameActors.actor(1))) {
           // TODO: mob can attack when blind and try to walk into a character
           this.moveRandom();
-        } else if (this.mob.status.paralyzeCount > 0 || this.mob.status.sleepCount > 0) {
+        } else if (this.mob.status.paralyzeCount > 0 || this.mob.status.sleepCount > 0
+          || this.mob.status.faintCount > 0) {
           // do nothing
         } else if (distance < 2) {
           this.turnTowardCharacter($gamePlayer);
@@ -3612,14 +3681,12 @@
       // target self
       this.moveFunc = function() {};
     } else if (src._x == x) {
-      this.moveFunc = this.moveStraight;
       if (y - 1 == src._y) {
         this.param1 = 2;
       } else {
         this.param1 = 8;
       }
     } else if (src._y == y) {
-      this.moveFunc = this.moveStraight;
       if (x - 1 == src._x) {
         this.param1 = 6;
       } else {
@@ -7910,11 +7977,11 @@
     subType: "DIRECTIONAL",
     damageType: "MELEE",
     effect: [
-      {lv: 1, baseDamage: 10, levelUp: 50},
-      {lv: 2, baseDamage: 12, levelUp: 150},
-      {lv: 3, baseDamage: 14, levelUp: 300},
-      {lv: 4, baseDamage: 16, levelUp: 450},
-      {lv: 5, baseDamage: 18, levelUp: -1}
+      {lv: 1, baseDamage: 10, bleedPercentage: 0.1, maxBleedTurn: 3, levelUp: 50},
+      {lv: 2, baseDamage: 12, bleedPercentage: 0.2, maxBleedTurn: 5, levelUp: 150},
+      {lv: 3, baseDamage: 14, bleedPercentage: 0.3, maxBleedTurn: 7, levelUp: 300},
+      {lv: 4, baseDamage: 16, bleedPercentage: 0.4, maxBleedTurn: 9, levelUp: 450},
+      {lv: 5, baseDamage: 18, bleedPercentage: 0.5, maxBleedTurn: 11, levelUp: -1}
     ]
   }
 
@@ -7925,8 +7992,9 @@
 
     if (target) {
       let realTarget = BattleUtils.getRealTarget(target);
+      let prop = Skill_Bite.prop;
       let index = this.lv - 1;
-      let value = Skill_Bite.prop.effect[index].baseDamage + Math.floor(realSrc.param(2) / 3)
+      let value = prop.effect[index].baseDamage + Math.floor(realSrc.param(2) / 3)
         - realTarget.param(8);
       value = BattleUtils.getFinalDamage(value);
       TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 12));
@@ -7934,12 +8002,165 @@
       LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)
         , LogUtils.getPerformedTargetName(realSrc, realTarget), this.name, value));
       CharUtils.decreaseHp(realTarget, value);
-      SkillUtils.gainSkillExp(realSrc, this, index, Skill_Bite.prop);
+      // check if causes bleeding
+      if (Math.random() < prop.effect[index].bleedPercentage) {
+        realTarget.status.bleedingCount += dice(1, prop.effect[index].maxBleedTurn);
+        TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '出血'));
+        LogUtils.addLog(String.format(Message.display('bleeding'), LogUtils.getCharName(realTarget)));
+      }
+      SkillUtils.gainSkillExp(realSrc, this, index, prop);
       BattleUtils.checkTargetAlive(realSrc, realTarget, target);
     } else {
       LogUtils.addLog(String.format(Message.display('attackAir'), LogUtils.getCharName(realSrc)
         , this.name));
     }
+    return true;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Skill_Bash
+
+  Skill_Bash = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_Bash.prototype = Object.create(ItemTemplate.prototype);
+  Skill_Bash.prototype.constructor = Skill_Bash;
+
+  Skill_Bash.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[12]);
+    this.name = '猛擊';
+    this.description = '猛擊一名敵人, 機率昏迷';
+    this.iconIndex = 5;
+    this.mpCost = 2;
+    this.tpCost = 10;
+    this.lv = 1;
+    this.exp = 0;
+  }
+
+  Skill_Bash.prop = {
+    type: "SKILL",
+    subType: "DIRECTIONAL",
+    damageType: "MELEE",
+    effect: [
+      {lv: 1, baseDamage: 10, faintPercentage: 0.1, faintTurnMax: 2, levelUp: 50},
+      {lv: 2, baseDamage: 12, faintPercentage: 0.2, faintTurnMax: 3, levelUp: 150},
+      {lv: 3, baseDamage: 14, faintPercentage: 0.3, faintTurnMax: 4, levelUp: 300},
+      {lv: 4, baseDamage: 16, faintPercentage: 0.4, faintTurnMax: 5, levelUp: 450},
+      {lv: 5, baseDamage: 18, faintPercentage: 0.5, faintTurnMax: 6, levelUp: -1}
+    ]
+  }
+
+  Skill_Bash.prototype.action = function(src, target) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    CharUtils.decreaseMp(realSrc, this.mpCost);
+    CharUtils.decreaseTp(realSrc, this.tpCost);
+
+    if (target) {
+      let realTarget = BattleUtils.getRealTarget(target);
+      let prop = Skill_Bash.prop;
+      let index = this.lv - 1;
+      let value = prop.effect[index].baseDamage + Math.floor(realSrc.param(2) / 3)
+        - realTarget.param(8);
+      value = BattleUtils.getFinalDamage(value);
+      TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 1));
+      TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
+      LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)
+        , LogUtils.getPerformedTargetName(realSrc, realTarget), this.name, value));
+      CharUtils.decreaseHp(realTarget, value);
+      // check if causes faint
+      if (Math.random() < prop.effect[index].faintPercentage) {
+        realTarget.status.faintCount += dice(1, prop.effect[index].faintTurnMax);
+        TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '昏迷'));
+        LogUtils.addLog(String.format(Message.display('faint'), LogUtils.getCharName(realTarget)));
+      }
+      SkillUtils.gainSkillExp(realSrc, this, index, prop);
+      BattleUtils.checkTargetAlive(realSrc, realTarget, target);
+    } else {
+      LogUtils.addLog(String.format(Message.display('attackAir'), LogUtils.getCharName(realSrc)
+        , this.name));
+    }
+    return true;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Skill_Charge
+
+  Skill_Charge = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_Charge.prototype = Object.create(ItemTemplate.prototype);
+  Skill_Charge.prototype.constructor = Skill_Charge;
+
+  Skill_Charge.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[12]);
+    this.name = '衝鋒';
+    this.description = '向一名敵人發起衝鋒, 機率擊退';
+    this.iconIndex = 5;
+    this.mpCost = 2;
+    this.tpCost = 10;
+    this.lv = 1;
+    this.exp = 0;
+  }
+
+  Skill_Charge.prop = {
+    type: "SKILL",
+    subType: "PROJECTILE",
+    damageType: "MELEE",
+    effect: [
+      {lv: 1, baseDamage: 10, knockBackPercentage: 0.1, levelUp: 50},
+      {lv: 2, baseDamage: 12, knockBackPercentage: 0.2, levelUp: 150},
+      {lv: 3, baseDamage: 14, knockBackPercentage: 0.3, levelUp: 300},
+      {lv: 4, baseDamage: 16, knockBackPercentage: 0.4, levelUp: 450},
+      {lv: 5, baseDamage: 18, knockBackPercentage: 0.5, levelUp: -1}
+    ]
+  }
+
+  Skill_Charge.prototype.action = function(src, x, y) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    CharUtils.decreaseMp(realSrc, this.mpCost);
+    CharUtils.decreaseTp(realSrc, this.tpCost);
+
+    let moveData = MapUtils.getDisplacementData(src._x, src._y, x, y);
+    src.setMoveSpeed(6);
+    switch (moveData.moveFunc) {
+      case 'moveStraight':
+        src.moveStraight(moveData.param1);
+        break;
+      case 'moveDiagonally':
+        src.moveDiagonally(moveData.param1, moveData.param2);
+        break;
+      case '':
+        MapUtils.displayMessage('你不能向原地發起衝鋒.');
+        // src.setMoveSpeed(5);
+        return false;
+    }
+    // src.setMoveSpeed(5);
+    // if (target) {
+    //   let realTarget = BattleUtils.getRealTarget(target);
+    //   let prop = Skill_Charge.prop;
+    //   let index = this.lv - 1;
+    //   let value = prop.effect[index].baseDamage + Math.floor(realSrc.param(2) / 3)
+    //     - realTarget.param(8);
+    //   value = BattleUtils.getFinalDamage(value);
+    //   TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 1));
+    //   TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
+    //   LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)
+    //     , LogUtils.getPerformedTargetName(realSrc, realTarget), this.name, value));
+    //   CharUtils.decreaseHp(realTarget, value);
+    //   // check if causes knock back
+    //   if (Math.random() < prop.effect[index].knockBackPercentage) {
+
+    //     TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '昏迷'));
+    //     LogUtils.addLog(String.format(Message.display('faint'), LogUtils.getCharName(realTarget)));
+    //   }
+    //   SkillUtils.gainSkillExp(realSrc, this, index, prop);
+    //   BattleUtils.checkTargetAlive(realSrc, realTarget, target);
+    // } else {
+    //   LogUtils.addLog(String.format(Message.display('attackAir'), LogUtils.getCharName(realSrc)
+    //     , this.name));
+    // }
     return true;
   }
 
@@ -8574,7 +8795,15 @@
       return Math.round(value.clamp(minValue, maxValue) * modifier);
     } else {
       let attrParamId = paramId - 8;
-      return (attrParamId == 2) ? this.xparam(attrParamId) : Math.round(this.xparam(paramId - 8) * 100);
+      if (attrParamId == 2) {
+        return this.xparam(attrParamId);
+      } else {
+        let value = Math.round(this.xparam(paramId - 8) * 100);
+        if (attrParamId == 0 && this.status.breakArmorCount > 0) {
+          value = Math.floor(value / 2);
+        }
+        return value;
+      }
     }
   };
 
