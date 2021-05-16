@@ -229,6 +229,7 @@
     result.items = [];
     // food
     result.items[11] = new ImageData('Meat', 0, 2, 2);
+    result.items[14] = new ImageData('Outside_B1', 0, 0, 6);
     // material
     result.items[12] = new ImageData('Collections3', 0, 1, 2); // feather
     // projectile
@@ -402,7 +403,8 @@
       wisUp: '你變得更加睿智了!',
       wisDown: '你變得更加愚笨了...',
       agiUp: '你的動作變得更靈活了!',
-      agiDown: '你的動作變得更笨拙了...'
+      agiDown: '你的動作變得更笨拙了...',
+      animalMeat: '{0}肉'
     },
     display: function(msgName) {
       switch (Message.language) {
@@ -993,7 +995,7 @@
     // $gameParty.gainItem(new Dog_Shoes(), 1);
 
     // $gameParty._items.push(new Soul_Bite());
-    Soul_Obtained_Action.learnSkill(Skill_Charge);
+    // Soul_Obtained_Action.learnSkill(Skill_Shield);
   }
 
   // message window defined here, because it can't be assigned to $gameVariables, will cause save/load crash
@@ -2812,9 +2814,10 @@
   // The game object class for an enemy.
   // Modify this class for mob instance, isolate them from the template
 
-  Game_Enemy.prototype.initialize = function(enemyId, x, y, params) {
+  Game_Enemy.prototype.initialize = function(enemyId, x, y, params, xparams) {
     Game_Battler.prototype.initialize.call(this);
     this._params = params;
+    this._xparams = xparams;
     this.setup(enemyId, x, y);
   };
 
@@ -2825,6 +2828,18 @@
   Game_Enemy.prototype.paramBase = function(paramId) {
     return this._params[paramId];
   };
+
+  // overwrite this, so mobs can have their own [armor, magicResistance, weaponAtk]
+  Game_Enemy.prototype.xparam = function(xparamId) {
+    if (this._xparams) {
+      if (xparamId == 2) {
+        return this._xparams[xparamId];
+      } else {
+        return this._xparams[xparamId] / 100;
+      }
+    }
+    return 0;
+  }
 
   Game_Enemy.prototype.exp = function() {
     return this._exp;
@@ -2872,7 +2887,7 @@
       }
     } else {
       // new mob instance from mobId
-      this.mob = new Game_Enemy(mobId, x, y, mobInitData.params);
+      this.mob = new Game_Enemy(mobId, x, y, mobInitData.params, mobInitData.xparams);
       this.mob._name = mobInitData.name;
       this.mob._exp = mobInitData.exp;
       this.mob.level = mobInitData.level;
@@ -3201,7 +3216,7 @@
   Chick.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(10) < 3) {
-      lootings.push(new Chicken_Meat());
+      lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
     }
 
     for (var id in lootings) {
@@ -3236,13 +3251,17 @@
     if (!fromData) {
       this.mob.mobClass = 'Dog';
       this.mob._skills.push(new Skill_Bite());
-      this.mob._skills.push(new Skill_Charge());
+      // for test only
+      // this.mob._skills.push(new Skill_Shield());
     }
   }
 
   Dog.prototype.meleeAction = function(target) {
     if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Bite
       return this.mob._skills[0].action(this, target);
+    // for test only
+    // } else if (SkillUtils.canPerform(this.mob, this.mob._skills[1])) {
+    //   return this.mob._skills[1].action(this);
     } else {
       return BattleUtils.meleeAttack(this, target);
     }
@@ -3251,7 +3270,7 @@
   Dog.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(10) < 3) {
-      lootings.push(new Dog_Meat());
+      lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
     }
     if (getRandomInt(100) < 25) {
       lootings.push(new Dog_Skin());
@@ -3271,6 +3290,61 @@
     }
   }
   CharUtils.mobTemplates.push(Dog);
+
+  //-----------------------------------------------------------------------------------
+  // Bee
+
+  Bee = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Bee.baseDungeonLevel = 2;
+
+  Bee.prototype = Object.create(Game_Mob.prototype);
+  Bee.prototype.constructor = Bee;
+
+  Bee.prototype.initialize = function (x, y, fromData) {
+    let mobInitData = {
+      name: '蜜蜂',
+      exp: 30,
+      params: [1, 1, 4, 3, 0, 0, 13, 5],
+      level: 2
+    }
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
+    this.setImage('Fly1', 0);
+    if (!fromData) {
+      this.mob.mobClass = 'Bee';
+      this.mob._skills.push(new Skill_Pierce());
+    }
+  }
+
+  Bee.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Pierce
+      return this.mob._skills[0].action(this, target);
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  Bee.prototype.looting = function () {
+    var lootings = [];
+    if (getRandomInt(10) < 3) {
+      lootings.push(new Flesh(this.mob, 100, 100, 'FRESH'));
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Honey());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Bee_Sting());
+    }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_Pierce);
+    }
+  }
+  CharUtils.mobTemplates.push(Bee);
 
   //-----------------------------------------------------------------------------------
   // Rooster
@@ -3300,7 +3374,7 @@
   Rooster.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(10) < 3) {
-      lootings.push(new Chicken_Meat());
+      lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
     }
     if (getRandomInt(100) < 25) {
       lootings.push(new Rooster_Tooth());
@@ -3431,7 +3505,7 @@
   Cat.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(10) < 3) {
-      lootings.push(new Cat_Meat());
+      lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
     }
     if (getRandomInt(100) < 25) {
       lootings.push(new Cat_Tooth());
@@ -3511,7 +3585,7 @@
       lootings.push(new Wolf_Bone());
     }
     if (getRandomInt(100) < 30) {
-      lootings.push(new Wolf_Meat());
+      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
     }
 
     for (var id in lootings) {
@@ -3522,6 +3596,116 @@
     }
   }
   CharUtils.mobTemplates.push(Wolf);
+
+  //-----------------------------------------------------------------------------------
+  // Turtle
+
+  Turtle = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Turtle.baseDungeonLevel = 5;
+
+  Turtle.prototype = Object.create(Game_Mob.prototype);
+  Turtle.prototype.constructor = Turtle;
+
+  Turtle.prototype.initialize = function (x, y, fromData) {
+    let mobInitData = {
+      name: '烏龜',
+      exp: 50,
+      params: [1, 1, 10, 30, 30, 30, 5, 10],
+      xparams: [3, 3, 0],
+      level: 6
+    }
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
+    this.setImage('Animal', 6);
+    if (!fromData) {
+      this.mob.mobClass = 'Turtle';
+      this.mob._skills.push(new Skill_Shield());
+    }
+  }
+
+  Turtle.prototype.targetInSightAction = function(target) {
+    if (getRandomInt(100) < 40) { // Skill_Shield
+      return this.performBuffIfNotPresent(this.mob._skills[0]);
+    }
+    return false;
+  }
+
+  Turtle.prototype.looting = function () {
+    var lootings = [];
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Turtle_Shell());
+    }
+    if (getRandomInt(100) < 30) {
+      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
+    }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_Shield);
+    }
+  }
+  CharUtils.mobTemplates.push(Turtle);
+
+  //-----------------------------------------------------------------------------------
+  // Bear
+
+  Bear = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Bear.baseDungeonLevel = 5;
+
+  Bear.prototype = Object.create(Game_Mob.prototype);
+  Bear.prototype.constructor = Bear;
+
+  Bear.prototype.initialize = function (x, y, fromData) {
+    let mobInitData = {
+      name: '熊',
+      exp: 50,
+      params: [1, 1, 10, 30, 30, 30, 5, 10],
+      level: 6
+    }
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
+    this.setImage('Bear', 0);
+    if (!fromData) {
+      this.mob.mobClass = 'Bear';
+      this.mob._skills.push(new Skill_Bash());
+    }
+  }
+
+  Bear.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Bite
+      return this.mob._skills[0].action(this, target);
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  Bear.prototype.looting = function () {
+    var lootings = [];
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Bear_Skin());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Bear_Claw());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Bear_Bone());
+    }
+    if (getRandomInt(100) < 30) {
+      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
+    }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_Bash);
+    }
+  }
+  CharUtils.mobTemplates.push(Bear);
 
   //-----------------------------------------------------------------------------------
   // Game_Door
@@ -6018,96 +6202,83 @@
   ItemUtils.lootingTemplates.material.push(Feather);
 
   //-----------------------------------------------------------------------------------
-  // Dog_Meat
+  // Flesh (for animal)
   //
   // type: FOOD
 
-  Dog_Meat = function() {
+  Flesh = function() {
     this.initialize.apply(this, arguments);
   }
 
-  Dog_Meat.prototype = Object.create(ItemTemplate.prototype);
-  Dog_Meat.prototype.constructor = Dog_Meat;
+  Flesh.prototype = Object.create(ItemTemplate.prototype);
+  Flesh.prototype.constructor = Flesh;
 
-  Dog_Meat.prototype.initialize = function () {
+  Flesh.prototype.initialize = function (mob, nutrition, duration, status) {
     ItemTemplate.prototype.initialize.call(this, $dataItems[11]);
-    this.name = '狗肉';
-    this.description = '在一些地區也算美食';
+    this.name = String.format(Message.display('animalMeat'), mob.name());
+    this.description = '動物的肉';
     this.templateName = this.name;
-    this.nutrition = 250;
-    this.duration = 100;
-    this.status = 'FRESH'; // FRESH, ROTTEN
+    this.nutrition = nutrition;
+    this.duration = duration;
+    this.status = status; // FRESH, ROTTEN
     this.producedTime = $gameVariables[0].gameTime;
   }
 
   //-----------------------------------------------------------------------------------
-  // Chicken_Meat
+  // Honey
   //
   // type: FOOD
 
-  Chicken_Meat = function() {
+  Honey = function() {
     this.initialize.apply(this, arguments);
   }
+  Honey.spawnLevel = 2;
 
-  Chicken_Meat.prototype = Object.create(ItemTemplate.prototype);
-  Chicken_Meat.prototype.constructor = Chicken_Meat;
+  Honey.prototype = Object.create(ItemTemplate.prototype);
+  Honey.prototype.constructor = Honey;
 
-  Chicken_Meat.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataItems[11]);
-    this.name = '雞肉';
-    this.description = '好吃的雞肉';
-    this.templateName = this.name;
-    this.nutrition = 250;
-    this.duration = 100;
-    this.status = 'FRESH';
-    this.producedTime = $gameVariables[0].gameTime;
-  }
-
-  //-----------------------------------------------------------------------------------
-  // Cat_Meat
-  //
-  // type: FOOD
-
-  Cat_Meat = function() {
-    this.initialize.apply(this, arguments);
-  }
-
-  Cat_Meat.prototype = Object.create(ItemTemplate.prototype);
-  Cat_Meat.prototype.constructor = Cat_Meat;
-
-  Cat_Meat.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataItems[11]);
-    this.name = '貓肉';
-    this.description = '這麼可愛, 你忍心吃?';
-    this.templateName = this.name;
-    this.nutrition = 250;
-    this.duration = 100;
-    this.status = 'FRESH';
-    this.producedTime = $gameVariables[0].gameTime;
-  }
-
-  //-----------------------------------------------------------------------------------
-  // Wolf_Meat
-  //
-  // type: FOOD
-
-  Wolf_Meat = function() {
-    this.initialize.apply(this, arguments);
-  }
-
-  Wolf_Meat.prototype = Object.create(ItemTemplate.prototype);
-  Wolf_Meat.prototype.constructor = Wolf_Meat;
-
-  Wolf_Meat.prototype.initialize = function () {
-    ItemTemplate.prototype.initialize.call(this, $dataItems[11]);
-    this.name = '狼肉';
-    this.description = '又硬又結實的肉';
+  Honey.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[14]);
+    this.name = '蜂蜜'
+    this.description = '好吃又營養';
     this.templateName = this.name;
     this.nutrition = 300;
-    this.duration = 100;
-    this.status = 'FRESH';
+    this.status = 'PERMANENT'; // never rots
     this.producedTime = $gameVariables[0].gameTime;
   }
+  ItemUtils.lootingTemplates.material.push(Honey);
+
+  //-----------------------------------------------------------------------------------
+  // Bee_Sting
+  //
+  // weapon type: TOOTH
+
+  Bee_Sting = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Bee_Sting.spawnLevel = 1;
+
+  Bee_Sting.prototype = Object.create(EquipTemplate.prototype);
+  Bee_Sting.prototype.constructor = Bee_Sting;
+
+  Bee_Sting.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[11]);
+    this.name = '蜂刺';
+    this.description = '細長的蜜蜂尾刺';
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(0, 2);
+    modifier += this.bucState;
+    this.traits[2].value = '1d2';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    ItemUtils.updateEquipDescription(this);
+  }
+  ItemUtils.lootingTemplates.tooth.push(Bee_Sting);
 
   //-----------------------------------------------------------------------------------
   // Dog_Tooth
@@ -6290,6 +6461,32 @@
   ItemUtils.lootingTemplates.bone.push(Wolf_Bone);
 
   //-----------------------------------------------------------------------------------
+  // Bear_Bone
+  //
+  // weapon type: BONE
+
+  Bear_Bone = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Bear_Bone.spawnLevel = 6;
+
+  Bear_Bone.prototype = Object.create(EquipTemplate.prototype);
+  Bear_Bone.prototype.constructor = Bear_Bone;
+
+  Bear_Bone.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[12]);
+    this.name = '熊骨';
+    this.description = '厚實堅韌的骨頭';
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    this.traits[2].value = '3';
+    // TODO: implement magic power amplifier
+    ItemUtils.updateEquipDescription(this);
+  }
+  ItemUtils.lootingTemplates.bone.push(Bear_Bone);
+
+  //-----------------------------------------------------------------------------------
   // Rooster_Claw
   //
   // weapon type: CLAW
@@ -6386,6 +6583,38 @@
   ItemUtils.lootingTemplates.claw.push(Wolf_Claw);
 
   //-----------------------------------------------------------------------------------
+  // Bear_Claw
+  //
+  // weapon type: CLAW
+
+  Bear_Claw = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Bear_Claw.spawnLevel = 6;
+
+  Bear_Claw.prototype = Object.create(EquipTemplate.prototype);
+  Bear_Claw.prototype.constructor = Bear_Claw;
+
+  Bear_Claw.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[13]);
+    this.name = '熊爪';
+    this.description = '厚實堅韌的爪';
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(1, 4);
+    modifier += this.bucState;
+    this.traits[2].value = '2d3';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    ItemUtils.updateEquipDescription(this);
+  }
+  ItemUtils.lootingTemplates.claw.push(Bear_Claw);
+
+  //-----------------------------------------------------------------------------------
   // Dog_Skin
   //
   // armor type: SKIN
@@ -6460,6 +6689,56 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.lootingTemplates.skin.push(Wolf_Skin);
+
+  //-----------------------------------------------------------------------------------
+  // Bear_Skin
+  //
+  // armor type: SKIN
+
+  Bear_Skin = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Bear_Skin.spawnLevel = 6;
+
+  Bear_Skin.prototype = Object.create(EquipTemplate.prototype);
+  Bear_Skin.prototype.constructor = Bear_Skin;
+
+  Bear_Skin.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[11]);
+    this.name = '熊皮';
+    this.description = '厚實的毛皮';
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.lootingTemplates.skin.push(Bear_Skin);
+
+  //-----------------------------------------------------------------------------------
+  // Turtle_Shell
+  //
+  // armor type: SHIELD
+
+  Turtle_Shell = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Turtle_Shell.spawnLevel = 6;
+
+  Turtle_Shell.prototype = Object.create(EquipTemplate.prototype);
+  Turtle_Shell.prototype.constructor = Turtle_Shell;
+
+  Turtle_Shell.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[17]);
+    this.name = '龜殼';
+    this.description = '堅硬的殼';
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 3 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.lootingTemplates.skin.push(Turtle_Shell);
 
   //-----------------------------------------------------------------------------------
   // Dart_Lv1_T1
@@ -6992,6 +7271,156 @@
   };
   ItemUtils.recipes.push(Wolf_Coat);
   ItemUtils.EquipTemplates.coat.push(Wolf_Coat);
+
+  //-----------------------------------------------------------------------------------
+  // Bear_Gloves
+  //
+  // armor type: GLOVES
+
+  Bear_Gloves = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Bear_Gloves.spawnLevel = 6;
+
+  Bear_Gloves.itemName = '熊皮手套';
+  Bear_Gloves.itemDescription = '厚實的手套';
+  Bear_Gloves.material = [{itemClass: Bear_Skin, amount: 4}];
+
+  Bear_Gloves.prototype = Object.create(EquipTemplate.prototype);
+  Bear_Gloves.prototype.constructor = Bear_Gloves;
+
+  Bear_Gloves.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[12]);
+    this.name = Bear_Gloves.itemName;
+    this.description = Bear_Gloves.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Bear_Gloves);
+  ItemUtils.EquipTemplates.gloves.push(Bear_Gloves);
+
+  //-----------------------------------------------------------------------------------
+  // Bear_Shoes
+  //
+  // armor type: SHOES
+
+  Bear_Shoes = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Bear_Shoes.spawnLevel = 6;
+
+  Bear_Shoes.itemName = '熊皮靴子';
+  Bear_Shoes.itemDescription = '厚實的靴子';
+  Bear_Shoes.material = [{itemClass: Bear_Skin, amount: 4}];
+
+  Bear_Shoes.prototype = Object.create(EquipTemplate.prototype);
+  Bear_Shoes.prototype.constructor = Bear_Shoes;
+
+  Bear_Shoes.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[13]);
+    this.name = Bear_Shoes.itemName;
+    this.description = Bear_Shoes.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Bear_Shoes);
+  ItemUtils.EquipTemplates.shoes.push(Bear_Shoes);
+
+  //-----------------------------------------------------------------------------------
+  // Bear_Shield
+  //
+  // armor type: SHIELD
+
+  Bear_Shield = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Bear_Shield.spawnLevel = 6;
+
+  Bear_Shield.itemName = '熊皮盾';
+  Bear_Shield.itemDescription = '厚實的輕盾';
+  Bear_Shield.material = [{itemClass: Bear_Skin, amount: 2}, {itemClass: Bear_Bone, amount: 2}];
+
+  Bear_Shield.prototype = Object.create(EquipTemplate.prototype);
+  Bear_Shield.prototype.constructor = Bear_Shield;
+
+  Bear_Shield.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[14]);
+    this.name = Bear_Shield.itemName;
+    this.description = Bear_Shield.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 5 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Bear_Shield);
+  ItemUtils.EquipTemplates.shield.push(Bear_Shield);
+
+  //-----------------------------------------------------------------------------------
+  // Bear_Helmet
+  //
+  // armor type: HELMET
+
+  Bear_Helmet = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Bear_Helmet.spawnLevel = 6;
+
+  Bear_Helmet.itemName = '熊皮帽';
+  Bear_Helmet.itemDescription = '厚實的皮帽';
+  Bear_Helmet.material = [{itemClass: Bear_Skin, amount: 4}];
+
+  Bear_Helmet.prototype = Object.create(EquipTemplate.prototype);
+  Bear_Helmet.prototype.constructor = Bear_Helmet;
+
+  Bear_Helmet.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[15]);
+    this.name = Bear_Helmet.itemName;
+    this.description = Bear_Helmet.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Bear_Helmet);
+  ItemUtils.EquipTemplates.helmet.push(Bear_Helmet);
+
+  //-----------------------------------------------------------------------------------
+  // Bear_Coat
+  //
+  // armor type: COAT
+
+  Bear_Coat = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Bear_Coat.spawnLevel = 6;
+
+  Bear_Coat.itemName = '熊皮大衣';
+  Bear_Coat.itemDescription = '厚實的大衣';
+  Bear_Coat.material = [{itemClass: Bear_Skin, amount: 8}];
+
+  Bear_Coat.prototype = Object.create(EquipTemplate.prototype);
+  Bear_Coat.prototype.constructor = Bear_Coat;
+
+  Bear_Coat.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[16]);
+    this.name = Bear_Coat.itemName;
+    this.description = Bear_Coat.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 6 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Bear_Coat);
+  ItemUtils.EquipTemplates.coat.push(Bear_Coat);
 
   //-----------------------------------------------------------------------------------
   // Potion_Heal
@@ -7942,6 +8371,70 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Soul_Charge
+
+  Soul_Charge = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Soul_Charge.prototype = Object.create(ItemTemplate.prototype);
+  Soul_Charge.prototype.constructor = Soul_Charge;
+
+  Soul_Charge.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
+    this.name = '衝撞';
+    this.description = '你的身軀充滿了爆發力';
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Soul_Bash
+
+  Soul_Bash = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Soul_Bash.prototype = Object.create(ItemTemplate.prototype);
+  Soul_Bash.prototype.constructor = Soul_Bash;
+
+  Soul_Bash.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
+    this.name = '猛擊';
+    this.description = '你的雙手充滿了力量';
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Soul_Pierce
+
+  Soul_Pierce = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Soul_Pierce.prototype = Object.create(ItemTemplate.prototype);
+  Soul_Pierce.prototype.constructor = Soul_Pierce;
+
+  Soul_Pierce.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
+    this.name = '穿刺';
+    this.description = '你學會如何貫穿弱點';
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Soul_Shield
+
+  Soul_Shield = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Soul_Shield.prototype = Object.create(ItemTemplate.prototype);
+  Soul_Shield.prototype.constructor = Soul_Shield;
+
+  Soul_Shield.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
+    this.name = '鐵壁';
+    this.description = '你的皮膚變得堅硬';
+  }
+
+  //-----------------------------------------------------------------------------------
   // SkillUtils
   //
   // Skill related methods
@@ -8317,6 +8810,72 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Skill_Pierce
+
+  Skill_Pierce = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_Pierce.prototype = Object.create(ItemTemplate.prototype);
+  Skill_Pierce.prototype.constructor = Skill_Pierce;
+
+  Skill_Pierce.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[12]);
+    this.name = '穿刺';
+    this.description = '穿刺一名敵人, 機率破甲';
+    this.iconIndex = 5;
+    this.mpCost = 2;
+    this.tpCost = 10;
+    this.lv = 1;
+    this.exp = 0;
+  }
+
+  Skill_Pierce.prop = {
+    type: "SKILL",
+    subType: "DIRECTIONAL",
+    damageType: "MELEE",
+    effect: [
+      {lv: 1, baseDamage: 10, breakArmorPercentage: 0.1, breakArmorTurnMax: 5, levelUp: 50},
+      {lv: 2, baseDamage: 12, breakArmorPercentage: 0.2, breakArmorTurnMax: 7, levelUp: 150},
+      {lv: 3, baseDamage: 14, breakArmorPercentage: 0.3, breakArmorTurnMax: 9, levelUp: 300},
+      {lv: 4, baseDamage: 16, breakArmorPercentage: 0.4, breakArmorTurnMax: 11, levelUp: 450},
+      {lv: 5, baseDamage: 18, breakArmorPercentage: 0.5, breakArmorTurnMax: 13, levelUp: -1}
+    ]
+  }
+
+  Skill_Pierce.prototype.action = function(src, target) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    CharUtils.decreaseMp(realSrc, this.mpCost);
+    CharUtils.decreaseTp(realSrc, this.tpCost);
+
+    if (target) {
+      let realTarget = BattleUtils.getRealTarget(target);
+      let prop = Skill_Pierce.prop;
+      let index = this.lv - 1;
+      let value = prop.effect[index].baseDamage + Math.floor(realSrc.param(2) / 3)
+        - realTarget.param(8);
+      value = BattleUtils.getFinalDamage(value);
+      TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 11));
+      TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
+      LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)
+        , LogUtils.getPerformedTargetName(realSrc, realTarget), this.name, value));
+      CharUtils.decreaseHp(realTarget, value);
+      // check if causes break armor
+      if (Math.random() < prop.effect[index].breakArmorPercentage) {
+        realTarget.status.breakArmorCount += dice(1, prop.effect[index].breakArmorTurnMax);
+        TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '破甲'));
+        LogUtils.addLog(String.format(Message.display('breakArmor'), LogUtils.getCharName(realTarget)));
+      }
+      SkillUtils.gainSkillExp(realSrc, this, index, prop);
+      BattleUtils.checkTargetAlive(realSrc, realTarget, target);
+    } else {
+      LogUtils.addLog(String.format(Message.display('attackAir'), LogUtils.getCharName(realSrc)
+        , this.name));
+    }
+    return true;
+  }
+
+  //-----------------------------------------------------------------------------------
   // Skill_Charge
 
   Skill_Charge = function() {
@@ -8558,7 +9117,7 @@
   Skill_Scud.prototype.initialize = function () {
     ItemTemplate.prototype.initialize.call(this, $dataSkills[13]);
     this.name = '俊足';
-    this.description = '暫時速度提升, 防禦下降';
+    this.description = '暫時速度提升';
     this.iconIndex = 82;
     this.mpCost = 15;
     this.lv = 1;
@@ -8605,6 +9164,71 @@
       effectCount: prop.effect[index].turns,
       effectEnd: function() {
         realSrc._buffs[6] -= buffAmount;
+      }
+    });
+    return true;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Skill_Shield
+
+  Skill_Shield = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_Shield.prototype = Object.create(ItemTemplate.prototype);
+  Skill_Shield.prototype.constructor = Skill_Shield;
+
+  Skill_Shield.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[13]);
+    this.name = '鐵壁';
+    this.description = '暫時護甲強度提升';
+    this.iconIndex = 81;
+    this.mpCost = 10;
+    this.lv = 1;
+    this.exp = 0;
+    // buff or debuf
+    this.isBuff = true;
+  }
+
+  Skill_Shield.prop = {
+    type: "SKILL",
+    subType: "RANGE",
+    effect: [
+      {lv: 1, buffPercentage: 0.1, turns: 20, levelUp: 50},
+      {lv: 2, buffPercentage: 0.2, turns: 30,levelUp: 150},
+      {lv: 3, buffPercentage: 0.3, turns: 40,levelUp: 300},
+      {lv: 4, buffPercentage: 0.4, turns: 50,levelUp: 450},
+      {lv: 5, buffPercentage: 0.5, turns: 60,levelUp: -1}
+    ]
+  }
+
+  Skill_Shield.prototype.action = function(src) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    CharUtils.decreaseMp(realSrc, this.mpCost);
+    CharUtils.decreaseTp(realSrc, this.tpCost);
+
+    let prop = window[this.constructor.name].prop;
+    let effect = CharUtils.getTargetEffect(realSrc, Skill_Shield);
+    if (effect) {
+      effect.effectEnd();
+      let index = realSrc.status.skillEffect.indexOf(effect);
+      realSrc.status.skillEffect.splice(index, 1);
+    }
+    if (CharUtils.playerCanSeeChar(src)) {
+      TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 51));
+      TimeUtils.animeQueue.push(new AnimeObject(src, 'POP_UP', this.name));
+      LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
+        , LogUtils.getCharName(realSrc), this.name));
+    }
+    let index = this.lv - 1;
+    let buffAmount = Math.round(3 + 5 * index + realSrc.param(4) * 0.1);
+    realSrc.status.skillEffect.push({
+      skill: this,
+      effectCount: prop.effect[index].turns,
+      amount: buffAmount,
+      effectEnd: function() {
+        realSrc._buffs[4] -= buffAmount;
       }
     });
     return true;
@@ -9115,8 +9739,14 @@
         return this.xparam(attrParamId);
       } else {
         let value = Math.round(this.xparam(paramId - 8) * 100);
-        if (attrParamId == 0 && this.status.breakArmorCount > 0) {
-          value = Math.floor(value / 2);
+        if (attrParamId == 0) {
+          let skillEffect = CharUtils.getTargetEffect(this, Skill_Shield);
+          if (skillEffect) {
+            value += skillEffect.amount;
+          }
+          if (this.status.breakArmorCount > 0) {
+            value = Math.floor(value / 2);
+          }
         }
         return value;
       }
@@ -9575,7 +10205,7 @@
         var func = function (item) {
           TimeUtils.afterPlayerMoved(10 * $gameVariables[0].gameTimeAmp);
           let msg = String.format(Message.display('eatingDone'), item.name);
-          if (item.status == 'FRESH') {
+          if (item.status == 'FRESH' || item.status == 'PERMANENT') {
             $gameActors.actor(1).nutrition += item.nutrition;
           } else {
             // TODO: implement eat rotten food skill
