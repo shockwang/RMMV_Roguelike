@@ -111,7 +111,7 @@
   var floorCenter = 2816;
   var warFogCenter = 3536;
 
-  var dungeonDepth = 10;
+  var dungeonDepth = 9;
 
   // door figures
   var doorClosedIcon = 512;
@@ -121,7 +121,7 @@
   var roomNum = 3, minRoomSize = 4, maxRoomSize = 16;
   var roomPercentage = 0.6;
   var doorPercentage = 1;
-  var secretDoorPercentage = 0.5;
+  var secretDoorPercentage = 0.3;
   var removeDeadEndPercentage = 1;
   var mobSpawnPercentage = 0.02;
   var mobRespawnPercentage = 0.3;
@@ -404,7 +404,22 @@
       wisDown: '你變得更加愚笨了...',
       agiUp: '你的動作變得更靈活了!',
       agiDown: '你的動作變得更笨拙了...',
-      animalMeat: '{0}肉'
+      animalMeat: '{0}肉',
+      helpMsg: '移動角色:\n'
+        + '數字小鍵盤(2468: 下左右上, 1379: 左下、右下、左上、右上, 5:原地等待一回合)\n\n'
+        + '戰鬥操作:\n'
+        + '對著目標按移動鍵: 普通攻擊　　W: 發動戰技　　C: 施放魔法　　f: 投擲物品\n'
+        + 'Q: 預設投射物\n\n'
+        + '其他操作:\n'
+        + '>: 向下走一層　　<: 向上走一層　　Enter: 走樓梯快捷鍵　　i: 查看物品欄\n'
+        + 'g: 撿起地上物品　d: 丟下身上物品　o: 開門(或直接往門走)　c: 關上一扇門\n'
+        + 'w: 穿脫裝備　　　e: 吃東西　　　　/: 查看紀錄　　　　　　r: 閱讀卷軸\n'
+        + 'q: 飲用藥水　　　M: 合成物品　　　s: 搜尋隱藏門、陷阱　　S: 存檔頁面\n'
+        + 'h/?: 開啟此頁面\n\n'
+        + '快捷鍵系統:\n'
+        + '打開戰技或魔法頁面, 在技能上按下鍵盤左側數字鍵0~9, 便可將該技能設定至該\n'
+        + '數字, 接著在地圖畫面上按下該數字便可以直接施放技能. 在選定的技能上再按一\n'
+        + '次快捷鍵可取消綁定.'
     },
     display: function(msgName) {
       switch (Message.language) {
@@ -933,7 +948,8 @@
       door: $dataMap.events[4],
       projectile: $dataMap.events[5],
       itemPile: $dataMap.events[6],
-      trap: $dataMap.events[7]
+      trap: $dataMap.events[7],
+      goHome: $dataMap.events[1]
     }
     // define data images mapping
     $gameVariables[0].itemImageData = generateImageData();
@@ -1050,6 +1066,12 @@
       } else {
         return this.getCharName(target);
       }
+    },
+    displayHelpWindow: function() {
+      $gameVariables[0].messageFlag = true;
+      logWindow.contents.clear();
+      logWindow.drawTextEx(Message.display('helpMsg'), 0, 0);
+      SceneManager._scene.addChild(logWindow);
     }
   };
   MapUtils.logUtils = LogUtils; // for browser debugging
@@ -3297,7 +3319,7 @@
   Bee = function () {
     this.initialize.apply(this, arguments);
   }
-  Bee.baseDungeonLevel = 2;
+  Bee.baseDungeonLevel = 3;
 
   Bee.prototype = Object.create(Game_Mob.prototype);
   Bee.prototype.constructor = Bee;
@@ -3527,6 +3549,61 @@
   CharUtils.mobTemplates.push(Cat);
 
   //-----------------------------------------------------------------------------------
+  // Boar
+
+  Boar = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Boar.baseDungeonLevel = 5;
+
+  Boar.prototype = Object.create(Game_Mob.prototype);
+  Boar.prototype.constructor = Boar;
+
+  Boar.prototype.initialize = function (x, y, fromData) {
+    let mobInitData = {
+      name: '野豬',
+      exp: 43,
+      params: [1, 1, 12, 15, 0, 0, 8, 5],
+      level: 5
+    }
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
+    this.setImage('Boar', 1);
+    if (!fromData) {
+      this.mob.mobClass = 'Boar';
+      this.mob._skills.push(new Skill_Charge());
+    }
+  }
+
+  Boar.prototype.projectileAction = function(x, y, distance) {
+    if (getRandomInt(100) < 80 && distance < 3) { // Skill_Charge
+      let skill = this.mob._skills[0];
+      if (SkillUtils.canPerform(this.mob, skill)) {
+        skill.action(this, x, y);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Boar.prototype.looting = function () {
+    var lootings = [];
+    if (getRandomInt(10) < 30) {
+      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Boar_Tooth());
+    }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_Charge);
+    }
+  }
+  CharUtils.mobTemplates.push(Boar);
+
+  //-----------------------------------------------------------------------------------
   // Wolf
 
   Wolf = function () {
@@ -3563,8 +3640,11 @@
   }
 
   Wolf.prototype.meleeAction = function(target) {
-    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[1])) { // Skill_Bite
+    let randNum = getRandomInt(100);
+    if (randNum < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[1])) { // Skill_Bite
       return this.mob._skills[1].action(this, target);
+    } else if (randNum < 50 && this.performBuffIfNotPresent(this.mob._skills[0])) {
+      return true;
     } else {
       return BattleUtils.meleeAttack(this, target);
     }
@@ -3629,6 +3709,14 @@
       return this.performBuffIfNotPresent(this.mob._skills[0]);
     }
     return false;
+  }
+
+  Turtle.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 30 && this.performBuffIfNotPresent(this.mob._skills[0])) { // Skill_Shield
+      return true;
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
   }
 
   Turtle.prototype.looting = function () {
@@ -4327,6 +4415,17 @@
         }
       }
     }
+    // for test play only
+    if (mapId == dungeonDepth) {
+      while (true) {
+        let floor = floors[Math.randomInt(floors.length)];
+        if (MapUtils.isTileAvailableForMob(mapId, floor.x, floor.y)
+          && TrapUtils.canPlaceTrap(mapId, floor.x, floor.y)) {
+          new Trap_GoHome(floor.x, floor.y);
+          break;
+        }
+      }
+    }
   }
 
   TrapUtils.checkTrapStepped = function(target) {
@@ -4623,6 +4722,36 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Trap_GoHome
+  //
+  // class for test event: Howard go home
+
+  Trap_GoHome = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Trap_GoHome.prototype = Object.create(Game_Trap.prototype);
+  Trap_GoHome.prototype.constructor = Trap_GoHome;
+
+  Trap_GoHome.prototype.initStatus = function (event) {
+    Game_Trap.prototype.initStatus.call(this, event);
+    this.trap.trapClass = 'Trap_GoHome';
+    this.trap.imageData = new ImageData('!Door2', 0, 1, 8);
+    this.trap.name = '傳送門';
+    this.trap.isRevealed = true;
+  }
+
+  Trap_GoHome.prototype.triggered = function(target) {
+    if (target == $gamePlayer) {
+      eventId = $dataMap.events.length;
+      $dataMap.events.push(newDataMapEvent($gameVariables[0].templateEvents.goHome, eventId, 0, 0));
+      let evt = new Game_Event($gameMap.mapId(), eventId);
+      $gameMap._events[eventId] = evt;
+      evt.start();
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
   // Input
   //
   // try to add key defined by Input class
@@ -4830,7 +4959,7 @@
             LogUtils.addLog(Message.display('goDownstair'));
             $gameActors.actor(1).moved = true;
           } else {
-            MapUtils.displayMessage(Message.display('notStairDown'));
+            MapUtils.displayMessage(Message.display('noStairDown'));
           }
           break;
         case '<': // go up
@@ -4977,6 +5106,9 @@
           break;
         case 'Q': // setup default projectile
           SceneManager.push(Scene_SetupProjectile);
+          break;
+        case 'h': case '?': // help page
+          LogUtils.displayHelpWindow();
           break;
       }
     }
@@ -6375,6 +6507,38 @@
     ItemUtils.updateEquipDescription(this);
   }
   ItemUtils.lootingTemplates.tooth.push(Cat_Tooth);
+
+  //-----------------------------------------------------------------------------------
+  // Boar_Tooth
+  //
+  // weapon type: TOOTH
+
+  Boar_Tooth = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Boar_Tooth.spawnLevel = 5;
+
+  Boar_Tooth.prototype = Object.create(EquipTemplate.prototype);
+  Boar_Tooth.prototype.constructor = Boar_Tooth;
+
+  Boar_Tooth.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[11]);
+    this.name = '野豬牙';
+    this.description = '彎曲的牙齒';
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(1, 4);
+    modifier += this.bucState;
+    this.traits[2].value = '1d5';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    ItemUtils.updateEquipDescription(this);
+  }
+  ItemUtils.lootingTemplates.tooth.push(Boar_Tooth);
 
   //-----------------------------------------------------------------------------------
   // Wolf_Tooth
