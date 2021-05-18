@@ -619,8 +619,8 @@
 
   CharUtils.levelUp = function(target) {
     // TODO: implement level up mechanism
-    target._paramPlus[0] += 5 + Math.round(target.param(3) / 2);
-    target._paramPlus[1] += 5 + Math.round(target.param(5) / 2);
+    target._paramPlus[0] += 3 + Math.round(target.param(3) / 2);
+    target._paramPlus[1] += 2 + Math.round(target.param(5) / 2);
   }
 
   CharUtils.canSee = function(src, target) {
@@ -653,7 +653,7 @@
     let mpAddFactor = (target.mpAddFactor) ? target.mpAddFactor : 0;
     let mpMultiplyFactor = (target.mpMultiplyFactor) ? target.mpMultiplyFactor : 0;
     // setup HP & MP
-    target._hp = Math.round(((CharUtils.baseHp + target.level * 5) * (1 + target.param(3) / 100) + hpAddFactor) * (1 + hpMultiplyFactor));
+    target._hp = Math.round(((CharUtils.baseHp + target.level * 3) * (1 + target.param(3) / 100) + hpAddFactor) * (1 + hpMultiplyFactor));
     target._paramPlus[0] = target._hp - target.param(0);
     target._mp = Math.round((CharUtils.baseHp * (1 + target.param(5) / 100) + mpAddFactor) * (1 + mpMultiplyFactor));
     target._paramPlus[1] = target._mp - target.param(1);
@@ -1011,7 +1011,7 @@
     // $gameParty.gainItem(new Dog_Shoes(), 1);
 
     // $gameParty._items.push(new Soul_Bite());
-    // Soul_Obtained_Action.learnSkill(Skill_Shield);
+    // Soul_Obtained_Action.learnSkill(Skill_Tough);
   }
 
   // message window defined here, because it can't be assigned to $gameVariables, will cause save/load crash
@@ -3752,7 +3752,7 @@
     let mobInitData = {
       name: '熊',
       exp: 50,
-      params: [1, 1, 10, 30, 30, 30, 5, 10],
+      params: [1, 1, 16, 20, 10, 10, 8, 5],
       level: 6
     }
     Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
@@ -3764,7 +3764,7 @@
   }
 
   Bear.prototype.meleeAction = function(target) {
-    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Bite
+    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Bash
       return this.mob._skills[0].action(this, target);
     } else {
       return BattleUtils.meleeAttack(this, target);
@@ -3794,6 +3794,71 @@
     }
   }
   CharUtils.mobTemplates.push(Bear);
+
+  //-----------------------------------------------------------------------------------
+  // Lion
+
+  Lion = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Lion.baseDungeonLevel = 8;
+
+  Lion.prototype = Object.create(Game_Mob.prototype);
+  Lion.prototype.constructor = Lion;
+
+  Lion.prototype.initialize = function (x, y, fromData) {
+    let mobInitData = {
+      name: '獅子',
+      exp: 70,
+      params: [1, 1, 20, 20, 10, 10, 18, 5],
+      level: 8
+    }
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
+    this.setImage('Lion', 0);
+    if (!fromData) {
+      this.mob.mobClass = 'Lion';
+      this.mob._skills.push(new Skill_Roar());
+    }
+  }
+
+  Lion.prototype.targetInSightAction = function(target) {
+    if (getRandomInt(100) < 40) { // Skill_Roar
+      return this.performBuffIfNotPresent(this.mob._skills[0]);
+    }
+    return false;
+  }
+
+  Lion.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 30 && this.performBuffIfNotPresent(this.mob._skills[0])) { // Skill_Roar
+      return true;
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  Lion.prototype.looting = function () {
+    var lootings = [];
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Bear_Skin());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Bear_Claw());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Bear_Bone());
+    }
+    if (getRandomInt(100) < 30) {
+      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
+    }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_Roar);
+    }
+  }
+  CharUtils.mobTemplates.push(Lion);
 
   //-----------------------------------------------------------------------------------
   // Game_Door
@@ -5314,7 +5379,7 @@
           TimeUtils.afterPlayerMovedData.tempTimeSpent -= updateTime;
           $gameVariables[0].gameTime += updateTime;
           var gameTurn = Math.floor($gameVariables[0].gameTime / $gameVariables[0].gameTimeAmp);
-          if (gameTurn % 10 == 0) {
+          if (gameTurn % 15 == 0) {
             // player & mob regen
             CharUtils.regenerate($gamePlayer);
             for (let i = 0; i < $gameMap._events.length; i++) {
@@ -6160,7 +6225,7 @@
   ItemUtils.spawnItem = function(dungeonLevel) {
     let list;
     let itemType = getRandomInt(100);
-    if (itemType < 80) {
+    if (itemType < 67) {
       // spawn material
       let indicator = getRandomInt(5);
       switch (indicator) {
@@ -6181,7 +6246,7 @@
           break;
       }
       return ItemUtils.spawnItemFromList(list, dungeonLevel);
-    } else if (itemType < 95) {
+    } else if (itemType < 97) {
       // spawn scroll/potion
       if (getRandomInt(2) == 0) {
         // scroll
@@ -8546,7 +8611,7 @@
 
   Soul_Charge.prototype.initialize = function () {
     ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
-    this.name = '衝撞';
+    this.name = '衝鋒';
     this.description = '你的身軀充滿了爆發力';
   }
 
@@ -8596,6 +8661,38 @@
     ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
     this.name = '鐵壁';
     this.description = '你的皮膚變得堅硬';
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Soul_Roar
+
+  Soul_Roar = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Soul_Roar.prototype = Object.create(ItemTemplate.prototype);
+  Soul_Roar.prototype.constructor = Soul_Roar;
+
+  Soul_Roar.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
+    this.name = '戰吼';
+    this.description = '你的吼叫聲令人鬥志高昂';
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Soul_Tough
+
+  Soul_Tough = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Soul_Tough.prototype = Object.create(ItemTemplate.prototype);
+  Soul_Tough.prototype.constructor = Soul_Tough;
+
+  Soul_Tough.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
+    this.name = '堅韌';
+    this.description = '你的身體變得強韌';
   }
 
   //-----------------------------------------------------------------------------------
@@ -9380,7 +9477,7 @@
       realSrc.status.skillEffect.splice(index, 1);
     }
     if (CharUtils.playerCanSeeChar(src)) {
-      TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 51));
+      TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 53));
       TimeUtils.animeQueue.push(new AnimeObject(src, 'POP_UP', this.name));
       LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
         , LogUtils.getCharName(realSrc), this.name));
@@ -9392,7 +9489,139 @@
       effectCount: prop.effect[index].turns,
       amount: buffAmount,
       effectEnd: function() {
-        realSrc._buffs[4] -= buffAmount;
+        // do nothing
+      }
+    });
+    return true;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Skill_Roar
+
+  Skill_Roar = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_Roar.prototype = Object.create(ItemTemplate.prototype);
+  Skill_Roar.prototype.constructor = Skill_Roar;
+
+  Skill_Roar.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[12]);
+    this.name = '戰吼';
+    this.description = '暫時力量提升';
+    this.iconIndex = 64;
+    this.tpCost = 30;
+    this.mpCost = 5;
+    this.lv = 1;
+    this.exp = 0;
+    // buff or debuf
+    this.isBuff = true;
+  }
+
+  Skill_Roar.prop = {
+    type: "SKILL",
+    subType: "RANGE",
+    effect: [
+      {lv: 1, buffPercentage: 0.1, turns: 20, levelUp: 50},
+      {lv: 2, buffPercentage: 0.2, turns: 30,levelUp: 150},
+      {lv: 3, buffPercentage: 0.3, turns: 40,levelUp: 300},
+      {lv: 4, buffPercentage: 0.4, turns: 50,levelUp: 450},
+      {lv: 5, buffPercentage: 0.5, turns: 60,levelUp: -1}
+    ]
+  }
+
+  Skill_Roar.prototype.action = function(src) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    CharUtils.decreaseMp(realSrc, this.mpCost);
+    CharUtils.decreaseTp(realSrc, this.tpCost);
+
+    let prop = window[this.constructor.name].prop;
+    let effect = CharUtils.getTargetEffect(realSrc, Skill_Roar);
+    if (effect) {
+      effect.effectEnd();
+      let index = realSrc.status.skillEffect.indexOf(effect);
+      realSrc.status.skillEffect.splice(index, 1);
+    }
+    if (CharUtils.playerCanSeeChar(src)) {
+      TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 37));
+      TimeUtils.animeQueue.push(new AnimeObject(src, 'POP_UP', this.name));
+      LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
+        , LogUtils.getCharName(realSrc), this.name));
+    }
+    let index = this.lv - 1;
+    let buffAmount = Math.round(5 + 5 * index + realSrc.param(2) * 0.1);
+    realSrc._buffs[2] += buffAmount;
+    realSrc.status.skillEffect.push({
+      skill: this,
+      effectCount: prop.effect[index].turns,
+      effectEnd: function() {
+        realSrc._buffs[2] -= buffAmount;
+      }
+    });
+    return true;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Skill_Tough
+
+  Skill_Tough = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_Tough.prototype = Object.create(ItemTemplate.prototype);
+  Skill_Tough.prototype.constructor = Skill_Tough;
+
+  Skill_Tough.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[12]);
+    this.name = '堅韌';
+    this.description = '暫時體格提升';
+    this.iconIndex = 68;
+    this.tpCost = 30;
+    this.mpCost = 5;
+    this.lv = 1;
+    this.exp = 0;
+    // buff or debuf
+    this.isBuff = true;
+  }
+
+  Skill_Tough.prop = {
+    type: "SKILL",
+    subType: "RANGE",
+    effect: [
+      {lv: 1, buffPercentage: 0.1, turns: 20, levelUp: 50},
+      {lv: 2, buffPercentage: 0.2, turns: 30,levelUp: 150},
+      {lv: 3, buffPercentage: 0.3, turns: 40,levelUp: 300},
+      {lv: 4, buffPercentage: 0.4, turns: 50,levelUp: 450},
+      {lv: 5, buffPercentage: 0.5, turns: 60,levelUp: -1}
+    ]
+  }
+
+  Skill_Tough.prototype.action = function(src) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    CharUtils.decreaseMp(realSrc, this.mpCost);
+    CharUtils.decreaseTp(realSrc, this.tpCost);
+
+    let prop = window[this.constructor.name].prop;
+    let effect = CharUtils.getTargetEffect(realSrc, Skill_Tough);
+    if (effect) {
+      effect.effectEnd();
+      let index = realSrc.status.skillEffect.indexOf(effect);
+      realSrc.status.skillEffect.splice(index, 1);
+    }
+    if (CharUtils.playerCanSeeChar(src)) {
+      TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 52));
+      TimeUtils.animeQueue.push(new AnimeObject(src, 'POP_UP', this.name));
+      LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
+        , LogUtils.getCharName(realSrc), this.name));
+    }
+    let index = this.lv - 1;
+    let buffAmount = Math.round(5 + 5 * index + realSrc.param(3) * 0.1);
+    realSrc._buffs[3] += buffAmount;
+    realSrc.status.skillEffect.push({
+      skill: this,
+      effectCount: prop.effect[index].turns,
+      effectEnd: function() {
+        realSrc._buffs[3] -= buffAmount;
       }
     });
     return true;
@@ -11259,6 +11488,7 @@
 
   Game_Actor.prototype.levelUp = function() {
     this._level++;
+    this.changeExp(this.expForLevel(this._level), true);
     CharUtils.levelUp(this);
     let msg = String.format(Message.display('levelUp'), LogUtils.getCharName(this));
     LogUtils.addLog(msg);
