@@ -1005,13 +1005,22 @@
     //   $gameParty.gainItem(new Dart_Lv1_T1(), 1);
     //   $gameParty.gainItem(new Potion_Invisible(), 1);
     // }
-    // $gameParty.gainItem(new Dog_Helmet(), 1);
-    // $gameParty.gainItem(new Dog_Coat(), 1);
-    // $gameParty.gainItem(new Dog_Gloves(), 1);
-    // $gameParty.gainItem(new Dog_Shoes(), 1);
 
     // $gameParty._items.push(new Soul_Bite());
     // Soul_Obtained_Action.learnSkill(Skill_Tough);
+
+    // modify actor status
+    // let player = $gameActors.actor(1);
+    // player._paramPlus[2] = 6;
+    // player._paramPlus[3] = 9;
+    // player._paramPlus[6] = 9;
+    // $gameParty.gainItem(new Bear_Shield(), 1);
+    // $gameParty.gainItem(new Bear_Skin(), 1);
+    // $gameParty.gainItem(new Bear_Claw(), 1);
+    // for (let i = 0; i < 6; i++) {
+    //   player.levelUp();
+    // }
+    // setTimeout(MapUtils.goDownLevels, 500, 7);
   }
 
   // message window defined here, because it can't be assigned to $gameVariables, will cause save/load crash
@@ -1511,6 +1520,28 @@
         $gamePlayer.reserveTransfer(stair.toMapId, stair.toX, stair.toY, 0, 2);
       }
     }
+  }
+
+  MapUtils.goDownLevels = function(depth) {
+    let func = function(depth) {
+      if ($gamePlayer.isTransferring()) {
+        setTimeout(func, 500, depth);
+      } else if (depth > 0) {
+        // do down a level
+        depth--;
+        let stairs = $gameVariables[$gameMap.mapId()].stairList;
+        let stairDown;
+        for (let id in stairs) {
+          if (stairs[id].type == 1) {
+            stairDown = stairs[id];
+          }
+        }
+        $gamePlayer.locate(stairDown.x, stairDown.y);
+        MapUtils.transferCharacter($gamePlayer);
+        setTimeout(func, 500, depth);
+      }
+    }
+    func(depth);
   }
 
   MapUtils.findEventsXyFromDataMap = function (dataMap, x, y) {
@@ -3839,13 +3870,10 @@
   Lion.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(100) < 25) {
-      lootings.push(new Bear_Skin());
+      lootings.push(new Lion_Tooth());
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Bear_Claw());
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Bear_Bone());
+      lootings.push(new Lion_Claw());
     }
     if (getRandomInt(100) < 30) {
       lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
@@ -3859,6 +3887,68 @@
     }
   }
   CharUtils.mobTemplates.push(Lion);
+
+  //-----------------------------------------------------------------------------------
+  // Buffalo
+
+  Buffalo = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Buffalo.baseDungeonLevel = 8;
+
+  Buffalo.prototype = Object.create(Game_Mob.prototype);
+  Buffalo.prototype.constructor = Buffalo;
+
+  Buffalo.prototype.initialize = function (x, y, fromData) {
+    let mobInitData = {
+      name: '水牛',
+      exp: 70,
+      params: [1, 1, 15, 30, 20, 20, 15, 5],
+      level: 8
+    }
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
+    this.setImage('Buffalo', 1);
+    if (!fromData) {
+      this.mob.mobClass = 'Buffalo';
+      this.mob._skills.push(new Skill_Tough());
+    }
+  }
+
+  Buffalo.prototype.targetInSightAction = function(target) {
+    if (getRandomInt(100) < 40) { // Skill_Tough
+      return this.performBuffIfNotPresent(this.mob._skills[0]);
+    }
+    return false;
+  }
+
+  Buffalo.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 30 && this.performBuffIfNotPresent(this.mob._skills[0])) { // Skill_Tough
+      return true;
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  Buffalo.prototype.looting = function () {
+    var lootings = [];
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Buffalo_Horn());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Buffalo_Bone());
+    }
+    if (getRandomInt(100) < 30) {
+      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
+    }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_Tough);
+    }
+  }
+  CharUtils.mobTemplates.push(Buffalo);
 
   //-----------------------------------------------------------------------------------
   // Game_Door
@@ -6638,6 +6728,70 @@
   ItemUtils.lootingTemplates.tooth.push(Wolf_Tooth);
 
   //-----------------------------------------------------------------------------------
+  // Lion_Tooth
+  //
+  // weapon type: TOOTH
+
+  Lion_Tooth = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Lion_Tooth.spawnLevel = 8;
+
+  Lion_Tooth.prototype = Object.create(EquipTemplate.prototype);
+  Lion_Tooth.prototype.constructor = Lion_Tooth;
+
+  Lion_Tooth.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[11]);
+    this.name = '獅牙';
+    this.description = '野獸之王的牙齒';
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(0, 3);
+    modifier += this.bucState;
+    this.traits[2].value = '1d7';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    ItemUtils.updateEquipDescription(this);
+  }
+  ItemUtils.lootingTemplates.tooth.push(Lion_Tooth);
+
+  //-----------------------------------------------------------------------------------
+  // Buffalo_Horn
+  //
+  // weapon type: TOOTH
+
+  Buffalo_Horn = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Buffalo_Horn.spawnLevel = 8;
+
+  Buffalo_Horn.prototype = Object.create(EquipTemplate.prototype);
+  Buffalo_Horn.prototype.constructor = Buffalo_Horn;
+
+  Buffalo_Horn.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[11]);
+    this.name = '牛角';
+    this.description = '粗壯又尖銳的角';
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(1, 4);
+    modifier += this.bucState;
+    this.traits[2].value = '1d7';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    ItemUtils.updateEquipDescription(this);
+  }
+  ItemUtils.lootingTemplates.tooth.push(Buffalo_Horn);
+
+  //-----------------------------------------------------------------------------------
   // Dog_Bone
   //
   // weapon type: BONE
@@ -6714,6 +6868,32 @@
     ItemUtils.updateEquipDescription(this);
   }
   ItemUtils.lootingTemplates.bone.push(Bear_Bone);
+
+  //-----------------------------------------------------------------------------------
+  // Buffalo_Bone
+  //
+  // weapon type: BONE
+
+  Buffalo_Bone = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Buffalo_Bone.spawnLevel = 8;
+
+  Buffalo_Bone.prototype = Object.create(EquipTemplate.prototype);
+  Buffalo_Bone.prototype.constructor = Buffalo_Bone;
+
+  Buffalo_Bone.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[12]);
+    this.name = '牛骨';
+    this.description = '通常用來熬高湯?';
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    this.traits[2].value = '4';
+    // TODO: implement magic power amplifier
+    ItemUtils.updateEquipDescription(this);
+  }
+  ItemUtils.lootingTemplates.bone.push(Buffalo_Bone);
 
   //-----------------------------------------------------------------------------------
   // Rooster_Claw
@@ -6842,6 +7022,38 @@
     ItemUtils.updateEquipDescription(this);
   }
   ItemUtils.lootingTemplates.claw.push(Bear_Claw);
+
+  //-----------------------------------------------------------------------------------
+  // Lion_Claw
+  //
+  // weapon type: CLAW
+
+  Lion_Claw = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Lion_Claw.spawnLevel = 8;
+
+  Lion_Claw.prototype = Object.create(EquipTemplate.prototype);
+  Lion_Claw.prototype.constructor = Lion_Claw;
+
+  Lion_Claw.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[13]);
+    this.name = '獅爪';
+    this.description = '萬獸之王的爪';
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(0, 3);
+    modifier += this.bucState;
+    this.traits[2].value = '2d4';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    ItemUtils.updateEquipDescription(this);
+  }
+  ItemUtils.lootingTemplates.claw.push(Lion_Claw);
 
   //-----------------------------------------------------------------------------------
   // Dog_Skin
