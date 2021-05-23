@@ -3,8 +3,8 @@
 (function () {
   var MapData = function(floorId, original, x, y) {
     this.base = floorId;
+    this.bush = 0; // for hollow usage
     // command those variables for storage size issue, and also not used yet
-    // this.bush = 0;
     // this.decorate1 = 0;
     // this.decorate2 = 0;
     // this.shadow = 0;
@@ -107,9 +107,34 @@
   var DOOR = 'Ｄ';
 
   // ----------map constants----------
-  var ceilingCenter = 6752;
-  var floorCenter = 2816;
-  var warFogCenter = 3536;
+  var DungeonTiles = {
+    earth: {
+      ceilingCenter: 6752,
+      floorCenter: 2816,
+      waterCenter: 2048,
+      hollowCenter: 3008
+    },
+    ice: {
+      ceilingCenter: 6032,
+      floorCenter: 3248,
+      waterCenter: 2624,
+      hollowCenter: 3440
+    },
+    fire: {
+      ceilingCenter: 8098,
+      floorCenter: 3584, // 3584
+      waterCenter: 2240, // water in fire stage is lava
+      hollowCenter: 3776
+    },
+    air: {
+      ceilingCenter: 5936,
+      floorCenter: 3200,
+      waterCenter: 2528,
+      hollowCenter: 3392
+    }
+  }
+  var currentDungeonTiles = DungeonTiles.earth;
+  var warFogCenter = 15;
 
   var dungeonDepth = 9;
 
@@ -1235,22 +1260,41 @@
     mapData[x][y].isVisible = MapUtils.checkVisible(src, distance, x, y, mapData);
   }
 
-  function refineMapTile(rawData, x, y, centerTile) {
+  function looksLikeWall(mapId, rawData, x, y) {
+    if ((rawData && rawData[x][y] == WALL) || ($gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(x, y)]
+      && !$gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(x, y)].isRevealed)) {
+      return true;
+    }
+    return false;
+  }
+
+  function refineMapTile(mapId, rawData, x, y, centerTile) {
+    if (!rawData) {
+      // create rawData
+      let mapData = $gameVariables[mapId].mapData;
+      rawData = new Array(mapData.length);
+      for (let i = 0; i < mapData.length; i++) {
+        rawData[i] = new Array(mapData[0].length);
+        for (let j = 0; j < mapData[0].length; j++) {
+          rawData[i][j] = mapData[i][j].originalTile;
+        }
+      }
+    }
     let east = false, west = false, south = false, north = false;
     // check east
-    if (x + 1 < rawData.length && rawData[x + 1][y] != WALL) {
+    if (x + 1 < rawData.length && looksLikeWall(mapId, rawData, x + 1, y)) {
       east = true;
     }
     // check west
-    if (x - 1 >= 0 && rawData[x - 1][y] != WALL) {
+    if (x - 1 >= 0 && looksLikeWall(mapId, rawData, x - 1, y)) {
       west = true;
     }
     // check north
-    if (y - 1 >= 0 && rawData[x][y - 1] != WALL) {
+    if (y - 1 >= 0 && looksLikeWall(mapId, rawData, x, y - 1)) {
       north = true;
     }
     // check south
-    if (y + 1 < rawData.length && rawData[x][y + 1] != WALL) {
+    if (y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x, y + 1)) {
       south = true;
     }
     var result = centerTile;
@@ -1275,12 +1319,28 @@
             result += 45;
           } else {
             result += 36;
+            // check left down
+            if (x - 1 >= 0 && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x - 1, y + 1)) {
+              result += 1;
+            }
           }
         } else {
           if (south) {
             result += 38;
+            // check left top
+            if (x - 1 >= 0 && y - 1 >= 0 && looksLikeWall(mapId, rawData, x - 1, y - 1)) {
+              result += 1;
+            }
           } else {
             result += 24;
+            // check left down
+            if (x - 1 >= 0 && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x - 1, y + 1)) {
+              result += 1;
+            }
+            // check left top
+            if (x - 1 >= 0 && y - 1 >= 0 && looksLikeWall(mapId, rawData, x - 1, y - 1)) {
+              result += 2;
+            }
           }
         }
       }
@@ -1291,12 +1351,28 @@
             result += 43;
           } else {
             result += 34;
+            // check right down
+            if (x + 1 < rawData.length && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x + 1, y + 1)) {
+              result += 1;
+            }
           }
         } else {
           if (south) {
             result += 40;
+            // check right top
+            if (x + 1 < rawData.length && y - 1 >= 0 && looksLikeWall(mapId, rawData, x + 1, y - 1)) {
+              result += 1;
+            }
           } else {
             result += 16;
+            // check right top
+            if (x + 1 < rawData.length && y - 1 >= 0 && looksLikeWall(mapId, rawData, x + 1, y - 1)) {
+              result += 1;
+            }
+            // check right down
+            if (x + 1 < rawData.length && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x + 1, y + 1)) {
+              result += 2;
+            }
           }
         }
       } else {
@@ -1305,12 +1381,44 @@
             result += 33;
           } else {
             result += 20;
+            // check right down
+            if (x + 1 < rawData.length && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x + 1, y + 1)) {
+              result += 1;
+            }
+            if (x - 1 >= 0 && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x - 1, y + 1)) {
+              result += 2;
+            }
+            // check left down
           }
         } else {
           if (south) {
             result += 28;
+            // check left top
+            if (x - 1 >= 0 && y - 1 >= 0 && looksLikeWall(mapId, rawData, x - 1, y - 1)) {
+              result += 1;
+            }
+            // check right top
+            if (x + 1 < rawData.length && y - 1 >= 0 && looksLikeWall(mapId, rawData, x + 1, y - 1)) {
+              result += 2;
+            }
           } else {
-            result += 0;
+            // check corners
+            // left top
+            if (x - 1 >= 0 && y - 1 >= 0 && looksLikeWall(mapId, rawData, x - 1, y - 1)) {
+              result += 1;
+            }
+            // right top
+            if (x + 1 < rawData.length && y - 1 >= 0 && looksLikeWall(mapId, rawData, x + 1, y - 1)) {
+              result += 2;
+            }
+            // right down
+            if (x + 1 < rawData.length && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x + 1, y + 1)) {
+              result += 4;
+            }
+            // left down
+            if (x - 1 >= 0 && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x - 1, y + 1)) {
+              result += 8;
+            }
           }
         }
       }
@@ -1334,7 +1442,8 @@
     for (var i = 0; i < mapData.length; i++) {
       mapData[i] = new Array(rawData[0].length);
       for (var j = 0; j < rawData[0].length; j++) {
-        mapData[i][j] = new MapData(floorCenter, rawData[i][j], i, j);
+        let center = refineMapTile(mapId, rawData, i, j, currentDungeonTiles.floorCenter);
+        mapData[i][j] = new MapData(center, rawData[i][j], i, j);
       }
     }
 
@@ -1345,10 +1454,10 @@
           // skip the floor tunning
           continue;
         } else if (rawData[i][j] == WALL) {
-          mapData[i][j].base = ceilingCenter;
+          mapData[i][j].base = currentDungeonTiles.ceilingCenter;
         } else if (rawData[i][j] == DOOR) {
           if ($gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(i, j)]) {
-            mapData[i][j].base = ceilingCenter;
+            mapData[i][j].base = currentDungeonTiles.ceilingCenter;
           } else {
             new Game_Door(i, j);
           }
@@ -1385,9 +1494,10 @@
     }
 
     var index = 0;
-    var warFogOffset = mapSize;
+    var hollowOffset = mapSize;
     var stairOffset = mapSize * 2;
     var itemOffset = mapSize * 3;
+    var warFogOffset = mapSize * 4;
     for (var j = 0; j < mapData[0].length; j++) {
       for (var i = 0; i < mapData.length; i++) {
         if (mapData[i][j].isVisible || mapData[i][j].isExplored) {
@@ -1396,6 +1506,8 @@
           if (mapData[i][j].isVisible) {
             // update item piles
             mapArray[itemOffset + index] = 0;
+            // update hollow
+            mapArray[hollowOffset + index] = mapData[i][j].bush;
           }
         }
         if (!mapData[i][j].isVisible && mapData[i][j].isExplored) {
@@ -5229,7 +5341,17 @@
               if (Math.random() < 0.2) {
                 $gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(coordinate.x, coordinate.y)].isRevealed = true;
                 if ($gameVariables[$gameMap._mapId].mapData[coordinate.x][coordinate.y].originalTile == DOOR) {
-                  $gameVariables[$gameMap._mapId].mapData[coordinate.x][coordinate.y].base = floorCenter;
+                  // update adjacent tiles
+                  let currentMapData = $gameVariables[$gameMap._mapId].mapData;
+                  for (let x = coordinate.x - 1; x < coordinate.x + 2; x++) {
+                    for (let y = coordinate.y - 1; y < coordinate.y + 2; y++) {
+                      if ((x >= 0 && x < currentMapData.length) && (y >= 0 && y < currentMapData[0].length)
+                        && currentMapData[x][y].originalTile != WALL) {
+                        currentMapData[x][y].base = refineMapTile($gameMap.mapId(), null
+                          , x, y, currentDungeonTiles.floorCenter);
+                      }
+                    }
+                  }
                   new Game_Door(coordinate.x, coordinate.y);
                   LogUtils.addLog(Message.display('secretDoorDiscovered'));
                 }
@@ -5469,7 +5591,7 @@
           TimeUtils.afterPlayerMovedData.tempTimeSpent -= updateTime;
           $gameVariables[0].gameTime += updateTime;
           var gameTurn = Math.floor($gameVariables[0].gameTime / $gameVariables[0].gameTimeAmp);
-          if (gameTurn % 15 == 0) {
+          if (gameTurn % 20 == 0) {
             // player & mob regen
             CharUtils.regenerate($gamePlayer);
             for (let i = 0; i < $gameMap._events.length; i++) {
@@ -10765,7 +10887,7 @@
         if (Window_FoodList.prototype.includes(item)) {
           // add to inventory temporarily
           item.name += groundWord;
-          $gameParty._items.push(item);
+          $gameParty._items.unshift(item);
         }
       }
     }
