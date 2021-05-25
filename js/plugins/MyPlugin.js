@@ -436,6 +436,8 @@
       agiUp: '你的動作變得更靈活了!',
       agiDown: '你的動作變得更笨拙了...',
       animalMeat: '{0}肉',
+      jumpIntoWater: '{0}跳入水中.',
+      climbOutOfWater: '{0}爬上岸邊.',
       helpMsg: '移動角色:\n'
         + '數字小鍵盤(2468: 下左右上, 1379: 左下、右下、左上、右上, 5:原地等待一回合)\n\n'
         + '戰鬥操作:\n'
@@ -993,6 +995,7 @@
     $gameActors.actor(1).awareDistance = 8;
     $gameActors.actor(1).moved = false;
     $gameActors.actor(1).attacked = false;
+    $gameActors.actor(1).moveType = 0;
     // initialize template events
     $gameVariables[0].templateEvents = {
       monster: $dataMap.events[3],
@@ -1087,6 +1090,26 @@
     }
     console.log('error: no such mapType: ' + mapType);
     return null;
+  }
+
+  MapUtils.checkInOutWater = function(src, oldX, oldY, nowX, nowY) {
+    if (src instanceof Game_Follower) {
+      return;
+    }
+    let realSrc = BattleUtils.getRealTarget(src);
+    let mapData = $gameVariables[$gameMap.mapId()].mapData;
+    if ((mapData[oldX][oldY].originalTile != mapData[nowX][nowY].originalTile)
+      && (mapData[oldX][oldY].originalTile == WATER || mapData[nowX][nowY].originalTile == WATER)
+      && realSrc.moveType != 2) {
+      if (CharUtils.playerCanSeeBlock(nowX, nowY)) {
+        AudioManager.playSe({name: 'Water1', pan: 0, pitch: 100, volume: 100});
+        if (mapData[oldX][oldY].originalTile == WATER) {
+          LogUtils.addLog(String.format(Message.display('climbOutOfWater'), LogUtils.getCharName(realSrc)));
+        } else {
+          LogUtils.addLog(String.format(Message.display('jumpIntoWater'), LogUtils.getCharName(realSrc)));
+        }
+      }
+    }
   }
 
   // message window defined here, because it can't be assigned to $gameVariables, will cause save/load crash
@@ -1212,6 +1235,11 @@
   // check if projectile can hit
   MapUtils.checkVisible = function(src, distance, x, y, mapData, checkMobFlag) {
     var visible = false;
+    // check if on water block
+    let realSrc = BattleUtils.getRealTarget(src);
+    if (mapData[src._x][src._y].originalTile == WATER && realSrc.moveType != 1) {
+      distance = 1;
+    }
     if (MapUtils.getDistance(src._x, src._y, x, y) <= distance) {
       // around player, check visibility
       visible = true;
@@ -2322,7 +2350,9 @@
   }
 
   MapUtils.getDistance = function (x1, y1, x2, y2) {
-    return Math.sqrt(Math.pow(x1 - x2, 2) + Math.pow(y1 - y2, 2));
+    let deltaX = Math.abs(x1 - x2);
+    let deltaY = Math.abs(y1 - y2);
+    return (deltaX > deltaY) ? deltaX : deltaY;
   }
 
   genMapRoomsRoguelike = function (width, height) {
@@ -2900,8 +2930,26 @@
   //-----------------------------------------------------------------------------------
   // Game_CharacterBase
   //
+  Game_CharacterBase.prototype.moveStraight = function(d) {
+    let oldX = this._x, oldY = this._y;
+    this.setMovementSuccess(this.canPass(this._x, this._y, d));
+    if (this.isMovementSucceeded()) {
+      this.setDirection(d);
+      this._x = $gameMap.roundXWithDirection(this._x, d);
+      this._y = $gameMap.roundYWithDirection(this._y, d);
+      this._realX = $gameMap.xWithDirection(this._x, this.reverseDir(d));
+      this._realY = $gameMap.yWithDirection(this._y, this.reverseDir(d));
+      this.increaseSteps();
+      MapUtils.checkInOutWater(this, oldX, oldY, this._x, this._y);
+    } else {
+      this.setDirection(d);
+      this.checkEventTriggerTouchFront(d);
+    }
+  }
+
   // Modify moveDiagonally(), so it can trigger diagonal events
   Game_CharacterBase.prototype.moveDiagonally = function (horz, vert) {
+    let oldX = this._x, oldY = this._y;
     this.setMovementSuccess(this.canPassDiagonally(this._x, this._y, horz, vert));
     var moved = false;
     if (this.isMovementSucceeded()) {
@@ -2911,6 +2959,7 @@
       this._realY = $gameMap.yWithDirection(this._y, this.reverseDir(vert));
       this.increaseSteps();
       moved = true;
+      MapUtils.checkInOutWater(this, oldX, oldY, this._x, this._y);
     }
     if (this._direction === this.reverseDir(horz)) {
       this.setDirection(horz);
@@ -3124,6 +3173,7 @@
       this.mob._name = mobInitData.name;
       this.mob._exp = mobInitData.exp;
       this.mob.level = mobInitData.level;
+      this.mob.moveType = mobInitData.moveType;
       this.mob._tp = 100;
       this.mob.awareDistance = 10;
       this.mob.status = CharUtils.initStatus();
@@ -3437,7 +3487,8 @@
       name: '小雞',
       exp: 27,
       params: [1, 1, 6, 1, 5, 1, 3, 5],
-      level: 1
+      level: 1,
+      moveType: 0 // 0: walk, 1: swim, 2: float
     }
     Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
     this.setImage('Chick', 0);
@@ -3477,7 +3528,8 @@
       name: '小狗',
       exp: 27,
       params: [1, 1, 6, 6, 10, 10, 5, 5],
-      level: 1
+      level: 1,
+      moveType: 0
     }
     Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
     this.setImage('Nature', 0);
@@ -3540,7 +3592,8 @@
       name: '蜜蜂',
       exp: 30,
       params: [1, 1, 4, 3, 0, 0, 13, 5],
-      level: 2
+      level: 2,
+      moveType: 2
     }
     Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
     this.setImage('Fly1', 0);
@@ -3595,7 +3648,8 @@
       name: '大雞',
       exp: 33,
       params: [1, 1, 10, 10, 1, 5, 9, 3],
-      level: 3
+      level: 3,
+      moveType: 0
     }
     Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
     this.setImage('Nature', 2);
@@ -3644,7 +3698,8 @@
       name: '老鼠',
       exp: 36,
       params: [1, 1, 12, 5, 0, 0, 15, 10],
-      level: 4
+      level: 4,
+      moveType: 0
     }
     Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
     this.setImage('Mice', 1);
@@ -3705,7 +3760,8 @@
       name: '貓',
       exp: 36,
       params: [1, 1, 6, 6, 30, 20, 15, 5],
-      level: 4
+      level: 4,
+      moveType: 0
     }
     Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
     this.setImage('Nature', 1);
@@ -3775,7 +3831,8 @@
       name: '野豬',
       exp: 43,
       params: [1, 1, 12, 15, 0, 0, 8, 5],
-      level: 5
+      level: 5,
+      moveType: 0
     }
     Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
     this.setImage('Boar', 1);
@@ -3830,7 +3887,8 @@
       name: '狼',
       exp: 50,
       params: [1, 1, 14, 10, 10, 10, 10, 3],
-      level: 6
+      level: 6,
+      moveType: 0
     }
     Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
     this.setImage('Animal', 2);
@@ -3905,7 +3963,8 @@
       exp: 50,
       params: [1, 1, 10, 30, 30, 30, 5, 10],
       xparams: [3, 3, 0],
-      level: 6
+      level: 6,
+      moveType: 0
     }
     Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
     this.setImage('Animal', 6);
@@ -3964,7 +4023,8 @@
       name: '熊',
       exp: 50,
       params: [1, 1, 16, 20, 10, 10, 8, 5],
-      level: 6
+      level: 6,
+      moveType: 0
     }
     Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
     this.setImage('Bear', 0);
@@ -4022,7 +4082,8 @@
       name: '獅子',
       exp: 70,
       params: [1, 1, 20, 20, 10, 10, 18, 5],
-      level: 8
+      level: 8,
+      moveType: 0
     }
     Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
     this.setImage('Lion', 0);
@@ -4084,7 +4145,8 @@
       name: '水牛',
       exp: 70,
       params: [1, 1, 15, 30, 20, 20, 15, 5],
-      level: 8
+      level: 8,
+      moveType: 0
     }
     Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
     this.setImage('Buffalo', 1);
