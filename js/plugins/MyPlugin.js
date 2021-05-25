@@ -44,15 +44,18 @@
     this.lastImage = {};
   }
 
-  var MapVariable = function (mapData, rmDataMap) {
+  var MapVariable = function (mapData, rmDataMap, mapType) {
     this.mapData = mapData;
     this.rmDataMap = rmDataMap;
 
     // indicates map attributes
     this.generateRandom = false;
     this.stairDownNum = 1;
+    this.stairUpNum = 1;
     this.stairList = [];
+    this.stairToList = []; // indicates which layer this stair leads to
     this.secretBlocks = {};
+    this.mapType = mapType; // EARTH, ICE, FIRE, AIR, FOREST, BAT
   }
 
   var Coordinate = function (x, y) {
@@ -105,6 +108,9 @@
   var FLOOR = '□';
   var WALL = '■';
   var DOOR = 'Ｄ';
+  var WATER = 'Ｗ';
+  var LAVA = 'Ｌ';
+  var HOLLOW = 'Ｈ';
 
   // ----------map constants----------
   var DungeonTiles = {
@@ -122,7 +128,7 @@
     },
     fire: {
       ceilingCenter: 8098,
-      floorCenter: 3584, // 3584
+      floorCenter: 3584,
       waterCenter: 2240, // water in fire stage is lava
       hollowCenter: 3776
     },
@@ -921,13 +927,33 @@
 
   MapUtils.initialize = function () {
     // define map variables here
-    for (var i = 0; i < dungeonDepth; i++) {
-      $gameVariables[i + 1] = new MapVariable(null, null);
+    for (let i = 0; i < 20; i++) {
+      $gameVariables[i + 1] = new MapVariable(null, null, 'EARTH');
     }
-    for (var i = 1; i < dungeonDepth; i++) {
+    for (let i = 1; i < 20; i++) {
       $gameVariables[i + 1].generateRandom = true;
     }
+    $gameVariables[1].stairUpNum = 0;
+    $gameVariables[1].stairToList.push(2);
+    for (let i = 2; i < dungeonDepth; i++) {
+      // push up, then down
+      $gameVariables[i].stairToList.push(i - 1);
+      $gameVariables[i].stairToList.push(i + 1);
+    }
+    $gameVariables[dungeonDepth].stairToList.push(dungeonDepth - 1);
     $gameVariables[dungeonDepth].stairDownNum = 0;
+    // add for test
+    $gameVariables[2].stairDownNum++;
+    $gameVariables[2].stairToList.push(11);
+    $gameVariables[11].stairToList.push(2);
+    $gameVariables[11].stairToList.push(12);
+    $gameVariables[12].stairToList.push(11);
+    $gameVariables[12].stairToList.push(13);
+    $gameVariables[13].stairDownNum = 0;
+    $gameVariables[13].stairToList.push(12);
+    for (let i = 11; i < 14; i++) {
+      $gameVariables[i].mapType = 'ICE';
+    }
 
     // game system setup
     $dataSystem.terms.params.push("武器威力"); // this one should be param(10)
@@ -1048,6 +1074,21 @@
     // setTimeout(MapUtils.goDownLevels, 500, 7);
   }
 
+  MapUtils.getMapTileSet = function(mapType) {
+    switch (mapType) {
+      case 'EARTH':
+        return DungeonTiles.earth;
+      case 'ICE':
+        return DungeonTiles.ice;
+      case 'FIRE':
+        return DungeonTiles.fire;
+      case 'AIR':
+        return DungeonTiles.air;
+    }
+    console.log('error: no such mapType: ' + mapType);
+    return null;
+  }
+
   // message window defined here, because it can't be assigned to $gameVariables, will cause save/load crash
   var messageWindow;
   var messageWindowNonBlocking;
@@ -1136,7 +1177,7 @@
 
   // used to judge visible/walkable tiles
   MapUtils.isTilePassable = function (mapId, x, y, tile) {
-    if (tile == FLOOR || tile == DOOR) {
+    if (tile != WALL) {
       if (!$gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(x, y)]
          || $gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(x, y)].isRevealed) {
         return true;
@@ -1260,15 +1301,22 @@
     mapData[x][y].isVisible = MapUtils.checkVisible(src, distance, x, y, mapData);
   }
 
-  function looksLikeWall(mapId, rawData, x, y) {
-    if ((rawData && rawData[x][y] == WALL) || ($gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(x, y)]
-      && !$gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(x, y)].isRevealed)) {
-      return true;
+  function looksLikeWall(mapId, rawData, x, y, tileType) {
+    if (rawData && rawData[x][y] == tileType) {
+      return false;
+    } else if ($gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(x, y)]
+      && $gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(x, y)].isRevealed) {
+      return false;
     }
-    return false;
+    return true;
+    // if ((rawData && rawData[x][y] == WALL) || ($gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(x, y)]
+    //   && !$gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(x, y)].isRevealed)) {
+    //   return true;
+    // }
+    // return false;
   }
 
-  function refineMapTile(mapId, rawData, x, y, centerTile) {
+  function refineMapTile(mapId, rawData, x, y, centerTile, tileType) {
     if (!rawData) {
       // create rawData
       let mapData = $gameVariables[mapId].mapData;
@@ -1282,19 +1330,19 @@
     }
     let east = false, west = false, south = false, north = false;
     // check east
-    if (x + 1 < rawData.length && looksLikeWall(mapId, rawData, x + 1, y)) {
+    if (x + 1 < rawData.length && looksLikeWall(mapId, rawData, x + 1, y, tileType)) {
       east = true;
     }
     // check west
-    if (x - 1 >= 0 && looksLikeWall(mapId, rawData, x - 1, y)) {
+    if (x - 1 >= 0 && looksLikeWall(mapId, rawData, x - 1, y, tileType)) {
       west = true;
     }
     // check north
-    if (y - 1 >= 0 && looksLikeWall(mapId, rawData, x, y - 1)) {
+    if (y - 1 >= 0 && looksLikeWall(mapId, rawData, x, y - 1, tileType)) {
       north = true;
     }
     // check south
-    if (y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x, y + 1)) {
+    if (y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x, y + 1, tileType)) {
       south = true;
     }
     var result = centerTile;
@@ -1320,7 +1368,7 @@
           } else {
             result += 36;
             // check left down
-            if (x - 1 >= 0 && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x - 1, y + 1)) {
+            if (x - 1 >= 0 && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x - 1, y + 1, tileType)) {
               result += 1;
             }
           }
@@ -1328,17 +1376,17 @@
           if (south) {
             result += 38;
             // check left top
-            if (x - 1 >= 0 && y - 1 >= 0 && looksLikeWall(mapId, rawData, x - 1, y - 1)) {
+            if (x - 1 >= 0 && y - 1 >= 0 && looksLikeWall(mapId, rawData, x - 1, y - 1, tileType)) {
               result += 1;
             }
           } else {
             result += 24;
             // check left down
-            if (x - 1 >= 0 && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x - 1, y + 1)) {
+            if (x - 1 >= 0 && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x - 1, y + 1, tileType)) {
               result += 1;
             }
             // check left top
-            if (x - 1 >= 0 && y - 1 >= 0 && looksLikeWall(mapId, rawData, x - 1, y - 1)) {
+            if (x - 1 >= 0 && y - 1 >= 0 && looksLikeWall(mapId, rawData, x - 1, y - 1, tileType)) {
               result += 2;
             }
           }
@@ -1352,7 +1400,7 @@
           } else {
             result += 34;
             // check right down
-            if (x + 1 < rawData.length && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x + 1, y + 1)) {
+            if (x + 1 < rawData.length && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x + 1, y + 1, tileType)) {
               result += 1;
             }
           }
@@ -1360,17 +1408,17 @@
           if (south) {
             result += 40;
             // check right top
-            if (x + 1 < rawData.length && y - 1 >= 0 && looksLikeWall(mapId, rawData, x + 1, y - 1)) {
+            if (x + 1 < rawData.length && y - 1 >= 0 && looksLikeWall(mapId, rawData, x + 1, y - 1, tileType)) {
               result += 1;
             }
           } else {
             result += 16;
             // check right top
-            if (x + 1 < rawData.length && y - 1 >= 0 && looksLikeWall(mapId, rawData, x + 1, y - 1)) {
+            if (x + 1 < rawData.length && y - 1 >= 0 && looksLikeWall(mapId, rawData, x + 1, y - 1, tileType)) {
               result += 1;
             }
             // check right down
-            if (x + 1 < rawData.length && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x + 1, y + 1)) {
+            if (x + 1 < rawData.length && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x + 1, y + 1, tileType)) {
               result += 2;
             }
           }
@@ -1382,10 +1430,10 @@
           } else {
             result += 20;
             // check right down
-            if (x + 1 < rawData.length && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x + 1, y + 1)) {
+            if (x + 1 < rawData.length && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x + 1, y + 1, tileType)) {
               result += 1;
             }
-            if (x - 1 >= 0 && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x - 1, y + 1)) {
+            if (x - 1 >= 0 && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x - 1, y + 1, tileType)) {
               result += 2;
             }
             // check left down
@@ -1394,29 +1442,29 @@
           if (south) {
             result += 28;
             // check left top
-            if (x - 1 >= 0 && y - 1 >= 0 && looksLikeWall(mapId, rawData, x - 1, y - 1)) {
+            if (x - 1 >= 0 && y - 1 >= 0 && looksLikeWall(mapId, rawData, x - 1, y - 1, tileType)) {
               result += 1;
             }
             // check right top
-            if (x + 1 < rawData.length && y - 1 >= 0 && looksLikeWall(mapId, rawData, x + 1, y - 1)) {
+            if (x + 1 < rawData.length && y - 1 >= 0 && looksLikeWall(mapId, rawData, x + 1, y - 1, tileType)) {
               result += 2;
             }
           } else {
             // check corners
             // left top
-            if (x - 1 >= 0 && y - 1 >= 0 && looksLikeWall(mapId, rawData, x - 1, y - 1)) {
+            if (x - 1 >= 0 && y - 1 >= 0 && looksLikeWall(mapId, rawData, x - 1, y - 1, tileType)) {
               result += 1;
             }
             // right top
-            if (x + 1 < rawData.length && y - 1 >= 0 && looksLikeWall(mapId, rawData, x + 1, y - 1)) {
+            if (x + 1 < rawData.length && y - 1 >= 0 && looksLikeWall(mapId, rawData, x + 1, y - 1, tileType)) {
               result += 2;
             }
             // right down
-            if (x + 1 < rawData.length && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x + 1, y + 1)) {
+            if (x + 1 < rawData.length && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x + 1, y + 1, tileType)) {
               result += 4;
             }
             // left down
-            if (x - 1 >= 0 && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x - 1, y + 1)) {
+            if (x - 1 >= 0 && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x - 1, y + 1, tileType)) {
               result += 8;
             }
           }
@@ -1438,11 +1486,12 @@
   }
 
   MapUtils.translateMap = function (rawData, mapId) {
+    currentDungeonTiles = MapUtils.getMapTileSet($gameVariables[mapId].mapType);
     var mapData = new Array(rawData.length);
     for (var i = 0; i < mapData.length; i++) {
       mapData[i] = new Array(rawData[0].length);
       for (var j = 0; j < rawData[0].length; j++) {
-        let center = refineMapTile(mapId, rawData, i, j, currentDungeonTiles.floorCenter);
+        let center = refineMapTile(mapId, rawData, i, j, currentDungeonTiles.floorCenter, FLOOR);
         mapData[i][j] = new MapData(center, rawData[i][j], i, j);
       }
     }
@@ -1450,17 +1499,23 @@
     // deal with tile IDs
     for (var j = 0; j < rawData[0].length; j++) {
       for (var i = 0; i < rawData.length; i++) {
-        if (rawData[i][j] == FLOOR) {
-          // skip the floor tunning
-          continue;
-        } else if (rawData[i][j] == WALL) {
-          mapData[i][j].base = currentDungeonTiles.ceilingCenter;
-        } else if (rawData[i][j] == DOOR) {
-          if ($gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(i, j)]) {
+        switch (rawData[i][j]) {
+          case FLOOR:
+            // skip the floor tunning
+            continue;
+          case WALL:
             mapData[i][j].base = currentDungeonTiles.ceilingCenter;
-          } else {
-            new Game_Door(i, j);
-          }
+            break;
+          case DOOR:
+            if ($gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(i, j)]) {
+              mapData[i][j].base = currentDungeonTiles.ceilingCenter;
+            } else {
+              new Game_Door(i, j);
+            }
+            break;
+          case WATER: case LAVA:
+            mapData[i][j].base = refineMapTile(mapId, rawData, i, j, currentDungeonTiles.waterCenter, rawData[i][j]);
+            break;
         }
       }
     }
@@ -1600,7 +1655,7 @@
       return;
     }
 
-    stair.toMapId = (stair.type == 0) ? $gameMap.mapId() - 1 : $gameMap.mapId() + 1;
+    stair.toMapId = mapVariable.stairToList[mapVariable.stairList.indexOf(stair)];
     if (character == $gamePlayer) {
       $gameVariables[0].transferInfo = new TransferInfo(stair.toMapId, character._x, character._y);
       $gameScreen.startFadeOut(1);
@@ -1874,6 +1929,20 @@
           east = FLOOR;
         }
         map[i * 2 + 1 + index][j * 2 + index] = east;
+      }
+    }
+
+    // add for test only
+    let xBound = map.length;
+    let yBound = map[0].length;
+    let poolNum = 10;
+    for (let i = 0; i < poolNum; i++) {
+      let x = getRandomIntRange(1, xBound - 2);
+      let y = getRandomIntRange(1, yBound - 2);
+      for (let j = x - 1; j < x + 2; j++) {
+        for (let k = y - 1; k < y + 2; k++) {
+          map[j][k] = WATER;
+        }
       }
     }
     return map;
@@ -2577,70 +2646,68 @@
             MapUtils.setupNewMap(targetMapId);
 
             // collect all FLOOR tiles
-            var mapVariable = $gameVariables[nowMapId];
-            var targetMapData = $gameVariables[targetMapId].mapData;
-            var floors = MapUtils.findMapDataFloor(targetMapData);
-            // create down stairs
-            var stairDownCreated = 0;
-            while (stairDownCreated < $gameVariables[targetMapId].stairDownNum) {
-              var candidate = floors[getRandomInt(floors.length)];
-              var positionFound = true;
-              for (var i in $gameVariables[targetMapId].stairList) {
-                var toCheck = $gameVariables[targetMapId].stairList[i];
-                if (candidate.x == toCheck.x && candidate.y == toCheck.y) {
-                  positionFound = false;
-                  break;
-                }
-              }
-              if (positionFound) {
-                var newStair = new StairData();
-                newStair.type = 1;
-                newStair.x = candidate.x;
-                newStair.y = candidate.y;
-                $gameVariables[targetMapId].stairList.push(newStair);
-                // no need to deal with connect information
-                stairDownCreated++;
-              }
-            }
-
-            // connect upper stairs
-            for (var i = 0; i < mapVariable.stairList.length; i++) {
-              var toConnect = mapVariable.stairList[i];
-              if (toConnect.type != 1) {
-                // only deal with stairs going down
-                continue;
-              }
-              var positionFound = false;
-              var toX, toY;
-              while (!positionFound) {
-                positionFound = true;
-                var candidate = floors[getRandomInt(floors.length)];
-                for (var j = 0; j < $gameVariables[targetMapId].stairList.length; j++) {
-                  var toCheck = $gameVariables[targetMapId].stairList[j];
-                  if (candidate.x == toCheck.x && candidate.y == toCheck.y) {
-                    positionFound = false;
-                    break;
+            let mapVariable = $gameVariables[nowMapId];
+            let targetMapVariable = $gameVariables[targetMapId];
+            let targetMapData = $gameVariables[targetMapId].mapData;
+            let floors = MapUtils.findMapDataFloor(targetMapData);
+            // create up stairs
+            let stairUpCreated = 0;
+            let stairIndex = 0;
+            while (stairUpCreated < targetMapVariable.stairUpNum) {
+              let randId = getRandomInt(floors.length);
+              let candidate = floors[randId];
+              floors.splice(randId, 1); // remove it from candidate list
+              let newStair = new StairData();
+              newStair.x = candidate.x;
+              newStair.y = candidate.y;
+              newStair.toMapId = targetMapVariable.stairToList[stairIndex];
+              targetMapVariable.stairList.push(newStair);
+              if (targetMapVariable.stairToList[stairIndex] == nowMapId) {
+                let toConnect;
+                for (let i = 0; i < mapVariable.stairList.length; i++) {
+                  if (mapVariable.stairList[i].toMapId == targetMapId) {
+                    toConnect = mapVariable.stairList[i];
                   }
                 }
-                if (positionFound) {
-                  var newStair = new StairData();
-                  newStair.type = 0;
-                  newStair.x = candidate.x;
-                  newStair.y = candidate.y;
-                  newStair.toMapId = nowMapId;
-                  newStair.toX = toConnect.x;
-                  newStair.toY = toConnect.y;
-                  $gameVariables[targetMapId].stairList.push(newStair);
-
-                  toConnect.toMapId = targetMapId;
-                  toConnect.toX = newStair.x;
-                  toConnect.toY = newStair.y;
-                }
+                toConnect.toX = newStair.x;
+                toConnect.toY = newStair.y;
+                newStair.toX = toConnect.x;
+                newStair.toY = toConnect.y;
               }
+              stairUpCreated++;
+              stairIndex++;
             }
-            var nowStair = null;
-            for (var i = 0; i < $gameVariables[nowMapId].stairList.length; i++) {
-              var candidate = $gameVariables[nowMapId].stairList[i];
+            // create down stairs
+            let stairDownCreated = 0;
+            while (stairDownCreated < $gameVariables[targetMapId].stairDownNum) {
+              let randId = getRandomInt(floors.length);
+              let candidate = floors[randId];
+              floors.splice(randId, 1); // remove it from candidate list
+              let newStair = new StairData();
+              newStair.type = 1;
+              newStair.x = candidate.x;
+              newStair.y = candidate.y;
+              newStair.toMapId = targetMapVariable.stairToList[stairIndex];
+              $gameVariables[targetMapId].stairList.push(newStair);
+              if (targetMapVariable.stairToList[stairIndex] == nowMapId) {
+                let toConnect;
+                for (let i = 0; i < mapVariable.stairList.length; i++) {
+                  if (mapVariable.stairList[i].toMapId == targetMapId) {
+                    toConnect = mapVariable.stairList[i];
+                  }
+                }
+                toConnect.toX = newStair.x;
+                toConnect.toY = newStair.y;
+                newStair.toX = toConnect.x;
+                newStair.toY = toConnect.y;
+              }
+              stairDownCreated++;
+              stairIndex++;
+            }
+
+            let nowStair = null;
+            for (let i = 0; i < mapVariable.stairList.length; i++) {
+              let candidate = mapVariable.stairList[i];
               if (candidate.x == $gameVariables[0].transferInfo.nowX && candidate.y == $gameVariables[0].transferInfo.nowY) {
                 nowStair = candidate;
                 break;
@@ -2648,10 +2715,11 @@
             }
             if (targetMapId == 2) {
               // do not generate upstair on dungeon level 1
-              let stairList = $gameVariables[targetMapId].stairList;
+              let stairList = targetMapVariable.stairList;
               for (let id in stairList) {
                 if (stairList[id].type == 0) {
                   stairList.splice(id, 1);
+                  targetMapVariable.stairToList.splice(0, 1);
                   break;
                 }
               }
@@ -5348,7 +5416,7 @@
                       if ((x >= 0 && x < currentMapData.length) && (y >= 0 && y < currentMapData[0].length)
                         && currentMapData[x][y].originalTile != WALL) {
                         currentMapData[x][y].base = refineMapTile($gameMap.mapId(), null
-                          , x, y, currentDungeonTiles.floorCenter);
+                          , x, y, currentDungeonTiles.floorCenter, FLOOR);
                       }
                     }
                   }
