@@ -189,6 +189,10 @@
                         status = '破甲';
                         color = debuffColor;
                         break;
+                    case 'wetCount':
+                        status = '濡濕';
+                        color = debuffColor;
+                        break;
                 }
                 status += ' ';
                 width = this.textWidth(status);

@@ -359,6 +359,8 @@
       poison: '{0}中毒了!',
       recoverFromPoison: '{0}從毒素中恢復了.',
       poisonDamage: '{0}受到了{1}點毒素傷害.',
+      wet: '{0}渾身溼透了.',
+      recoverFromWet: '{0}的身體乾燥了.',
       somebody: '某人',
       secretDoorDiscovered: '你發現了一扇隱藏的門!',
       absorbSoul: '你從{0}身上吸收了{1}!',
@@ -518,6 +520,7 @@
       bleedingCount: 0,
       faintCount: 0,
       breakArmorCount: 0,
+      wetCount: 0,
       groundHoleTrapped: false,
       skillEffect: [],
       bellyStatus: 'NORMAL' // FAINT, WEAK, HUNGRY, NORMAL, FULL
@@ -611,6 +614,10 @@
               break;
             case 'breakArmorCount':
               LogUtils.addLog(String.format(Message.display('breakArmorRecovered')
+                , LogUtils.getCharName(target)));
+              break;
+            case 'wetCount':
+              LogUtils.addLog(String.format(Message.display('recoverFromWet')
                 , LogUtils.getCharName(target)));
               break;
           }
@@ -1096,8 +1103,8 @@
     if (src instanceof Game_Follower) {
       return;
     }
-    let realSrc = BattleUtils.getRealTarget(src);
     let mapData = $gameVariables[$gameMap.mapId()].mapData;
+    let realSrc = BattleUtils.getRealTarget(src);
     if ((mapData[oldX][oldY].originalTile != mapData[nowX][nowY].originalTile)
       && (mapData[oldX][oldY].originalTile == WATER || mapData[nowX][nowY].originalTile == WATER)
       && realSrc.moveType != 2) {
@@ -1107,6 +1114,9 @@
           LogUtils.addLog(String.format(Message.display('climbOutOfWater'), LogUtils.getCharName(realSrc)));
         } else {
           LogUtils.addLog(String.format(Message.display('jumpIntoWater'), LogUtils.getCharName(realSrc)));
+          if (realSrc.status.wetCount == 0) {
+            LogUtils.addLog(String.format(Message.display('wet'), LogUtils.getCharName(realSrc)));
+          }
         }
       }
     }
@@ -4836,6 +4846,12 @@
         evt.triggered(target);
         break;
       }
+    }
+    // check if target in the water
+    let realTarget = BattleUtils.getRealTarget(target);
+    let mapData = $gameVariables[$gameMap.mapId()].mapData;
+    if (mapData[target._x][target._y].originalTile == WATER && realTarget.moveType != 1) {
+      realTarget.status.wetCount = 10;
     }
   }
 
@@ -10583,10 +10599,15 @@
       var minValue = this.paramMin(paramId);
       let modifier = 1;
       if (this.status) {
+        if (paramId == 6) { // speed
+          if (this.status.wetCount > 0 && this.moveType != 1) {
+            modifier *= 0.5;
+          }
+        }
         if (this.status.bellyStatus == 'FAINT') {
-          modifier = 0.5;
+          modifier *= 0.5;
         } else if (this.status.bellyStatus == 'WEAK') {
-          modifier = 0.7;
+          modifier *= 0.7;
         }
       }
       return Math.round(value.clamp(minValue, maxValue) * modifier);
