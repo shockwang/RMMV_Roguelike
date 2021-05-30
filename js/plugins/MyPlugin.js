@@ -356,6 +356,8 @@
       seeInvisibleEnd: '{0}察覺隱形事物的能力消失了.',
       acidDamage: '{0}受到了{1}點酸蝕傷害!',
       equipAcidDamage: '{0}的{1}受到了酸的侵蝕!',
+      mobArmorAcidDamage: '{0}的護甲受到了酸的侵蝕!',
+      mobWeaponAcidDamage: '{0}的武器受到了酸的侵蝕!',
       poison: '{0}中毒了!',
       recoverFromPoison: '{0}從毒素中恢復了.',
       poisonDamage: '{0}受到了{1}點毒素傷害.',
@@ -714,14 +716,24 @@
 
   CharUtils.updateTp = function(target) {
     let realTarget = BattleUtils.getRealTarget(target);
+    let tpRecover = 0;
     if (realTarget.attacked) {
       // huge movement, do nothing
     } else if (realTarget.moved) {
-      realTarget.gainTp(walkTpRecover);
+      tpRecover = walkTpRecover;
     } else {
       // target rest
-      realTarget.gainTp(restTpRecover);
+      tpRecover = restTpRecover;
     }
+    // check status effect
+    if (realTarget.status.wetCount > 0) {
+      // check if adapts water
+      let skill = SkillUtils.getSkillInstance(realTarget, Skill_AdaptWater);
+      if (!skill || skill.lv < 3) {
+        tpRecover = Math.round(tpRecover / 2);
+      }
+    }
+    realTarget.gainTp(tpRecover);
   }
 
   CharUtils.spawnMob = function(dungeonLevel) {
@@ -1058,7 +1070,7 @@
     //   $gameParty.gainItem(new Potion_LevelUp(), 1);
     //   $gameParty.gainItem(new Potion_Invisible(), 1);
     //   $gameParty.gainItem(new Potion_SeeInvisible(), 1);
-    //   $gameParty.gainItem(new Potion_Acid(), 1);
+      $gameParty.gainItem(new Potion_Acid(), 1);
     //   $gameParty.gainItem(new Potion_Poison(), 1);
     // }
     // $gameParty.gainItem(new Dog_Tooth(), 1);
@@ -1068,16 +1080,17 @@
     // }
 
     // $gameParty._items.push(new Soul_Bite());
-    // Soul_Obtained_Action.learnSkill(Skill_Tough);
+    Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
+    Soul_Obtained_Action.learnSkill(Skill_Bite);
 
     // modify actor status
     // let player = $gameActors.actor(1);
     // player._paramPlus[2] = 6;
     // player._paramPlus[3] = 9;
     // player._paramPlus[6] = 9;
-    // $gameParty.gainItem(new Bear_Shield(), 1);
-    // $gameParty.gainItem(new Bear_Skin(), 1);
-    // $gameParty.gainItem(new Bear_Claw(), 1);
+    $gameParty.gainItem(new Bear_Shield(), 1);
+    $gameParty.gainItem(new Bear_Skin(), 1);
+    $gameParty.gainItem(new Bear_Claw(), 1);
     // for (let i = 0; i < 6; i++) {
     //   player.levelUp();
     // }
@@ -1247,8 +1260,12 @@
     var visible = false;
     // check if on water block
     let realSrc = BattleUtils.getRealTarget(src);
-    if (mapData[src._x][src._y].originalTile == WATER && realSrc.moveType != 1) {
-      distance = 1;
+    if (mapData[src._x][src._y].originalTile == WATER) {
+      // check if adapts water
+      let skill = SkillUtils.getSkillInstance(realSrc, Skill_AdaptWater);
+      if (!skill || skill.lv < 2) {
+        distance = 1;
+      }
     }
     if (MapUtils.getDistance(src._x, src._y, x, y) <= distance) {
       // around player, check visibility
@@ -1975,8 +1992,8 @@
     let yBound = map[0].length;
     let poolNum = 10;
     for (let i = 0; i < poolNum; i++) {
-      let x = getRandomIntRange(1, xBound - 2);
-      let y = getRandomIntRange(1, yBound - 2);
+      let x = getRandomIntRange(2, xBound - 3);
+      let y = getRandomIntRange(2, yBound - 3);
       for (let j = x - 1; j < x + 2; j++) {
         for (let k = y - 1; k < y + 2; k++) {
           map[j][k] = WATER;
@@ -2498,6 +2515,7 @@
             let mapBlock = mapData[coordinate.x][coordinate.y];
             let tile = mapBlock.originalTile;
             let weight = -1;
+            // TODO: consider water/hollow/lava tile
             if (tile == FLOOR) {
               // check if mob on it
               let mob = $gameMap.eventsXy(coordinate.x, coordinate.y).filter(function(evt) {
@@ -3123,14 +3141,11 @@
 
   // overwrite this, so mobs can have their own [armor, magicResistance, weaponAtk]
   Game_Enemy.prototype.xparam = function(xparamId) {
-    if (this._xparams) {
-      if (xparamId == 2) {
-        return this._xparams[xparamId];
-      } else {
-        return this._xparams[xparamId] / 100;
-      }
+    if (xparamId == 2) {
+      return this._xparams[xparamId];
+    } else {
+      return this._xparams[xparamId] / 100;
     }
-    return 0;
   }
 
   Game_Enemy.prototype.exp = function() {
@@ -3497,6 +3512,7 @@
       name: '小雞',
       exp: 27,
       params: [1, 1, 6, 1, 5, 1, 3, 5],
+      xparams: [0, 0, 0],
       level: 1,
       moveType: 0 // 0: walk, 1: swim, 2: float
     }
@@ -3538,6 +3554,7 @@
       name: '小狗',
       exp: 27,
       params: [1, 1, 6, 6, 10, 10, 5, 5],
+      xparams: [0, 0, 0],
       level: 1,
       moveType: 0
     }
@@ -3602,6 +3619,7 @@
       name: '蜜蜂',
       exp: 30,
       params: [1, 1, 4, 3, 0, 0, 13, 5],
+      xparams: [0, 0, 0],
       level: 2,
       moveType: 2
     }
@@ -3658,6 +3676,7 @@
       name: '大雞',
       exp: 33,
       params: [1, 1, 10, 10, 1, 5, 9, 3],
+      xparams: [0, 0, 0],
       level: 3,
       moveType: 0
     }
@@ -3708,6 +3727,7 @@
       name: '老鼠',
       exp: 36,
       params: [1, 1, 12, 5, 0, 0, 15, 10],
+      xparams: [0, 0, 0],
       level: 4,
       moveType: 0
     }
@@ -3770,6 +3790,7 @@
       name: '貓',
       exp: 36,
       params: [1, 1, 6, 6, 30, 20, 15, 5],
+      xparams: [0, 0, 0],
       level: 4,
       moveType: 0
     }
@@ -3841,6 +3862,7 @@
       name: '野豬',
       exp: 43,
       params: [1, 1, 12, 15, 0, 0, 8, 5],
+      xparams: [0, 0, 0],
       level: 5,
       moveType: 0
     }
@@ -3897,6 +3919,7 @@
       name: '狼',
       exp: 50,
       params: [1, 1, 14, 10, 10, 10, 10, 3],
+      xparams: [0, 0, 0],
       level: 6,
       moveType: 0
     }
@@ -4033,6 +4056,7 @@
       name: '熊',
       exp: 50,
       params: [1, 1, 16, 20, 10, 10, 8, 5],
+      xparams: [0, 0, 0],
       level: 6,
       moveType: 0
     }
@@ -4092,6 +4116,7 @@
       name: '獅子',
       exp: 70,
       params: [1, 1, 20, 20, 10, 10, 18, 5],
+      xparams: [0, 0, 0],
       level: 8,
       moveType: 0
     }
@@ -4155,6 +4180,7 @@
       name: '水牛',
       exp: 70,
       params: [1, 1, 15, 30, 20, 20, 15, 5],
+      xparams: [0, 0, 0],
       level: 8,
       moveType: 0
     }
@@ -4839,11 +4865,13 @@
     let evts = $gameMap.eventsXy(target._x, target._y);
     for (let id in evts) {
       let evt = evts[id];
-      if (evt.type == 'TRAP' && evt.trap.lastTriggered != target) {
+      if (evt.type == 'TRAP') {
         if (CharUtils.playerCanSeeChar(target)) {
           evt.trap.isRevealed = true;
         }
-        evt.triggered(target);
+        if (evt.trap.lastTriggered != target) {
+          evt.triggered(target);
+        }
         break;
       }
     }
@@ -4852,6 +4880,13 @@
     let mapData = $gameVariables[$gameMap.mapId()].mapData;
     if (mapData[target._x][target._y].originalTile == WATER && realTarget.moveType != 1) {
       realTarget.status.wetCount = 10;
+      // check if target adapts water
+      let skill = SkillUtils.getSkillInstance(realTarget, Skill_AdaptWater);
+      if (skill) {
+        let index = skill.lv - 1;
+        let prop = window[skill.constructor.name].prop;
+        SkillUtils.gainSkillExp(realTarget, skill, index, prop);
+      }
     }
   }
 
@@ -6536,20 +6571,25 @@
       let toCheck = equip.traits[id];
       if (toCheck.code == 22) {
         if (prop.type == 'WEAPON' && toCheck.dataId == 2) {
-          let weaponBonus = ItemUtils.getEnchantment({name: toCheck.value});
-          weaponBonus += value;
-          toCheck.value =  toCheck.value.split(/\+|-/)[0];
-          if (weaponBonus > 0) {
-            toCheck.value += '+' + weaponBonus;
-          } else if (weaponBonus < 0) {
-            toCheck.value += weaponBonus;
-          }
+          toCheck.value = ItemUtils.enchantWeaponValue(toCheck.value, value);
         } else if (prop.type == 'ARMOR' && toCheck.dataId == 0) {
           ItemUtils.modifyAttr(toCheck, value);
         }
       }
     }
     ItemUtils.updateEquipDescription(equip);
+  }
+
+  ItemUtils.enchantWeaponValue = function(name, value) {
+    let weaponBonus = ItemUtils.getEnchantment({name: name});
+    weaponBonus += value;
+    name = name.split(/\+|-/)[0];
+    if (weaponBonus > 0) {
+      name += '+' + weaponBonus;
+    } else if (weaponBonus < 0) {
+      name += weaponBonus;
+    }
+    return name;
   }
 
   ItemUtils.spawnItemFromList = function(list, dungeonLevel) {
@@ -8503,22 +8543,11 @@
     let damage = 30;
     CharUtils.decreaseHp(realUser, damage);
     let msg = String.format(Message.display('acidDamage'), LogUtils.getCharName(realUser), damage);
-    // TODO: damage armor/weapon
-    if (user == $gamePlayer) {
-      let equips = realUser.equips().filter(function(item) {
-        return item != null;
-      })
-      if (equips.length > 0) {
-        let toDamage = equips[getRandomInt(equips.length)];
-        LogUtils.addLog(String.format(Message.display('equipAcidDamage')
-          , LogUtils.getCharName(realUser), toDamage.name));
-        ItemUtils.enchantEquip(toDamage, -1);
-      }
-    }
+    // damage armor/weapon
+    Skill_Acid.damageEquip(user, realUser);
 
     if (CharUtils.playerCanSeeChar(user)) {
       TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 39));
-      TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '酸蝕'));
       LogUtils.addLog(msg);
       if (identifyObject) {
         ItemUtils.identifyObject(this);
@@ -9176,6 +9205,38 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Soul_Acid
+
+  Soul_Acid = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Soul_Acid.prototype = Object.create(ItemTemplate.prototype);
+  Soul_Acid.prototype.constructor = Soul_Acid;
+
+  Soul_Acid.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
+    this.name = '酸蝕';
+    this.description = '你學會如何噴出酸液';
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Soul_AdaptWater
+
+  Soul_AdaptWater = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Soul_AdaptWater.prototype = Object.create(ItemTemplate.prototype);
+  Soul_AdaptWater.prototype.constructor = Soul_AdaptWater;
+
+  Soul_AdaptWater.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
+    this.name = '水性';
+    this.description = '你能夠在水中自由行動';
+  }
+
+  //-----------------------------------------------------------------------------------
   // SkillUtils
   //
   // Skill related methods
@@ -9415,6 +9476,35 @@
     subType:"PASSIVE",
     effect: [
       {lv: 1, levelUp: -1}
+    ]
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Skill_AdaptWater
+
+  Skill_AdaptWater = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_AdaptWater.prototype = Object.create(ItemTemplate.prototype);
+  Skill_AdaptWater.prototype.constructor = Skill_AdaptWater;
+
+  Skill_AdaptWater.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[11]);
+    this.name = '水性';
+    this.description = '能夠適應水域的能力';
+    this.iconIndex = 77;
+    this.lv = 1;
+    this.exp = 0;
+  }
+
+  Skill_AdaptWater.prop = {
+    type: "SKILL",
+    subType:"PASSIVE",
+    effect: [
+      {lv: 1, levelUp: 50},
+      {lv: 2, levelUp: 150},
+      {lv: 3, levelUp: -1},
     ]
   }
 
@@ -9777,6 +9867,103 @@
       }
     }
     func();
+    return true;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Skill_Acid
+
+  Skill_Acid = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_Acid.prototype = Object.create(ItemTemplate.prototype);
+  Skill_Acid.prototype.constructor = Skill_Acid;
+
+  Skill_Acid.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[13]);
+    this.name = '酸蝕';
+    this.description = '對一名敵人噴出酸液, 機率損傷護甲';
+    this.iconIndex = 2;
+    this.mpCost = 10;
+    this.tpCost = 0;
+    this.lv = 1;
+    this.exp = 0;
+  }
+
+  Skill_Acid.prop = {
+    type: "SKILL",
+    subType: "DIRECTIONAL",
+    damageType: "MELEE",
+    effect: [
+      {lv: 1, baseDamage: 10, acidPercentage: 0.3, levelUp: 50},
+      {lv: 2, baseDamage: 12, acidPercentage: 0.4, levelUp: 150},
+      {lv: 3, baseDamage: 14, acidPercentage: 0.5, levelUp: 300},
+      {lv: 4, baseDamage: 16, acidPercentage: 0.6, levelUp: 450},
+      {lv: 5, baseDamage: 18, acidPercentage: 0.7, levelUp: -1}
+    ]
+  }
+
+  Skill_Acid.damageEquip = function(target, realTarget) {
+    let damaged = false;
+    if (realTarget == $gameActors.actor(1)) {
+      let equips = realTarget.equips().filter(function(item) {
+        return item != null;
+      })
+      if (equips.length > 0) {
+        let toDamage = equips[getRandomInt(equips.length)];
+        LogUtils.addLog(String.format(Message.display('equipAcidDamage')
+          , LogUtils.getCharName(realTarget), toDamage.name));
+        ItemUtils.enchantEquip(toDamage, -1);
+        damaged = true;
+      }
+    } else {
+      // 70% damage armor, 30% damage weapon
+      if (getRandomInt(10) < 7 && realTarget._xparams[0] > 0) {
+        realTarget._xparams[0]--;
+        LogUtils.addLog(String.format(Message.display('mobArmorAcidDamage')
+          , LogUtils.getCharName(realTarget)));
+        damaged = true;
+      } else if (realTarget._xparams[2] != 0) {
+        realTarget._xparams[2] = ItemUtils.enchantWeaponValue(realTarget._xparams[2], -1);
+        LogUtils.addLog(String.format(Message.display('mobWeaponAcidDamage')
+          , LogUtils.getCharName(realTarget)));
+        damaged = true;
+      }
+    }
+    if (damaged) {
+      TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '酸蝕'));
+    }
+  }
+
+  Skill_Acid.prototype.action = function(src, target) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    CharUtils.decreaseMp(realSrc, this.mpCost);
+    CharUtils.decreaseTp(realSrc, this.tpCost);
+
+    if (target) {
+      let realTarget = BattleUtils.getRealTarget(target);
+      let prop = Skill_Acid.prop;
+      let index = this.lv - 1;
+      let value = prop.effect[index].baseDamage + Math.floor(realSrc.param(4) / 3)
+        - realTarget.param(9);
+      value = BattleUtils.getFinalDamage(value);
+      TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 39));
+      TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
+      LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)
+        , LogUtils.getPerformedTargetName(realSrc, realTarget), this.name, value));
+      CharUtils.decreaseHp(realTarget, value);
+      // check if causes bleeding
+      if (Math.random() < prop.effect[index].acidPercentage) {
+        // damage armor/weapon
+        Skill_Acid.damageEquip(target, realTarget);
+      }
+      SkillUtils.gainSkillExp(realSrc, this, index, prop);
+      BattleUtils.checkTargetAlive(realSrc, realTarget, target);
+    } else {
+      LogUtils.addLog(String.format(Message.display('attackAir'), LogUtils.getCharName(realSrc)
+        , this.name));
+    }
     return true;
   }
 
@@ -10600,7 +10787,8 @@
       let modifier = 1;
       if (this.status) {
         if (paramId == 6) { // speed
-          if (this.status.wetCount > 0 && this.moveType != 1) {
+          if (this.status.wetCount > 0 && this.moveType != 1
+            && !SkillUtils.getSkillInstance(this, Skill_AdaptWater)) {
             modifier *= 0.5;
           }
         }
