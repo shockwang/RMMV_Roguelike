@@ -50,6 +50,7 @@
 
     // indicates map attributes
     this.generateRandom = false;
+    this.dungeonLevel = 1; // determine the level difficulty
     this.stairDownNum = 1;
     this.stairUpNum = 1;
     this.stairList = [];
@@ -504,7 +505,9 @@
   CharUtils = function () {
     throw new Error('This is a static class');
   };
-  CharUtils.mobTemplates = []; // save all mobs
+  CharUtils.mobTemplates = [
+    [], [] // 0: earth, 1: ice
+  ]; // save all mobs
 
   CharUtils.baseHp = 35;
 
@@ -736,19 +739,54 @@
     realTarget.gainTp(tpRecover);
   }
 
-  CharUtils.spawnMob = function(dungeonLevel) {
-    let pool = [];
-    for (let id in CharUtils.mobTemplates) {
-      let mobClass = CharUtils.mobTemplates[id];
+  CharUtils.spawnMob = function(mapId) {
+    let mapType = $gameVariables[mapId].mapType;
+    let dungeonLevel = $gameVariables[mapId].dungeonLevel;
+    let pool = [], mapTypeIndex;
+    switch (mapType) {
+      case 'EARTH':
+        mapTypeIndex = 0;
+        break;
+      case 'ICE':
+        mapTypeIndex = 1;
+        break;
+    }
+    let mobTypeIndicator = mapTypeIndex;
+    if (getRandomInt(100) > 70) {
+      // creature from other dungeons
+      let temp;
+      do {
+        temp = getRandomInt(CharUtils.mobTemplates.length);
+      } while (temp == mapTypeIndex);
+      mobTypeIndicator = temp;
+    }
+    for (let id in CharUtils.mobTemplates[mobTypeIndicator]) {
+      let mobClass = CharUtils.mobTemplates[mobTypeIndicator][id];
       if (dungeonLevel >= mobClass.baseDungeonLevel
-        && (getRandomInt(100) > (dungeonLevel - mobClass.baseDungeonLevel) * 10)) {
+        && (getRandomInt(100) >= (dungeonLevel - mobClass.baseDungeonLevel) * 10)) {
         pool.push(mobClass);
       }
     }
     if (pool.length > 0) {
       return pool[getRandomInt(pool.length)];
+    } else if (mobTypeIndicator != mapTypeIndex) {
+      // recalculate: use local dungeon creature
+      for (let id in CharUtils.mobTemplates[mapTypeIndex]) {
+        let mobClass = CharUtils.mobTemplates[mapTypeIndex][id];
+        if (dungeonLevel >= mobClass.baseDungeonLevel
+          && (getRandomInt(100) > (dungeonLevel - mobClass.baseDungeonLevel) * 10)) {
+          pool.push(mobClass);
+        }
+      }
+      if (pool.length > 0) {
+        return pool[getRandomInt(pool.length)];
+      }
     }
     return null;
+  }
+
+  CharUtils.spawnMobNearPlayer = function(mobType, xOffset, yOffset) {
+    return new mobType($gamePlayer._x + xOffset, $gamePlayer._y + yOffset);
   }
 
   // for distance attack
@@ -953,6 +991,7 @@
     }
     for (let i = 1; i < 20; i++) {
       $gameVariables[i + 1].generateRandom = true;
+      $gameVariables[i + 1].dungeonLevel = i;
     }
     $gameVariables[1].stairUpNum = 0;
     $gameVariables[1].stairToList.push(2);
@@ -974,7 +1013,11 @@
     $gameVariables[13].stairToList.push(12);
     for (let i = 11; i < 14; i++) {
       $gameVariables[i].mapType = 'ICE';
+      $gameVariables[i].dungeonLevel = i - 5;
     }
+    // for test
+    $gameVariables[2].mapType = 'ICE';
+    $gameVariables[2].dungeonLevel = 6;
 
     // game system setup
     $dataSystem.terms.params.push("武器威力"); // this one should be param(10)
@@ -1015,6 +1058,7 @@
     $gameActors.actor(1).moved = false;
     $gameActors.actor(1).attacked = false;
     $gameActors.actor(1).moveType = 0;
+    $gameActors.actor(1).turnCount = 0;
     // initialize template events
     $gameVariables[0].templateEvents = {
       monster: $dataMap.events[3],
@@ -1070,7 +1114,7 @@
     //   $gameParty.gainItem(new Potion_LevelUp(), 1);
     //   $gameParty.gainItem(new Potion_Invisible(), 1);
     //   $gameParty.gainItem(new Potion_SeeInvisible(), 1);
-      $gameParty.gainItem(new Potion_Acid(), 1);
+    //   $gameParty.gainItem(new Potion_Acid(), 1);
     //   $gameParty.gainItem(new Potion_Poison(), 1);
     // }
     // $gameParty.gainItem(new Dog_Tooth(), 1);
@@ -1080,20 +1124,20 @@
     // }
 
     // $gameParty._items.push(new Soul_Bite());
-    Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
-    Soul_Obtained_Action.learnSkill(Skill_Bite);
+    // Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
+    Soul_Obtained_Action.learnSkill(Skill_Discharge);
 
     // modify actor status
-    // let player = $gameActors.actor(1);
-    // player._paramPlus[2] = 6;
-    // player._paramPlus[3] = 9;
-    // player._paramPlus[6] = 9;
+    let player = $gameActors.actor(1);
+    player._paramPlus[2] = 6;
+    player._paramPlus[3] = 9;
+    player._paramPlus[6] = 9;
     $gameParty.gainItem(new Bear_Shield(), 1);
     $gameParty.gainItem(new Bear_Skin(), 1);
     $gameParty.gainItem(new Bear_Claw(), 1);
-    // for (let i = 0; i < 6; i++) {
-    //   player.levelUp();
-    // }
+    for (let i = 0; i < 6; i++) {
+      player.levelUp();
+    }
     // setTimeout(MapUtils.goDownLevels, 500, 7);
   }
 
@@ -3205,6 +3249,7 @@
       this.mob._skills = [];
       this.mob.moved = false;
       this.mob.attacked = false;
+      this.mob.turnCount = 0;
       // find empty space for new event
       var eventId = MapUtils.findEmptyFromList($dataMap.events);
       $dataMap.events[eventId] = newDataMapEvent($gameVariables[0].templateEvents.monster, eventId, x, y);
@@ -3536,7 +3581,7 @@
       this.dropSoul(Soul_Chick);
     }
   }
-  CharUtils.mobTemplates.push(Chick);
+  CharUtils.mobTemplates[0].push(Chick);
 
   //-----------------------------------------------------------------------------------
   // Dog
@@ -3601,7 +3646,7 @@
       this.dropSoul(Soul_Bite);
     }
   }
-  CharUtils.mobTemplates.push(Dog);
+  CharUtils.mobTemplates[0].push(Dog);
 
   //-----------------------------------------------------------------------------------
   // Bee
@@ -3658,7 +3703,7 @@
       this.dropSoul(Soul_Pierce);
     }
   }
-  CharUtils.mobTemplates.push(Bee);
+  CharUtils.mobTemplates[0].push(Bee);
 
   //-----------------------------------------------------------------------------------
   // Rooster
@@ -3709,7 +3754,7 @@
       this.dropSoul(Soul_Chick);
     }
   }
-  CharUtils.mobTemplates.push(Rooster);
+  CharUtils.mobTemplates[0].push(Rooster);
 
   //-----------------------------------------------------------------------------------
   // Rat
@@ -3772,7 +3817,7 @@
       this.dropSoul(Soul_EatRot);
     }
   }
-  CharUtils.mobTemplates.push(Rat);
+  CharUtils.mobTemplates[0].push(Rat);
 
   //-----------------------------------------------------------------------------------
   // Cat
@@ -3844,7 +3889,7 @@
       this.dropSoul(Soul_Clever);
     }
   }
-  CharUtils.mobTemplates.push(Cat);
+  CharUtils.mobTemplates[0].push(Cat);
 
   //-----------------------------------------------------------------------------------
   // Boar
@@ -3901,7 +3946,7 @@
       this.dropSoul(Soul_Charge);
     }
   }
-  CharUtils.mobTemplates.push(Boar);
+  CharUtils.mobTemplates[0].push(Boar);
 
   //-----------------------------------------------------------------------------------
   // Wolf
@@ -3977,7 +4022,7 @@
       this.dropSoul(Soul_Scud);
     }
   }
-  CharUtils.mobTemplates.push(Wolf);
+  CharUtils.mobTemplates[0].push(Wolf);
 
   //-----------------------------------------------------------------------------------
   // Turtle
@@ -4038,7 +4083,7 @@
       this.dropSoul(Soul_Shield);
     }
   }
-  CharUtils.mobTemplates.push(Turtle);
+  CharUtils.mobTemplates[0].push(Turtle);
 
   //-----------------------------------------------------------------------------------
   // Bear
@@ -4098,7 +4143,7 @@
       this.dropSoul(Soul_Bash);
     }
   }
-  CharUtils.mobTemplates.push(Bear);
+  CharUtils.mobTemplates[0].push(Bear);
 
   //-----------------------------------------------------------------------------------
   // Lion
@@ -4162,7 +4207,7 @@
       this.dropSoul(Soul_Roar);
     }
   }
-  CharUtils.mobTemplates.push(Lion);
+  CharUtils.mobTemplates[0].push(Lion);
 
   //-----------------------------------------------------------------------------------
   // Buffalo
@@ -4226,7 +4271,68 @@
       this.dropSoul(Soul_Tough);
     }
   }
-  CharUtils.mobTemplates.push(Buffalo);
+  CharUtils.mobTemplates[0].push(Buffalo);
+
+  //-----------------------------------------------------------------------------------
+  // Slime
+
+  Slime = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Slime.baseDungeonLevel = 6;
+
+  Slime.prototype = Object.create(Game_Mob.prototype);
+  Slime.prototype.constructor = Slime;
+
+  Slime.prototype.initialize = function (x, y, fromData) {
+    let mobInitData = {
+      name: '史萊姆',
+      exp: 50,
+      params: [1, 1, 10, 10, 30, 30, 15, 5],
+      xparams: [8, 0, 0],
+      level: 6,
+      moveType: 0
+    }
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
+    this.setImage('Monster', 1);
+    if (!fromData) {
+      this.mob.mobClass = 'Slime';
+      this.mob._skills.push(new Skill_Acid());
+      let skill = new Skill_AdaptWater();
+      skill.lv = 3;
+      this.mob._skills.push(skill);
+    }
+  }
+
+  Slime.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Acid
+      return this.mob._skills[0].action(this, target);
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  Slime.prototype.looting = function () {
+    var lootings = [];
+    // TODO: implements looting
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Buffalo_Horn());
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Buffalo_Bone());
+    // }
+    // if (getRandomInt(100) < 30) {
+    //   lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
+    // }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_Acid);
+    }
+  }
+  CharUtils.mobTemplates[1].push(Slime);
 
   //-----------------------------------------------------------------------------------
   // Game_Door
@@ -5744,6 +5850,7 @@
       case 0:
         // block player from moving
         $gamePlayer._vehicleGettingOn = true;
+        $gameActors.actor(1).turnCount++;
         // check player action done
         if (!TimeUtils.actionDone) {
           setTimeout(TimeUtils.afterPlayerMoved, 1);
@@ -5771,18 +5878,16 @@
             ? $gameVariables[0].gameTimeAmp : TimeUtils.afterPlayerMovedData.tempTimeSpent;
           TimeUtils.afterPlayerMovedData.tempTimeSpent -= updateTime;
           $gameVariables[0].gameTime += updateTime;
-          var gameTurn = Math.floor($gameVariables[0].gameTime / $gameVariables[0].gameTimeAmp);
-          if (gameTurn % 20 == 0) {
-            // player & mob regen
+          if ($gameActors.actor(1).turnCount % 20 == 0) {
             CharUtils.regenerate($gamePlayer);
-            for (let i = 0; i < $gameMap._events.length; i++) {
-              let event = $gameMap._events[i];
-              if (event && !event._erased && event.type == 'MOB') {
-                CharUtils.regenerate(event);
-              }
+          }
+          for (let i = 0; i < $gameMap._events.length; i++) {
+            let event = $gameMap._events[i];
+            if (event && !event._erased && event.type == 'MOB' && event.mob.turnCount % 20 == 0) {
+              CharUtils.regenerate(event);
             }
           }
-          if (gameTurn % 20 == 0) {
+          if ($gameVariables[0].gameTime % 400 < 10) {
             MapUtils.addMobToNowMap();
           }
           TimeUtils.afterPlayerMovedData.state = 3;
@@ -5813,6 +5918,7 @@
           && $gameVariables[0].gameTime - event.mob.lastTimeMoved >= CharUtils.getActionTime(event.mob)) {
           TimeUtils.afterPlayerMovedData.done = false;
           event.mob.lastTimeMoved += CharUtils.getActionTime(event.mob);
+          event.mob.turnCount++;
           TimeUtils.afterPlayerMovedData.state = 5;
           event.action();
         } else {
@@ -9221,6 +9327,22 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Soul_Discharge
+
+  Soul_Discharge = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Soul_Discharge.prototype = Object.create(ItemTemplate.prototype);
+  Soul_Discharge.prototype.constructor = Soul_Discharge;
+
+  Soul_Discharge.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
+    this.name = '放電';
+    this.description = '你的身體開始帶電';
+  }
+
+  //-----------------------------------------------------------------------------------
   // Soul_AdaptWater
 
   Soul_AdaptWater = function() {
@@ -9885,7 +10007,7 @@
     this.name = '酸蝕';
     this.description = '對一名敵人噴出酸液, 機率損傷護甲';
     this.iconIndex = 2;
-    this.mpCost = 10;
+    this.mpCost = 15;
     this.tpCost = 0;
     this.lv = 1;
     this.exp = 0;
@@ -9894,13 +10016,13 @@
   Skill_Acid.prop = {
     type: "SKILL",
     subType: "DIRECTIONAL",
-    damageType: "MELEE",
+    damageType: "MAGIC",
     effect: [
-      {lv: 1, baseDamage: 10, acidPercentage: 0.3, levelUp: 50},
-      {lv: 2, baseDamage: 12, acidPercentage: 0.4, levelUp: 150},
-      {lv: 3, baseDamage: 14, acidPercentage: 0.5, levelUp: 300},
-      {lv: 4, baseDamage: 16, acidPercentage: 0.6, levelUp: 450},
-      {lv: 5, baseDamage: 18, acidPercentage: 0.7, levelUp: -1}
+      {lv: 1, baseDamage: 12, acidPercentage: 0.3, levelUp: 50},
+      {lv: 2, baseDamage: 14, acidPercentage: 0.4, levelUp: 150},
+      {lv: 3, baseDamage: 16, acidPercentage: 0.5, levelUp: 300},
+      {lv: 4, baseDamage: 18, acidPercentage: 0.6, levelUp: 450},
+      {lv: 5, baseDamage: 20, acidPercentage: 0.7, levelUp: -1}
     ]
   }
 
@@ -9957,6 +10079,72 @@
       if (Math.random() < prop.effect[index].acidPercentage) {
         // damage armor/weapon
         Skill_Acid.damageEquip(target, realTarget);
+      }
+      SkillUtils.gainSkillExp(realSrc, this, index, prop);
+      BattleUtils.checkTargetAlive(realSrc, realTarget, target);
+    } else {
+      LogUtils.addLog(String.format(Message.display('attackAir'), LogUtils.getCharName(realSrc)
+        , this.name));
+    }
+    return true;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Skill_Discharge
+
+  Skill_Discharge = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_Discharge.prototype = Object.create(ItemTemplate.prototype);
+  Skill_Discharge.prototype.constructor = Skill_Discharge;
+
+  Skill_Discharge.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[13]);
+    this.name = '放電';
+    this.description = '對一名敵人釋放電擊, 機率麻痺';
+    this.iconIndex = 2;
+    this.mpCost = 15;
+    this.tpCost = 0;
+    this.lv = 1;
+    this.exp = 0;
+  }
+
+  Skill_Discharge.prop = {
+    type: "SKILL",
+    subType: "DIRECTIONAL",
+    damageType: "MAGIC",
+    effect: [
+      {lv: 1, baseDamage: 12, paralyzePercentage: 0.3, paralyzeTurnMax: 4, levelUp: 50},
+      {lv: 2, baseDamage: 14, paralyzePercentage: 0.4, paralyzeTurnMax: 5, levelUp: 150},
+      {lv: 3, baseDamage: 16, paralyzePercentage: 0.5, paralyzeTurnMax: 6, levelUp: 300},
+      {lv: 4, baseDamage: 18, paralyzePercentage: 0.6, paralyzeTurnMax: 7, levelUp: 450},
+      {lv: 5, baseDamage: 20, paralyzePercentage: 0.7, paralyzeTurnMax: 8, levelUp: -1}
+    ]
+  }
+
+  Skill_Discharge.prototype.action = function(src, target) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    CharUtils.decreaseMp(realSrc, this.mpCost);
+    CharUtils.decreaseTp(realSrc, this.tpCost);
+
+    if (target) {
+      let realTarget = BattleUtils.getRealTarget(target);
+      let prop = Skill_Discharge.prop;
+      let index = this.lv - 1;
+      let value = prop.effect[index].baseDamage + Math.floor(realSrc.param(4) / 3)
+        - realTarget.param(9);
+      value = BattleUtils.getFinalDamage(value);
+      TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 77));
+      TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
+      LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)
+        , LogUtils.getPerformedTargetName(realSrc, realTarget), this.name, value));
+      CharUtils.decreaseHp(realTarget, value);
+      // check if causes paralysis
+      if (Math.random() < prop.effect[index].paralyzePercentage) {
+        realTarget.paralyzeCount += dice(1, prop.effect[index].paralyzeTurnMax);
+        TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '麻痺'));
+        LogUtils.addLog(String.format(Message.display('paralyze'), LogUtils.getCharName(realTarget)));
       }
       SkillUtils.gainSkillExp(realSrc, this, index, prop);
       BattleUtils.checkTargetAlive(realSrc, realTarget, target);
