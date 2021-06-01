@@ -106,6 +106,12 @@
     this.param2 = param2;
   }
 
+  var MapBlocks = function(floor, water, hollow) {
+    this.floor = floor;
+    this.water = water;
+    this.hollow = hollow;
+  }
+
   var FLOOR = '□';
   var WALL = '■';
   var DOOR = 'Ｄ';
@@ -669,10 +675,20 @@
   }
 
   CharUtils.canSee = function(src, target) {
+    let srcEvt = BattleUtils.getEventFromCharacter(src);
+    let targetEvt = BattleUtils.getEventFromCharacter(target);
+
     if (src.status.blindCount > 0) {
       return false;
     } else if (target.status.invisibleCount > 0 && src.status.seeInvisibleCount == 0) {
       return false;
+    } else if ($gameVariables[$gameMap.mapId()].mapData[targetEvt._x][targetEvt._y].originalTile == WATER) {
+      // check if src in the same water area
+      if ($gameVariables[$gameMap.mapId()].mapData[srcEvt._x][srcEvt._y].originalTile == WATER) {
+        return true;
+      } else {
+        return false;
+      }
     }
     return true;
   }
@@ -1696,7 +1712,7 @@
 
   MapUtils.drawMob = function(mapData, event) {
     if (mapData[event._x][event._y].isVisible) {
-      if (event.mob.status.invisibleCount > 0) {
+      if (event.mob.status.invisibleCount > 0 || mapData[event._x][event._y].originalTile == WATER) {
         if (CharUtils.canSee($gameActors.actor(1), event.mob)) {
           event.setOpacity(128);
         } else {
@@ -2659,7 +2675,7 @@
 
   MapUtils.addMobToNowMap = function() {
     let mapId = $gameMap._mapId;
-    let floors = MapUtils.findMapDataFloor($gameVariables[mapId].mapData);
+    let floors = MapUtils.getMapBlocks($gameVariables[mapId].mapData).floor;
     let mapEvts = $gameMap.events();
     let nowMobCount = 0;
     for (let id in mapEvts) {
@@ -2708,16 +2724,24 @@
     }
   }
 
-  MapUtils.findMapDataFloor = function (mapData) {
-    var floors = [];
+  MapUtils.getMapBlocks = function (mapData) {
+    var floor = [], water = [], hollow = [];
     for (var j = 0; j < mapData[0].length; j++) {
       for (var i = 0; i < mapData.length; i++) {
-        if (mapData[i][j].originalTile == FLOOR) {
-          floors.push(mapData[i][j]);
+        switch (mapData[i][j].originalTile) {
+          case FLOOR:
+            floor.push(mapData[i][j]);
+            break;
+          case WATER:
+            water.push(mapData[i][j]);
+            break;
+          case HOLLOW:
+            hollow.push(mapData[i][j]);
+            break;
         }
       }
     }
-    return floors;
+    return new MapBlocks(floor, water, hollow);
   }
 
   MapUtils.setupSecretDoor = function(mapId, rawMap) {
@@ -2751,7 +2775,7 @@
             let mapVariable = $gameVariables[nowMapId];
             let targetMapVariable = $gameVariables[targetMapId];
             let targetMapData = $gameVariables[targetMapId].mapData;
-            let floors = MapUtils.findMapDataFloor(targetMapData);
+            let floors = MapUtils.getMapBlocks(targetMapData).floor;
             // create up stairs
             let stairUpCreated = 0;
             let stairIndex = 0;
@@ -2832,10 +2856,10 @@
             // new mobs in map
             var setupEvents = function (nowMapId, targetMapId, nowStair) {
               if (SceneManager.isCurrentSceneStarted()) {
-                let floors = MapUtils.findMapDataFloor($gameVariables[targetMapId].mapData);
-                TrapUtils.generateTraps(targetMapId, floors);
-                MapUtils.generateNewMapMobs(targetMapId, floors);
-                MapUtils.generateNewMapItems(targetMapId, floors);
+                let mapBlocks = MapUtils.getMapBlocks($gameVariables[targetMapId].mapData);
+                TrapUtils.generateTraps(targetMapId, mapBlocks.floor);
+                MapUtils.generateNewMapMobs(targetMapId, mapBlocks.floor);
+                MapUtils.generateNewMapItems(targetMapId, mapBlocks.floor);
                 MapUtils.drawEvents($gameVariables[targetMapId].mapData);
                 SceneManager.goto(Scene_Map);
               } else {
@@ -4289,7 +4313,7 @@
       name: '史萊姆',
       exp: 50,
       params: [1, 1, 10, 10, 30, 30, 15, 5],
-      xparams: [8, 0, 0],
+      xparams: [5, 0, 0],
       level: 6,
       moveType: 0
     }
@@ -4333,6 +4357,67 @@
     }
   }
   CharUtils.mobTemplates[1].push(Slime);
+
+  //-----------------------------------------------------------------------------------
+  // Jellyfish
+
+  Jellyfish = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Jellyfish.baseDungeonLevel = 6;
+
+  Jellyfish.prototype = Object.create(Game_Mob.prototype);
+  Jellyfish.prototype.constructor = Jellyfish;
+
+  Jellyfish.prototype.initialize = function (x, y, fromData) {
+    let mobInitData = {
+      name: '水母',
+      exp: 50,
+      params: [1, 1, 10, 10, 30, 30, 15, 5],
+      xparams: [0, 5, 0],
+      level: 6,
+      moveType: 1
+    }
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
+    this.setImage('Jellyfish', 0);
+    if (!fromData) {
+      this.mob.mobClass = 'Jellyfish';
+      this.mob._skills.push(new Skill_Discharge());
+      let skill = new Skill_AdaptWater();
+      skill.lv = 3;
+      this.mob._skills.push(skill);
+    }
+  }
+
+  Jellyfish.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Acid
+      return this.mob._skills[0].action(this, target);
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  Jellyfish.prototype.looting = function () {
+    var lootings = [];
+    // TODO: implements looting
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Buffalo_Horn());
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Buffalo_Bone());
+    // }
+    // if (getRandomInt(100) < 30) {
+    //   lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
+    // }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_Discharge);
+    }
+  }
+  CharUtils.mobTemplates[1].push(Jellyfish);
 
   //-----------------------------------------------------------------------------------
   // Game_Door
@@ -5850,12 +5935,12 @@
       case 0:
         // block player from moving
         $gamePlayer._vehicleGettingOn = true;
-        $gameActors.actor(1).turnCount++;
         // check player action done
         if (!TimeUtils.actionDone) {
           setTimeout(TimeUtils.afterPlayerMoved, 1);
           return;
         }
+        $gameActors.actor(1).turnCount++;
         CharUtils.decreaseNutrition($gamePlayer);
         if (!timeSpent) {
           timeSpent = CharUtils.getActionTime(BattleUtils.getRealTarget($gamePlayer));
@@ -5943,8 +6028,8 @@
         TimeUtils.afterPlayerMovedData.state = 2;
         return TimeUtils.afterPlayerMoved();
       case 7:
-        // play queued anime
         CharUtils.updateStatus($gamePlayer);
+        // play queued anime
         TimeUtils.playAnime();
         TimeUtils.afterPlayerMovedData.state = 8;
       case 8:
@@ -6073,6 +6158,20 @@
 
   BattleUtils.getRealTarget = function(src) {
     return (src == $gamePlayer) ? $gameActors.actor(1) : src.mob;
+  }
+
+  BattleUtils.getEventFromCharacter = function(realTarget) {
+    if (realTarget == $gameActors.actor(1)) {
+      return $gamePlayer;
+    } else {
+      for (let id in $gameMap._events) {
+        let evt = $gameMap._events[id];
+        if (evt && evt.type == 'MOB' && evt.mob == realTarget) {
+          return evt;
+        }
+      }
+    }
+    return null;
   }
 
   // realSrc can be null, which means realTarget died on his own
@@ -8932,10 +9031,11 @@
   }
 
   Scroll_Teleport.prototype.onRead = function(user, identifyObject) {
-    let floors = MapUtils.findMapDataFloor($gameVariables[$gameMap._mapId].mapData);
+    let mapBlocks = MapUtils.getMapBlocks($gameVariables[$gameMap._mapId].mapData);
+    let positions = mapBlocks.floor.concat(mapBlocks.water);
     let floor = null;
     while (true) {
-      floor = floors[Math.randomInt(floors.length)];
+      floor = positions[Math.randomInt(positions.length)];
       if (MapUtils.isTileAvailableForMob($gameMap._mapId, floor.x, floor.y) && (floor.x != user._x && floor.y != user._y)) {
         break;
       }
@@ -10142,7 +10242,7 @@
       CharUtils.decreaseHp(realTarget, value);
       // check if causes paralysis
       if (Math.random() < prop.effect[index].paralyzePercentage) {
-        realTarget.paralyzeCount += dice(1, prop.effect[index].paralyzeTurnMax);
+        realTarget.status.paralyzeCount += dice(1, prop.effect[index].paralyzeTurnMax);
         TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '麻痺'));
         LogUtils.addLog(String.format(Message.display('paralyze'), LogUtils.getCharName(realTarget)));
       }
