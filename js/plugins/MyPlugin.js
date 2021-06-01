@@ -674,6 +674,15 @@
     target._paramPlus[1] += 2 + Math.round(target.param(5) / 2);
   }
 
+  CharUtils.isCharInWater = function(target) {
+    let realTarget = BattleUtils.getRealTarget(target);
+    if ($gameVariables[$gameMap.mapId()].mapData[target._x][target._y].originalTile == WATER
+      && realTarget.moveType != 2) {
+      return true;
+    }
+    return false;
+  }
+
   CharUtils.canSee = function(src, target) {
     let srcEvt = BattleUtils.getEventFromCharacter(src);
     let targetEvt = BattleUtils.getEventFromCharacter(target);
@@ -682,9 +691,10 @@
       return false;
     } else if (target.status.invisibleCount > 0 && src.status.seeInvisibleCount == 0) {
       return false;
-    } else if ($gameVariables[$gameMap.mapId()].mapData[targetEvt._x][targetEvt._y].originalTile == WATER) {
-      // check if src in the same water area
-      if ($gameVariables[$gameMap.mapId()].mapData[srcEvt._x][srcEvt._y].originalTile == WATER) {
+    } else if (srcEvt == $gamePlayer 
+      && CharUtils.isCharInWater(targetEvt)) {
+      // check if player in the same water area
+      if (CharUtils.isCharInWater(srcEvt)) {
         return true;
       } else {
         return false;
@@ -755,7 +765,7 @@
     realTarget.gainTp(tpRecover);
   }
 
-  CharUtils.spawnMob = function(mapId) {
+  CharUtils.spawnMob = function(mapId, mapBlocks, outOfSight) {
     let mapType = $gameVariables[mapId].mapType;
     let dungeonLevel = $gameVariables[mapId].dungeonLevel;
     let pool = [], mapTypeIndex;
@@ -783,9 +793,7 @@
         pool.push(mobClass);
       }
     }
-    if (pool.length > 0) {
-      return pool[getRandomInt(pool.length)];
-    } else if (mobTypeIndicator != mapTypeIndex) {
+    if (pool.length == 0 && mobTypeIndicator != mapTypeIndex) {
       // recalculate: use local dungeon creature
       for (let id in CharUtils.mobTemplates[mapTypeIndex]) {
         let mobClass = CharUtils.mobTemplates[mapTypeIndex][id];
@@ -794,9 +802,43 @@
           pool.push(mobClass);
         }
       }
-      if (pool.length > 0) {
-        return pool[getRandomInt(pool.length)];
+    }
+    if (pool.length > 0) {
+      let mobClass = pool[getRandomInt(pool.length)];
+      let locations = [];
+      switch (mobClass.mobInitData.moveType) {
+        case 0:
+          locations = mapBlocks.floor;
+          break;
+        case 1:
+          locations = mapBlocks.water;
+          break;
+        case 2:
+          locations = mapBlocks.floor.concat(mapBlocks.hollow);
+          break;
       }
+      if (locations.length > 0) {
+        let maxTry = 20;
+        let location, temp;
+        for (let i = 0; i < maxTry; i++) {
+          temp = locations[getRandomInt(locations.length)];
+          if (outOfSight && temp.isVisible) {
+            continue;
+          } else {
+            location = temp;
+            break;
+          }
+        }
+        if (location) {
+          return new mobClass(location.x, location.y);
+        } else {
+          console.log('can not find location out of sight!');
+        }
+      } else {
+        console.log('no place to spawn mob: ' + mobClass.name);
+      }
+    } else {
+      console.log('no available mob to spawn!');
     }
     return null;
   }
@@ -1141,7 +1183,7 @@
 
     // $gameParty._items.push(new Soul_Bite());
     // Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
-    Soul_Obtained_Action.learnSkill(Skill_Discharge);
+    Soul_Obtained_Action.learnSkill(Skill_Barrier);
 
     // modify actor status
     let player = $gameActors.actor(1);
@@ -1151,9 +1193,13 @@
     $gameParty.gainItem(new Bear_Shield(), 1);
     $gameParty.gainItem(new Bear_Skin(), 1);
     $gameParty.gainItem(new Bear_Claw(), 1);
+    $gameParty.gainItem(new Cat_Gloves(), 1);
+    $gameParty.gainItem(new Cat_Shoes(), 1);
     for (let i = 0; i < 6; i++) {
       player.levelUp();
     }
+    player._hp = 120;
+    player._mp = 80;
     // setTimeout(MapUtils.goDownLevels, 500, 7);
   }
 
@@ -1177,6 +1223,9 @@
       return;
     }
     let mapData = $gameVariables[$gameMap.mapId()].mapData;
+    if (src.type == 'PROJECTILE') {
+      return;
+    }
     let realSrc = BattleUtils.getRealTarget(src);
     if ((mapData[oldX][oldY].originalTile != mapData[nowX][nowY].originalTile)
       && (mapData[oldX][oldY].originalTile == WATER || mapData[nowX][nowY].originalTile == WATER)
@@ -1320,7 +1369,7 @@
     var visible = false;
     // check if on water block
     let realSrc = BattleUtils.getRealTarget(src);
-    if (mapData[src._x][src._y].originalTile == WATER) {
+    if (CharUtils.isCharInWater(src)) {
       // check if adapts water
       let skill = SkillUtils.getSkillInstance(realSrc, Skill_AdaptWater);
       if (!skill || skill.lv < 2) {
@@ -1416,19 +1465,15 @@
     mapData[x][y].isVisible = MapUtils.checkVisible(src, distance, x, y, mapData);
   }
 
-  function looksLikeWall(mapId, rawData, x, y, tileType) {
+  function looksDifferent(mapId, rawData, x, y, tileType) {
     if (rawData && rawData[x][y] == tileType) {
       return false;
     } else if ($gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(x, y)]
-      && $gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(x, y)].isRevealed) {
+      && $gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(x, y)].isRevealed
+      && tileType == FLOOR) {
       return false;
     }
     return true;
-    // if ((rawData && rawData[x][y] == WALL) || ($gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(x, y)]
-    //   && !$gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(x, y)].isRevealed)) {
-    //   return true;
-    // }
-    // return false;
   }
 
   function refineMapTile(mapId, rawData, x, y, centerTile, tileType) {
@@ -1445,19 +1490,19 @@
     }
     let east = false, west = false, south = false, north = false;
     // check east
-    if (x + 1 < rawData.length && looksLikeWall(mapId, rawData, x + 1, y, tileType)) {
+    if (x + 1 < rawData.length && looksDifferent(mapId, rawData, x + 1, y, tileType)) {
       east = true;
     }
     // check west
-    if (x - 1 >= 0 && looksLikeWall(mapId, rawData, x - 1, y, tileType)) {
+    if (x - 1 >= 0 && looksDifferent(mapId, rawData, x - 1, y, tileType)) {
       west = true;
     }
     // check north
-    if (y - 1 >= 0 && looksLikeWall(mapId, rawData, x, y - 1, tileType)) {
+    if (y - 1 >= 0 && looksDifferent(mapId, rawData, x, y - 1, tileType)) {
       north = true;
     }
     // check south
-    if (y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x, y + 1, tileType)) {
+    if (y + 1 < rawData[0].length && looksDifferent(mapId, rawData, x, y + 1, tileType)) {
       south = true;
     }
     var result = centerTile;
@@ -1483,7 +1528,7 @@
           } else {
             result += 36;
             // check left down
-            if (x - 1 >= 0 && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x - 1, y + 1, tileType)) {
+            if (x - 1 >= 0 && y + 1 < rawData[0].length && looksDifferent(mapId, rawData, x - 1, y + 1, tileType)) {
               result += 1;
             }
           }
@@ -1491,17 +1536,17 @@
           if (south) {
             result += 38;
             // check left top
-            if (x - 1 >= 0 && y - 1 >= 0 && looksLikeWall(mapId, rawData, x - 1, y - 1, tileType)) {
+            if (x - 1 >= 0 && y - 1 >= 0 && looksDifferent(mapId, rawData, x - 1, y - 1, tileType)) {
               result += 1;
             }
           } else {
             result += 24;
             // check left down
-            if (x - 1 >= 0 && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x - 1, y + 1, tileType)) {
+            if (x - 1 >= 0 && y + 1 < rawData[0].length && looksDifferent(mapId, rawData, x - 1, y + 1, tileType)) {
               result += 1;
             }
             // check left top
-            if (x - 1 >= 0 && y - 1 >= 0 && looksLikeWall(mapId, rawData, x - 1, y - 1, tileType)) {
+            if (x - 1 >= 0 && y - 1 >= 0 && looksDifferent(mapId, rawData, x - 1, y - 1, tileType)) {
               result += 2;
             }
           }
@@ -1515,7 +1560,7 @@
           } else {
             result += 34;
             // check right down
-            if (x + 1 < rawData.length && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x + 1, y + 1, tileType)) {
+            if (x + 1 < rawData.length && y + 1 < rawData[0].length && looksDifferent(mapId, rawData, x + 1, y + 1, tileType)) {
               result += 1;
             }
           }
@@ -1523,17 +1568,17 @@
           if (south) {
             result += 40;
             // check right top
-            if (x + 1 < rawData.length && y - 1 >= 0 && looksLikeWall(mapId, rawData, x + 1, y - 1, tileType)) {
+            if (x + 1 < rawData.length && y - 1 >= 0 && looksDifferent(mapId, rawData, x + 1, y - 1, tileType)) {
               result += 1;
             }
           } else {
             result += 16;
             // check right top
-            if (x + 1 < rawData.length && y - 1 >= 0 && looksLikeWall(mapId, rawData, x + 1, y - 1, tileType)) {
+            if (x + 1 < rawData.length && y - 1 >= 0 && looksDifferent(mapId, rawData, x + 1, y - 1, tileType)) {
               result += 1;
             }
             // check right down
-            if (x + 1 < rawData.length && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x + 1, y + 1, tileType)) {
+            if (x + 1 < rawData.length && y + 1 < rawData[0].length && looksDifferent(mapId, rawData, x + 1, y + 1, tileType)) {
               result += 2;
             }
           }
@@ -1545,10 +1590,10 @@
           } else {
             result += 20;
             // check right down
-            if (x + 1 < rawData.length && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x + 1, y + 1, tileType)) {
+            if (x + 1 < rawData.length && y + 1 < rawData[0].length && looksDifferent(mapId, rawData, x + 1, y + 1, tileType)) {
               result += 1;
             }
-            if (x - 1 >= 0 && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x - 1, y + 1, tileType)) {
+            if (x - 1 >= 0 && y + 1 < rawData[0].length && looksDifferent(mapId, rawData, x - 1, y + 1, tileType)) {
               result += 2;
             }
             // check left down
@@ -1557,29 +1602,29 @@
           if (south) {
             result += 28;
             // check left top
-            if (x - 1 >= 0 && y - 1 >= 0 && looksLikeWall(mapId, rawData, x - 1, y - 1, tileType)) {
+            if (x - 1 >= 0 && y - 1 >= 0 && looksDifferent(mapId, rawData, x - 1, y - 1, tileType)) {
               result += 1;
             }
             // check right top
-            if (x + 1 < rawData.length && y - 1 >= 0 && looksLikeWall(mapId, rawData, x + 1, y - 1, tileType)) {
+            if (x + 1 < rawData.length && y - 1 >= 0 && looksDifferent(mapId, rawData, x + 1, y - 1, tileType)) {
               result += 2;
             }
           } else {
             // check corners
             // left top
-            if (x - 1 >= 0 && y - 1 >= 0 && looksLikeWall(mapId, rawData, x - 1, y - 1, tileType)) {
+            if (x - 1 >= 0 && y - 1 >= 0 && looksDifferent(mapId, rawData, x - 1, y - 1, tileType)) {
               result += 1;
             }
             // right top
-            if (x + 1 < rawData.length && y - 1 >= 0 && looksLikeWall(mapId, rawData, x + 1, y - 1, tileType)) {
+            if (x + 1 < rawData.length && y - 1 >= 0 && looksDifferent(mapId, rawData, x + 1, y - 1, tileType)) {
               result += 2;
             }
             // right down
-            if (x + 1 < rawData.length && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x + 1, y + 1, tileType)) {
+            if (x + 1 < rawData.length && y + 1 < rawData[0].length && looksDifferent(mapId, rawData, x + 1, y + 1, tileType)) {
               result += 4;
             }
             // left down
-            if (x - 1 >= 0 && y + 1 < rawData[0].length && looksLikeWall(mapId, rawData, x - 1, y + 1, tileType)) {
+            if (x - 1 >= 0 && y + 1 < rawData[0].length && looksDifferent(mapId, rawData, x - 1, y + 1, tileType)) {
               result += 8;
             }
           }
@@ -1712,7 +1757,7 @@
 
   MapUtils.drawMob = function(mapData, event) {
     if (mapData[event._x][event._y].isVisible) {
-      if (event.mob.status.invisibleCount > 0 || mapData[event._x][event._y].originalTile == WATER) {
+      if (event.mob.status.invisibleCount > 0 || CharUtils.isCharInWater(event)) {
         if (CharUtils.canSee($gameActors.actor(1), event.mob)) {
           event.setOpacity(128);
         } else {
@@ -2545,7 +2590,7 @@
   }
 
   // find route between two events (using Dijkstra's algorithm)
-  MapUtils.findShortestRoute = function (x1, y1, x2, y2, maxPathLength) {
+  MapUtils.findShortestRoute = function (x1, y1, x2, y2, maxPathLength, mob) {
     var mapData = $gameVariables[$gameMap.mapId()].mapData;
     var path = [], explored = [];
 
@@ -2576,7 +2621,7 @@
             let tile = mapBlock.originalTile;
             let weight = -1;
             // TODO: consider water/hollow/lava tile
-            if (tile == FLOOR) {
+            if ((tile == FLOOR && mob.moveType != 1) || tile == WATER || (tile == HOLLOW && mob.moveType == 2)) {
               // check if mob on it
               let mob = $gameMap.eventsXy(coordinate.x, coordinate.y).filter(function(evt) {
                 return evt.type == 'MOB';
@@ -2657,25 +2702,17 @@
     $gameVariables[mapId].rmDataMap = $dataMap;
   }
 
-  MapUtils.generateNewMapMobs = function (mapId, floors) {
-    let mobCounts = Math.floor(floors.length * mobSpawnPercentage);
+  MapUtils.generateNewMapMobs = function (mapId, mapBlocks) {
+    let totalBlocksLength = mapBlocks.floor.length + mapBlocks.water.length + mapBlocks.hollow.length;
+    let mobCounts = Math.floor(totalBlocksLength * mobSpawnPercentage);
     for (let i = 0; i < mobCounts; i++) {
-      while (true) {
-        let floor = floors[Math.randomInt(floors.length)];
-        if (MapUtils.isTileAvailableForMob(mapId, floor.x, floor.y)) {
-          let mobClass = CharUtils.spawnMob(mapId);
-          if (mobClass) {
-            new mobClass(floor.x, floor.y);
-          }
-          break;
-        }
-      }
+      CharUtils.spawnMob(mapId, mapBlocks);
     }
   }
 
   MapUtils.addMobToNowMap = function() {
-    let mapId = $gameMap._mapId;
-    let floors = MapUtils.getMapBlocks($gameVariables[mapId].mapData).floor;
+    let mapId = $gameMap.mapId();
+    let mapBlocks = MapUtils.getMapBlocks($gameVariables[mapId].mapData);
     let mapEvts = $gameMap.events();
     let nowMobCount = 0;
     for (let id in mapEvts) {
@@ -2683,20 +2720,10 @@
         nowMobCount++;
       }
     }
-    let mobNum = Math.floor(floors.length * mobSpawnPercentage * mobRespawnPercentage);
+    let mobNum = (mapBlocks.floor.length + mapBlocks.water.length + mapBlocks.hollow.length)
+      * mobSpawnPercentage * mobRespawnPercentage;
     if (nowMobCount < mobNum) {
-      while (true) {
-        let floor = floors[Math.randomInt(floors.length)];
-        if (MapUtils.isTileAvailableForMob(mapId, floor.x, floor.y)
-          && !$gameVariables[mapId].mapData[floor.x][floor.y].isVisible) {
-          // only generate mob out of player's sight
-          let mobClass = CharUtils.spawnMob(mapId);
-          if (mobClass) {
-            new mobClass(floor.x, floor.y);
-          }
-          break;
-        }
-      }
+      CharUtils.spawnMob(mapId, mapBlocks, true);
     }
   }
 
@@ -2858,7 +2885,7 @@
               if (SceneManager.isCurrentSceneStarted()) {
                 let mapBlocks = MapUtils.getMapBlocks($gameVariables[targetMapId].mapData);
                 TrapUtils.generateTraps(targetMapId, mapBlocks.floor);
-                MapUtils.generateNewMapMobs(targetMapId, mapBlocks.floor);
+                MapUtils.generateNewMapMobs(targetMapId, mapBlocks);
                 MapUtils.generateNewMapItems(targetMapId, mapBlocks.floor);
                 MapUtils.drawEvents($gameVariables[targetMapId].mapData);
                 SceneManager.goto(Scene_Map);
@@ -3026,6 +3053,41 @@
   //-----------------------------------------------------------------------------------
   // Game_CharacterBase
   //
+
+  // modify this for different mob moveType
+  Game_CharacterBase.prototype.canPass = function(x, y, d) {
+    var x2 = $gameMap.roundXWithDirection(x, d);
+    var y2 = $gameMap.roundYWithDirection(y, d);
+    if (!$gameMap.isValid(x2, y2)) {
+        return false;
+    }
+    if (this.isThrough() || this.isDebugThrough()) {
+        return true;
+    }
+    if (!this.isMapPassable(x, y, d)) {
+        return false;
+    }
+    if (this.isCollidedWithCharacters(x2, y2)) {
+        return false;
+    }
+    // check moveType
+    if (this.mob) {
+      switch (this.mob.moveType) {
+        case 0:
+          if ($gameVariables[$gameMap.mapId()].mapData[x2][y2].originalTile == HOLLOW) {
+            return false;
+          }
+          break;
+        case 1:
+          if ($gameVariables[$gameMap.mapId()].mapData[x2][y2].originalTile != WATER) {
+            return false;
+          }
+          break;
+      }
+    }
+    return true;
+  };
+
   Game_CharacterBase.prototype.moveStraight = function(d) {
     let oldX = this._x, oldY = this._y;
     this.setMovementSuccess(this.canPass(this._x, this._y, d));
@@ -3098,6 +3160,21 @@
         // check player's position
         if ($gamePlayer.pos(x2, y2)) {
           canPass = false;
+        }
+        if (canPass && this.mob) {
+          // check mob moveType
+          switch (this.mob.moveType) {
+            case 0:
+              if ($gameVariables[$gameMap.mapId()].mapData[x2][y2].originalTile == HOLLOW) {
+                return false;
+              }
+              break;
+            case 1:
+              if ($gameVariables[$gameMap.mapId()].mapData[x2][y2].originalTile != WATER) {
+                return false;
+              }
+              break;
+          }
         }
         return canPass;
       }
@@ -3338,7 +3415,7 @@
             } else {
               // find route to player
               let path = MapUtils.findShortestRoute(this._x, this._y
-                , $gamePlayer._x, $gamePlayer._y, mobTraceRouteMaxDistance);
+                , $gamePlayer._x, $gamePlayer._y, mobTraceRouteMaxDistance, this);
               if (path) {
                 this.moveTowardPosition(path[0].mapBlock.x, path[0].mapBlock.y);
               } else {
@@ -3576,16 +3653,17 @@
   Chick.prototype = Object.create(Game_Mob.prototype);
   Chick.prototype.constructor = Chick;
 
+  Chick.mobInitData = {
+    name: '小雞',
+    exp: 27,
+    params: [1, 1, 6, 1, 5, 1, 3, 5],
+    xparams: [0, 0, 0],
+    level: 1,
+    moveType: 0 // 0: walk, 1: swim, 2: float
+  }
+
   Chick.prototype.initialize = function (x, y, fromData) {
-    let mobInitData = {
-      name: '小雞',
-      exp: 27,
-      params: [1, 1, 6, 1, 5, 1, 3, 5],
-      xparams: [0, 0, 0],
-      level: 1,
-      moveType: 0 // 0: walk, 1: swim, 2: float
-    }
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Chick.mobInitData);
     this.setImage('Chick', 0);
     if (!fromData) {
       this.mob.mobClass = 'Chick';
@@ -3618,16 +3696,17 @@
   Dog.prototype = Object.create(Game_Mob.prototype);
   Dog.prototype.constructor = Dog;
 
+  Dog.mobInitData = {
+    name: '小狗',
+    exp: 27,
+    params: [1, 1, 6, 6, 10, 10, 5, 5],
+    xparams: [0, 0, 0],
+    level: 1,
+    moveType: 0
+  }
+
   Dog.prototype.initialize = function (x, y, fromData) {
-    let mobInitData = {
-      name: '小狗',
-      exp: 27,
-      params: [1, 1, 6, 6, 10, 10, 5, 5],
-      xparams: [0, 0, 0],
-      level: 1,
-      moveType: 0
-    }
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Dog.mobInitData);
     this.setImage('Nature', 0);
     if (!fromData) {
       this.mob.mobClass = 'Dog';
@@ -3683,16 +3762,17 @@
   Bee.prototype = Object.create(Game_Mob.prototype);
   Bee.prototype.constructor = Bee;
 
+  Bee.mobInitData = {
+    name: '蜜蜂',
+    exp: 30,
+    params: [1, 1, 4, 3, 0, 0, 13, 5],
+    xparams: [0, 0, 0],
+    level: 2,
+    moveType: 2
+  }
+
   Bee.prototype.initialize = function (x, y, fromData) {
-    let mobInitData = {
-      name: '蜜蜂',
-      exp: 30,
-      params: [1, 1, 4, 3, 0, 0, 13, 5],
-      xparams: [0, 0, 0],
-      level: 2,
-      moveType: 2
-    }
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Bee.mobInitData);
     this.setImage('Fly1', 0);
     if (!fromData) {
       this.mob.mobClass = 'Bee';
@@ -3740,16 +3820,17 @@
   Rooster.prototype = Object.create(Game_Mob.prototype);
   Rooster.prototype.constructor = Rooster;
 
+  Rooster.mobInitData = {
+    name: '大雞',
+    exp: 33,
+    params: [1, 1, 10, 10, 1, 5, 9, 3],
+    xparams: [0, 0, 0],
+    level: 3,
+    moveType: 0
+  }
+
   Rooster.prototype.initialize = function (x, y, fromData) {
-    let mobInitData = {
-      name: '大雞',
-      exp: 33,
-      params: [1, 1, 10, 10, 1, 5, 9, 3],
-      xparams: [0, 0, 0],
-      level: 3,
-      moveType: 0
-    }
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Rooster.mobInitData);
     this.setImage('Nature', 2);
     if (!fromData) {
       this.mob.mobClass = 'Rooster';
@@ -3791,16 +3872,17 @@
   Rat.prototype = Object.create(Game_Mob.prototype);
   Rat.prototype.constructor = Rat;
 
+  Rat.mobInitData = {
+    name: '老鼠',
+    exp: 36,
+    params: [1, 1, 12, 5, 0, 0, 15, 10],
+    xparams: [0, 0, 0],
+    level: 4,
+    moveType: 0
+  }
+
   Rat.prototype.initialize = function (x, y, fromData) {
-    let mobInitData = {
-      name: '老鼠',
-      exp: 36,
-      params: [1, 1, 12, 5, 0, 0, 15, 10],
-      xparams: [0, 0, 0],
-      level: 4,
-      moveType: 0
-    }
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Rat.mobInitData);
     this.setImage('Mice', 1);
     if (!fromData) {
       this.mob.mobClass = 'Rat';
@@ -3820,6 +3902,7 @@
   }
 
   Rat.prototype.looting = function () {
+    // TODO: implement mouse looting
     // var lootings = [];
     // if (getRandomInt(10) < 3) {
     //   lootings.push(new Chicken_Meat());
@@ -3854,16 +3937,17 @@
   Cat.prototype = Object.create(Game_Mob.prototype);
   Cat.prototype.constructor = Cat;
 
+  Cat.mobInitData = {
+    name: '貓',
+    exp: 36,
+    params: [1, 1, 6, 6, 30, 20, 15, 5],
+    xparams: [0, 0, 0],
+    level: 4,
+    moveType: 0
+  }
+
   Cat.prototype.initialize = function (x, y, fromData) {
-    let mobInitData = {
-      name: '貓',
-      exp: 36,
-      params: [1, 1, 6, 6, 30, 20, 15, 5],
-      xparams: [0, 0, 0],
-      level: 4,
-      moveType: 0
-    }
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Cat.mobInitData);
     this.setImage('Nature', 1);
     if (!fromData) {
       this.mob.mobClass = 'Cat';
@@ -3926,16 +4010,17 @@
   Boar.prototype = Object.create(Game_Mob.prototype);
   Boar.prototype.constructor = Boar;
 
+  Boar.mobInitData = {
+    name: '野豬',
+    exp: 43,
+    params: [1, 1, 12, 15, 0, 0, 8, 5],
+    xparams: [0, 0, 0],
+    level: 5,
+    moveType: 0
+  }
+
   Boar.prototype.initialize = function (x, y, fromData) {
-    let mobInitData = {
-      name: '野豬',
-      exp: 43,
-      params: [1, 1, 12, 15, 0, 0, 8, 5],
-      xparams: [0, 0, 0],
-      level: 5,
-      moveType: 0
-    }
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Boar.mobInitData);
     this.setImage('Boar', 1);
     if (!fromData) {
       this.mob.mobClass = 'Boar';
@@ -3983,16 +4068,17 @@
   Wolf.prototype = Object.create(Game_Mob.prototype);
   Wolf.prototype.constructor = Wolf;
 
+  Wolf.mobInitData = {
+    name: '狼',
+    exp: 50,
+    params: [1, 1, 14, 10, 10, 10, 10, 3],
+    xparams: [0, 0, 0],
+    level: 6,
+    moveType: 0
+  }
+
   Wolf.prototype.initialize = function (x, y, fromData) {
-    let mobInitData = {
-      name: '狼',
-      exp: 50,
-      params: [1, 1, 14, 10, 10, 10, 10, 3],
-      xparams: [0, 0, 0],
-      level: 6,
-      moveType: 0
-    }
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Wolf.mobInitData);
     this.setImage('Animal', 2);
     if (!fromData) {
       this.mob.mobClass = 'Wolf';
@@ -4059,16 +4145,17 @@
   Turtle.prototype = Object.create(Game_Mob.prototype);
   Turtle.prototype.constructor = Turtle;
 
+  Turtle.mobInitData = {
+    name: '烏龜',
+    exp: 50,
+    params: [1, 1, 10, 30, 30, 30, 5, 10],
+    xparams: [3, 3, 0],
+    level: 6,
+    moveType: 0
+  }
+
   Turtle.prototype.initialize = function (x, y, fromData) {
-    let mobInitData = {
-      name: '烏龜',
-      exp: 50,
-      params: [1, 1, 10, 30, 30, 30, 5, 10],
-      xparams: [3, 3, 0],
-      level: 6,
-      moveType: 0
-    }
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Turtle.mobInitData);
     this.setImage('Animal', 6);
     if (!fromData) {
       this.mob.mobClass = 'Turtle';
@@ -4120,16 +4207,17 @@
   Bear.prototype = Object.create(Game_Mob.prototype);
   Bear.prototype.constructor = Bear;
 
+  Bear.mobInitData = {
+    name: '熊',
+    exp: 50,
+    params: [1, 1, 16, 20, 10, 10, 8, 5],
+    xparams: [0, 0, 0],
+    level: 6,
+    moveType: 0
+  }
+
   Bear.prototype.initialize = function (x, y, fromData) {
-    let mobInitData = {
-      name: '熊',
-      exp: 50,
-      params: [1, 1, 16, 20, 10, 10, 8, 5],
-      xparams: [0, 0, 0],
-      level: 6,
-      moveType: 0
-    }
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Bear.mobInitData);
     this.setImage('Bear', 0);
     if (!fromData) {
       this.mob.mobClass = 'Bear';
@@ -4180,16 +4268,17 @@
   Lion.prototype = Object.create(Game_Mob.prototype);
   Lion.prototype.constructor = Lion;
 
+  Lion.mobInitData = {
+    name: '獅子',
+    exp: 70,
+    params: [1, 1, 20, 20, 10, 10, 18, 5],
+    xparams: [0, 0, 0],
+    level: 8,
+    moveType: 0
+  }
+
   Lion.prototype.initialize = function (x, y, fromData) {
-    let mobInitData = {
-      name: '獅子',
-      exp: 70,
-      params: [1, 1, 20, 20, 10, 10, 18, 5],
-      xparams: [0, 0, 0],
-      level: 8,
-      moveType: 0
-    }
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Lion.mobInitData);
     this.setImage('Lion', 0);
     if (!fromData) {
       this.mob.mobClass = 'Lion';
@@ -4244,16 +4333,17 @@
   Buffalo.prototype = Object.create(Game_Mob.prototype);
   Buffalo.prototype.constructor = Buffalo;
 
+  Buffalo.mobInitData = {
+    name: '水牛',
+    exp: 70,
+    params: [1, 1, 15, 30, 20, 20, 15, 5],
+    xparams: [0, 0, 0],
+    level: 8,
+    moveType: 0
+  }
+
   Buffalo.prototype.initialize = function (x, y, fromData) {
-    let mobInitData = {
-      name: '水牛',
-      exp: 70,
-      params: [1, 1, 15, 30, 20, 20, 15, 5],
-      xparams: [0, 0, 0],
-      level: 8,
-      moveType: 0
-    }
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Buffalo.mobInitData);
     this.setImage('Buffalo', 1);
     if (!fromData) {
       this.mob.mobClass = 'Buffalo';
@@ -4308,16 +4398,17 @@
   Slime.prototype = Object.create(Game_Mob.prototype);
   Slime.prototype.constructor = Slime;
 
+  Slime.mobInitData = {
+    name: '史萊姆',
+    exp: 50,
+    params: [1, 1, 10, 10, 30, 30, 10, 5],
+    xparams: [5, 0, 0],
+    level: 6,
+    moveType: 0
+  }
+
   Slime.prototype.initialize = function (x, y, fromData) {
-    let mobInitData = {
-      name: '史萊姆',
-      exp: 50,
-      params: [1, 1, 10, 10, 30, 30, 15, 5],
-      xparams: [5, 0, 0],
-      level: 6,
-      moveType: 0
-    }
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Slime.mobInitData);
     this.setImage('Monster', 1);
     if (!fromData) {
       this.mob.mobClass = 'Slime';
@@ -4369,16 +4460,17 @@
   Jellyfish.prototype = Object.create(Game_Mob.prototype);
   Jellyfish.prototype.constructor = Jellyfish;
 
+  Jellyfish.mobInitData = {
+    name: '水母',
+    exp: 50,
+    params: [1, 1, 6, 10, 20, 30, 10, 5],
+    xparams: [0, 5, 0],
+    level: 6,
+    moveType: 1
+  }
+
   Jellyfish.prototype.initialize = function (x, y, fromData) {
-    let mobInitData = {
-      name: '水母',
-      exp: 50,
-      params: [1, 1, 10, 10, 30, 30, 15, 5],
-      xparams: [0, 5, 0],
-      level: 6,
-      moveType: 1
-    }
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, mobInitData);
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Jellyfish.mobInitData);
     this.setImage('Jellyfish', 0);
     if (!fromData) {
       this.mob.mobClass = 'Jellyfish';
@@ -5069,7 +5161,7 @@
     // check if target in the water
     let realTarget = BattleUtils.getRealTarget(target);
     let mapData = $gameVariables[$gameMap.mapId()].mapData;
-    if (mapData[target._x][target._y].originalTile == WATER && realTarget.moveType != 1) {
+    if (CharUtils.isCharInWater(target)) {
       realTarget.status.wetCount = 10;
       // check if target adapts water
       let skill = SkillUtils.getSkillInstance(realTarget, Skill_AdaptWater);
@@ -5719,8 +5811,23 @@
                     for (let y = coordinate.y - 1; y < coordinate.y + 2; y++) {
                       if ((x >= 0 && x < currentMapData.length) && (y >= 0 && y < currentMapData[0].length)
                         && currentMapData[x][y].originalTile != WALL) {
+                        let tileCenter, tileType;
+                        switch (currentMapData[x][y].originalTile) {
+                          case FLOOR: case DOOR:
+                            tileCenter = currentDungeonTiles.floorCenter;
+                            tileType = FLOOR;
+                            break;
+                          case WATER:
+                            tileCenter = currentDungeonTiles.waterCenter;
+                            tileType = WATER;
+                            break;
+                          case HOLLOW:
+                            tileCenter = currentDungeonTiles.hollowCenter;
+                            tileType = HOLLOW;
+                            break;
+                        }
                         currentMapData[x][y].base = refineMapTile($gameMap.mapId(), null
-                          , x, y, currentDungeonTiles.floorCenter, FLOOR);
+                          , x, y, tileCenter, tileType);
                       }
                     }
                   }
@@ -9379,6 +9486,22 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Soul_Barrier
+
+  Soul_Barrier = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Soul_Barrier.prototype = Object.create(ItemTemplate.prototype);
+  Soul_Barrier.prototype.constructor = Soul_Barrier;
+
+  Soul_Barrier.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
+    this.name = '光盾';
+    this.description = '你的身體散發出溫暖的光芒';
+  }
+
+  //-----------------------------------------------------------------------------------
   // Soul_Roar
 
   Soul_Roar = function() {
@@ -10118,11 +10241,11 @@
     subType: "DIRECTIONAL",
     damageType: "MAGIC",
     effect: [
-      {lv: 1, baseDamage: 12, acidPercentage: 0.3, levelUp: 50},
-      {lv: 2, baseDamage: 14, acidPercentage: 0.4, levelUp: 150},
-      {lv: 3, baseDamage: 16, acidPercentage: 0.5, levelUp: 300},
-      {lv: 4, baseDamage: 18, acidPercentage: 0.6, levelUp: 450},
-      {lv: 5, baseDamage: 20, acidPercentage: 0.7, levelUp: -1}
+      {lv: 1, baseDamage: 10, acidPercentage: 0.3, levelUp: 50},
+      {lv: 2, baseDamage: 12, acidPercentage: 0.4, levelUp: 150},
+      {lv: 3, baseDamage: 14, acidPercentage: 0.5, levelUp: 300},
+      {lv: 4, baseDamage: 16, acidPercentage: 0.6, levelUp: 450},
+      {lv: 5, baseDamage: 18, acidPercentage: 0.7, levelUp: -1}
     ]
   }
 
@@ -10215,11 +10338,11 @@
     subType: "DIRECTIONAL",
     damageType: "MAGIC",
     effect: [
-      {lv: 1, baseDamage: 12, paralyzePercentage: 0.3, paralyzeTurnMax: 4, levelUp: 50},
-      {lv: 2, baseDamage: 14, paralyzePercentage: 0.4, paralyzeTurnMax: 5, levelUp: 150},
-      {lv: 3, baseDamage: 16, paralyzePercentage: 0.5, paralyzeTurnMax: 6, levelUp: 300},
-      {lv: 4, baseDamage: 18, paralyzePercentage: 0.6, paralyzeTurnMax: 7, levelUp: 450},
-      {lv: 5, baseDamage: 20, paralyzePercentage: 0.7, paralyzeTurnMax: 8, levelUp: -1}
+      {lv: 1, baseDamage: 10, paralyzePercentage: 0.3, paralyzeTurnMax: 4, levelUp: 50},
+      {lv: 2, baseDamage: 12, paralyzePercentage: 0.4, paralyzeTurnMax: 5, levelUp: 150},
+      {lv: 3, baseDamage: 14, paralyzePercentage: 0.5, paralyzeTurnMax: 6, levelUp: 300},
+      {lv: 4, baseDamage: 16, paralyzePercentage: 0.6, paralyzeTurnMax: 7, levelUp: 450},
+      {lv: 5, baseDamage: 18, paralyzePercentage: 0.7, paralyzeTurnMax: 8, levelUp: -1}
     ]
   }
 
@@ -10412,10 +10535,10 @@
     subType: "RANGE",
     effect: [
       {lv: 1, buffPercentage: 0.1, turns: 20, levelUp: 50},
-      {lv: 2, buffPercentage: 0.2, turns: 30,levelUp: 150},
-      {lv: 3, buffPercentage: 0.3, turns: 40,levelUp: 300},
-      {lv: 4, buffPercentage: 0.4, turns: 50,levelUp: 450},
-      {lv: 5, buffPercentage: 0.5, turns: 60,levelUp: -1}
+      {lv: 2, buffPercentage: 0.2, turns: 30, levelUp: 150},
+      {lv: 3, buffPercentage: 0.3, turns: 40, levelUp: 300},
+      {lv: 4, buffPercentage: 0.4, turns: 50, levelUp: 450},
+      {lv: 5, buffPercentage: 0.5, turns: 60, levelUp: -1}
     ]
   }
 
@@ -10433,6 +10556,71 @@
     }
     if (CharUtils.playerCanSeeChar(src)) {
       TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 53));
+      TimeUtils.animeQueue.push(new AnimeObject(src, 'POP_UP', this.name));
+      LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
+        , LogUtils.getCharName(realSrc), this.name));
+    }
+    let index = this.lv - 1;
+    let buffAmount = Math.round(3 + 5 * index + realSrc.param(4) * 0.1);
+    realSrc.status.skillEffect.push({
+      skill: this,
+      effectCount: prop.effect[index].turns,
+      amount: buffAmount,
+      effectEnd: function() {
+        // do nothing
+      }
+    });
+    return true;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Skill_Barrier
+
+  Skill_Barrier = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_Barrier.prototype = Object.create(ItemTemplate.prototype);
+  Skill_Barrier.prototype.constructor = Skill_Barrier;
+
+  Skill_Barrier.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[13]);
+    this.name = '光盾';
+    this.description = '暫時魔法抗性提升';
+    this.iconIndex = 81;
+    this.mpCost = 10;
+    this.lv = 1;
+    this.exp = 0;
+    // buff or debuf
+    this.isBuff = true;
+  }
+
+  Skill_Barrier.prop = {
+    type: "SKILL",
+    subType: "RANGE",
+    effect: [
+      {lv: 1, buffPercentage: 0.1, turns: 20, levelUp: 50},
+      {lv: 2, buffPercentage: 0.2, turns: 30, levelUp: 150},
+      {lv: 3, buffPercentage: 0.3, turns: 40, levelUp: 300},
+      {lv: 4, buffPercentage: 0.4, turns: 50, levelUp: 450},
+      {lv: 5, buffPercentage: 0.5, turns: 60, levelUp: -1}
+    ]
+  }
+
+  Skill_Barrier.prototype.action = function(src) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    CharUtils.decreaseMp(realSrc, this.mpCost);
+    CharUtils.decreaseTp(realSrc, this.tpCost);
+
+    let prop = window[this.constructor.name].prop;
+    let effect = CharUtils.getTargetEffect(realSrc, Skill_Barrier);
+    if (effect) {
+      effect.effectEnd();
+      let index = realSrc.status.skillEffect.indexOf(effect);
+      realSrc.status.skillEffect.splice(index, 1);
+    }
+    if (CharUtils.playerCanSeeChar(src)) {
+      TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 120));
       TimeUtils.animeQueue.push(new AnimeObject(src, 'POP_UP', this.name));
       LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
         , LogUtils.getCharName(realSrc), this.name));
@@ -11100,6 +11288,11 @@
           }
           if (this.status.breakArmorCount > 0) {
             value = Math.floor(value / 2);
+          }
+        } else if (attrParamId == 1) {
+          let skillEffect = CharUtils.getTargetEffect(this, Skill_Barrier);
+          if (skillEffect) {
+            value += skillEffect.amount;
           }
         }
         return value;
