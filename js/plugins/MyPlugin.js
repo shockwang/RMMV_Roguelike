@@ -702,6 +702,15 @@
     return true;
   }
 
+  CharUtils.playerCanSeeItemPile = function(event) {
+    let mapData = $gameVariables[$gameMap.mapId()].mapData;
+    if (mapData[event._x][event._y].originalTile == WATER
+      && mapData[$gamePlayer._x][$gamePlayer._y].originalTile != WATER) {
+      return false;
+    }
+    return true;
+  }
+
   CharUtils.playerCanSeeChar = function(target) {
     if (target == $gamePlayer) {
       return true;
@@ -821,7 +830,9 @@
         let location, temp;
         for (let i = 0; i < maxTry; i++) {
           temp = locations[getRandomInt(locations.length)];
-          if (outOfSight && temp.isVisible) {
+          if ($gamePlayer.pos(temp.x, temp.y)) {
+            continue;
+          } else if (outOfSight && temp.isVisible) {
             continue;
           } else {
             location = temp;
@@ -1196,6 +1207,7 @@
     $gameParty.gainItem(new Cat_Gloves(), 1);
     $gameParty.gainItem(new Cat_Shoes(), 1);
     for (let i = 0; i < 6; i++) {
+      $gameParty.gainItem(new Dart_Lv2_T1(), 1);
       player.levelUp();
     }
     player._hp = 120;
@@ -2886,7 +2898,7 @@
                 let mapBlocks = MapUtils.getMapBlocks($gameVariables[targetMapId].mapData);
                 TrapUtils.generateTraps(targetMapId, mapBlocks.floor);
                 MapUtils.generateNewMapMobs(targetMapId, mapBlocks);
-                MapUtils.generateNewMapItems(targetMapId, mapBlocks.floor);
+                MapUtils.generateNewMapItems(targetMapId, mapBlocks.floor.concat(mapBlocks.water));
                 MapUtils.drawEvents($gameVariables[targetMapId].mapData);
                 SceneManager.goto(Scene_Map);
               } else {
@@ -4866,9 +4878,6 @@
     let originalX = this._x, originalY = this._y;
     let vanish = false;
     for (; this.distanceCount < this.distance; this.distanceCount++) {
-      if (vanish) {
-        break;
-      }
       this.moveFunc(this.param1, this.param2);
       if ($gamePlayer.pos(this._x, this._y)) {
         vanish = this.hitCharacter(this, $gamePlayer);
@@ -4891,30 +4900,25 @@
       if (!vanish && $gameVariables[$gameMap._mapId].mapData[this._x][this._y].originalTile == WALL) {
         vanish = this.hitWall(this);
       }
+      if (vanish) {
+        break;
+      }
     }
-    if (!vanish) {
-      TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distance));
-    }
+    TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
     // set event to original place, so anime can start from the correct position
     this.setPosition(originalX, originalY);
     return vanish;
   }
 
   Game_Projectile.prototype.hitCharacter = function(vm, evt) {
-    TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
-    vm.distanceCount = 99;
     return true;
   }
 
   Game_Projectile.prototype.hitDoor = function(vm) {
-    TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
-    vm.distanceCount = 99;
     return true;
   }
 
   Game_Projectile.prototype.hitWall = function(vm) {
-    TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
-    vm.distanceCount = 99;
     return true;
   }
 
@@ -4961,8 +4965,6 @@
   }
 
   Projectile_Potion.prototype.hitCharacter = function(vm, evt) {
-    TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
-    vm.distanceCount = 99;
     TimeUtils.animeQueue.push(new AnimeObject(null, 'SE', "Crash"));
     if ($gameVariables[$gameMap._mapId].mapData[vm._x][vm._y].isVisible) {
       let realTarget = BattleUtils.getRealTarget(evt);
@@ -4975,8 +4977,6 @@
   }
 
   Projectile_Potion.prototype.hitDoor = function(vm) {
-    TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
-    vm.distanceCount = 99;
     TimeUtils.animeQueue.push(new AnimeObject(null, 'SE', "Crash"));
     if ($gameVariables[$gameMap._mapId].mapData[vm._x][vm._y].isVisible) {
       LogUtils.addLog(String.format(Message.display('throwPotionCrash')
@@ -5086,6 +5086,28 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Projectile_Ray
+  //
+  // projectile that sustains ray path, hit multiple targets
+
+  Projectile_Ray = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Projectile_Ray.prototype = Object.create(Projectile_SingleTarget.prototype);
+  Projectile_Ray.prototype.constructor = Projectile_Ray;
+
+  Projectile_Ray.prototype.initialize = function (src, x, y, projectileData) {
+    projectileData.isRay = true;
+    Projectile_SingleTarget.prototype.initialize.call(this, src, x, y, projectileData);
+  };
+
+  Projectile_Ray.prototype.hitCharacter = function(vm, evt) {
+    Projectile_SingleTarget.prototype.hitCharacter.call(this, vm, evt);
+    return false;
+  }
+
+  //-----------------------------------------------------------------------------------
   // Projectile_Item
 
   Projectile_Item = function () {
@@ -5154,8 +5176,6 @@
   }
 
   Projectile_Item.prototype.hitCharacter = function(vm, evt) {
-    TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
-    vm.distanceCount = 99;
     TimeUtils.animeQueue.push(new AnimeObject(null, 'SE', "Slash3"));
     BattleUtils.projectileAttack(vm.src, evt, $gameVariables[0].fireProjectileInfo.item);
     ItemUtils.addItemToItemPile(evt._x, evt._y, $gameVariables[0].fireProjectileInfo.item);
@@ -5163,9 +5183,7 @@
   }
 
   Projectile_Item.prototype.hitDoor = function(vm) {
-    TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
     let lastPos = this.calcLastPosition(vm);
-    vm.distanceCount = 99;
     TimeUtils.animeQueue.push(new AnimeObject(null, 'SE', "Sword1"));
     if ($gameVariables[$gameMap._mapId].mapData[vm._x][vm._y].isVisible) {
       LogUtils.addLog(String.format(Message.display('throwItemHitObstacle')
@@ -6138,11 +6156,32 @@
             $gameVariables[0].projectileMoving = true;
             anime.target.distance = anime.value;
             anime.target.distanceCount = 0;
+            let isRay = (anime.target.projectileData && anime.target.projectileData.isRay);
+            if (isRay) {
+              anime.target.shadows = [];
+            }
             let f = function(target) {
+              if (isRay) {
+                let evt = new Game_Projectile(target, target._x, target._y);
+                let imageData = target.projectileData.imageData;
+                evt._originalPattern = imageData.pattern;
+                evt.setPattern(imageData.pattern);
+                evt._direction = imageData.direction;
+                evt.setImage(imageData.image, imageData.imageIndex);
+                target.shadows.push(evt);
+              }
               target.moveFunc(target.param1, target.param2);
               target.distanceCount++;
               if (target.distanceCount > target.distance) {
                 $gameVariables[0].projectileMoving = false;
+                if (isRay) {
+                  for (let i = 0; i < target.shadows.length; i++) {
+                    let evt = target.shadows[i];
+                    evt.setPosition(-10, -10);
+                    $gameMap._events[evt._eventId] = null;
+                    $dataMap.events[evt._eventId] = null;
+                  }
+                }
                 target.setPosition(-10, -10);
                 $gameMap._events[target._eventId] = null;
                 $dataMap.events[target._eventId] = null;
@@ -6971,7 +7010,8 @@
 
   ItemUtils.updateItemPile = function(event) {
     let erased = false;
-    if ($gameVariables[$gameMap._mapId].mapData[event._x][event._y].isVisible) {
+    if ($gameVariables[$gameMap._mapId].mapData[event._x][event._y].isVisible
+      && CharUtils.playerCanSeeItemPile(event)) {
       if (event.itemPile.objectStack.length == 0) {
         $gameMap._events[event._eventId] = null;
         $dataMap.events[event._eventId] = null;
