@@ -79,10 +79,9 @@
     this.name = name;
   }
 
-  var ProjectileData = function(skill, imageName, imageIndex, distance, hitCharFunc, hitDoorFunc, hitWallFunc) {
+  var ProjectileData = function(skill, imageData, distance, hitCharFunc, hitDoorFunc, hitWallFunc) {
     this.skill = skill;
-    this.imageName = imageName;
-    this.imageIndex = imageIndex;
+    this.imageData = imageData;
     this.distance = distance;
     this.hitCharFunc = hitCharFunc;
     this.hitDoorFunc = hitDoorFunc;
@@ -1184,6 +1183,7 @@
     // $gameParty._items.push(new Soul_Bite());
     // Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
     Soul_Obtained_Action.learnSkill(Skill_Barrier);
+    Soul_Obtained_Action.learnSkill(Skill_IceBolt);
 
     // modify actor status
     let player = $gameActors.actor(1);
@@ -4388,6 +4388,69 @@
   CharUtils.mobTemplates[0].push(Buffalo);
 
   //-----------------------------------------------------------------------------------
+  // Shark
+
+  Shark = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Shark.baseDungeonLevel = 5;
+
+  Shark.prototype = Object.create(Game_Mob.prototype);
+  Shark.prototype.constructor = Shark;
+
+  Shark.mobInitData = {
+    name: '鯊魚',
+    exp: 50,
+    params: [1, 1, 15, 15, 10, 10, 19, 5],
+    xparams: [0, 0, 0],
+    level: 5,
+    moveType: 1
+  }
+
+  Shark.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Shark.mobInitData);
+    this.setImage('Shark', 0);
+    if (!fromData) {
+      this.mob.mobClass = 'Shark';
+      this.mob._skills.push(new Skill_Bite());
+      this.mob._skills[0].lv = 3;
+      let skill = new Skill_AdaptWater();
+      skill.lv = 3;
+      this.mob._skills.push(skill);
+    }
+  }
+
+  Shark.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Bite
+      return this.mob._skills[0].action(this, target);
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  Shark.prototype.looting = function () {
+    var lootings = [];
+    // TODO: implements looting
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Buffalo_Horn());
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Buffalo_Bone());
+    // }
+    // if (getRandomInt(100) < 30) {
+    //   lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
+    // }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_AdaptWater);
+    }
+  }
+  CharUtils.mobTemplates[1].push(Shark);
+
+  //-----------------------------------------------------------------------------------
   // Slime
 
   Slime = function () {
@@ -4510,6 +4573,80 @@
     }
   }
   CharUtils.mobTemplates[1].push(Jellyfish);
+
+  //-----------------------------------------------------------------------------------
+  // Ice_Spirit
+
+  Ice_Spirit = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Ice_Spirit.baseDungeonLevel = 7;
+
+  Ice_Spirit.prototype = Object.create(Game_Mob.prototype);
+  Ice_Spirit.prototype.constructor = Ice_Spirit;
+
+  Ice_Spirit.mobInitData = {
+    name: '冰精靈',
+    exp: 70,
+    params: [1, 1, 10, 8, 30, 30, 20, 5],
+    xparams: [0, 0, 0],
+    level: 7,
+    moveType: 2
+  }
+
+  Ice_Spirit.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Ice_Spirit.mobInitData);
+    this.setImage('Fairy', 2);
+    if (!fromData) {
+      this.mob.mobClass = 'Ice_Spirit';
+      this.mob._skills.push(new Skill_Barrier());
+      this.mob._skills.push(new Skill_IceBolt());
+    }
+  }
+
+  Ice_Spirit.prototype.targetInSightAction = function(target) {
+    if (getRandomInt(100) < 40) { // Skill_Barrier
+      return this.performBuffIfNotPresent(this.mob._skills[0]);
+    }
+    return false;
+  }
+
+  Ice_Spirit.prototype.projectileAction = function(x, y, distance) {
+    if (getRandomInt(100) < 80) { // Skill_IceBolt
+      let skill = this.mob._skills[1];
+      if (distance <= window[skill.constructor.name].prop.effect[skill.lv - 1].distance
+        && SkillUtils.canPerform(this.mob, skill)) {
+        skill.action(this, x, y);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Ice_Spirit.prototype.looting = function () {
+    var lootings = [];
+    // TODO: implement looting
+    // if (getRandomInt(10) < 3) {
+    //   lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Cat_Tooth());
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Cat_Claw());
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Cat_Skin());
+    // }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_IceBolt);
+    }
+  }
+  CharUtils.mobTemplates[1].push(Ice_Spirit);
 
   //-----------------------------------------------------------------------------------
   // Game_Door
@@ -4660,7 +4797,7 @@
   Game_Projectile.prototype.constructor = Game_Projectile;
 
   Game_Projectile.prototype.initStatus = function (event) {
-    event.type = 'Projectile';
+    event.type = 'PROJECTILE';
   }
 
   Game_Projectile.prototype.initialize = function (src, x, y) {
@@ -4913,7 +5050,11 @@
 
   Projectile_SingleTarget.prototype.initialize = function (src, x, y, projectileData) {
     Game_Projectile.prototype.initialize.call(this, src, x, y);
-    this.setImage(projectileData.imageName, projectileData.imageIndex);
+    let imageData = projectileData.imageData;
+    this._originalPattern = imageData.pattern;
+    this.setPattern(imageData.pattern);
+    this._direction = imageData.direction;
+    this.setImage(imageData.image, imageData.imageIndex);
     this.distance = projectileData.distance;
     this.projectileData = projectileData;
     this.action();
@@ -5160,7 +5301,6 @@
     }
     // check if target in the water
     let realTarget = BattleUtils.getRealTarget(target);
-    let mapData = $gameVariables[$gameMap.mapId()].mapData;
     if (CharUtils.isCharInWater(target)) {
       realTarget.status.wetCount = 10;
       // check if target adapts water
@@ -9582,6 +9722,22 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Soul_IceBolt
+
+  Soul_IceBolt = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Soul_IceBolt.prototype = Object.create(ItemTemplate.prototype);
+  Soul_IceBolt.prototype.constructor = Soul_IceBolt;
+
+  Soul_IceBolt.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
+    this.name = '冰箭';
+    this.description = '你學會操縱冰之元素';
+  }
+
+  //-----------------------------------------------------------------------------------
   // SkillUtils
   //
   // Skill related methods
@@ -10326,7 +10482,7 @@
     ItemTemplate.prototype.initialize.call(this, $dataSkills[13]);
     this.name = '放電';
     this.description = '對一名敵人釋放電擊, 機率麻痺';
-    this.iconIndex = 2;
+    this.iconIndex = 67;
     this.mpCost = 15;
     this.tpCost = 0;
     this.lv = 1;
@@ -10904,7 +11060,7 @@
         + Math.floor(realSrc.param(4) / 5) - realTarget.param(9);
       damage = BattleUtils.getFinalDamage(damage);
       CharUtils.decreaseHp(realTarget, damage);
-      if (CharUtils.playerCanSeeChar(target)) {
+      if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
         TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 121));
         TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
         LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc)
@@ -10912,10 +11068,79 @@
       }
       BattleUtils.checkTargetAlive(realSrc, realTarget, target);
     }
-    if (CharUtils.playerCanSeeChar(src)) {
+    if (CharUtils.playerCanSeeBlock(src._x, src._y)) {
       LogUtils.addLog(String.format(Message.display('shootProjectile'), LogUtils.getCharName(realSrc), this.name));
     }
-    let data = new ProjectileData(this, '!Flame2', 5
+    let imageData = new ImageData('!Flame2', 5, 1, 2);
+    let data = new ProjectileData(this, imageData
+      , window[this.constructor.name].prop.effect[this.lv - 1].distance, hitCharFunc);
+    new Projectile_SingleTarget(src, x, y, data);
+    return true;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Skill_IceBolt
+
+  Skill_IceBolt = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_IceBolt.prototype = Object.create(ItemTemplate.prototype);
+  Skill_IceBolt.prototype.constructor = Skill_IceBolt;
+
+  Skill_IceBolt.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[13]);
+    this.name = '冰箭';
+    this.description = '直線射出一根冰箭, 魔法傷害';
+    this.iconIndex = 67;
+    this.mpCost = 15;
+    this.lv = 1;
+    this.exp = 0;
+  }
+
+  Skill_IceBolt.prop = {
+    type: "SKILL",
+    subType: "PROJECTILE",
+    damageType: "MAGIC",
+    effect: [
+      {lv: 1, baseDamage: 15, distance: 5, levelUp: 50},
+      {lv: 2, baseDamage: 20, distance: 5, levelUp: 150},
+      {lv: 3, baseDamage: 25, distance: 6, levelUp: 300},
+      {lv: 4, baseDamage: 30, distance: 6, levelUp: 450},
+      {lv: 5, baseDamage: 35, distance: 7, levelUp: -1}
+    ]
+  }
+
+  Skill_IceBolt.prototype.action = function(src, x, y) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    CharUtils.decreaseMp(realSrc, this.mpCost);
+    CharUtils.decreaseTp(realSrc, this.tpCost);
+
+    // parent of this function would be ProjectileData
+    let hitCharFunc = function(vm, target) {
+      let realSrc = BattleUtils.getRealTarget(vm.src);
+      let realTarget = BattleUtils.getRealTarget(target);
+      // player get exp
+      if (realSrc == $gameActors.actor(1)) {
+        CharUtils.playerGainIntExp(1);
+      }
+      let damage = window[this.skill.constructor.name].prop.effect[this.skill.lv - 1].baseDamage
+        + Math.floor(realSrc.param(4) / 5) - realTarget.param(9);
+      damage = BattleUtils.getFinalDamage(damage);
+      CharUtils.decreaseHp(realTarget, damage);
+      if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
+        TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 71));
+        TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
+        LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc)
+          , this.skill.name, LogUtils.getCharName(realTarget), damage));
+      }
+      BattleUtils.checkTargetAlive(realSrc, realTarget, target);
+    }
+    if (CharUtils.playerCanSeeBlock(src._x, src._y)) {
+      LogUtils.addLog(String.format(Message.display('shootProjectile'), LogUtils.getCharName(realSrc), this.name));
+    }
+    let imageData = new ImageData('Collections3', 6, 2, 8);
+    let data = new ProjectileData(this, imageData
       , window[this.constructor.name].prop.effect[this.lv - 1].distance, hitCharFunc);
     new Projectile_SingleTarget(src, x, y, data);
     return true;
