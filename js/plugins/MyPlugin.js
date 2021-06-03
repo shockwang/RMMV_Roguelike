@@ -1134,7 +1134,8 @@
       projectile: $dataMap.events[5],
       itemPile: $dataMap.events[6],
       trap: $dataMap.events[7],
-      goHome: $dataMap.events[1]
+      goHome: $dataMap.events[1],
+      bolder: $dataMap.events[8]
     }
     // define data images mapping
     $gameVariables[0].itemImageData = generateImageData();
@@ -1195,6 +1196,7 @@
     // Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
     Soul_Obtained_Action.learnSkill(Skill_Barrier);
     Soul_Obtained_Action.learnSkill(Skill_IceBolt);
+    Soul_Obtained_Action.learnSkill(Skill_IceBreath);
 
     // modify actor status
     let player = $gameActors.actor(1);
@@ -1231,13 +1233,10 @@
   }
 
   MapUtils.checkInOutWater = function(src, oldX, oldY, nowX, nowY) {
-    if (src instanceof Game_Follower) {
+    if (src != $gamePlayer || !(src.type && src.type == 'MOB')) {
       return;
     }
     let mapData = $gameVariables[$gameMap.mapId()].mapData;
-    if (src.type == 'PROJECTILE') {
-      return;
-    }
     let realSrc = BattleUtils.getRealTarget(src);
     if ((mapData[oldX][oldY].originalTile != mapData[nowX][nowY].originalTile)
       && (mapData[oldX][oldY].originalTile == WATER || mapData[nowX][nowY].originalTile == WATER)
@@ -3276,6 +3275,68 @@
   }
 
   //-----------------------------------------------------------------------------
+  // Bolder
+  //
+  // The game object class for bolder type objects
+
+  Bolder = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Bolder.prototype = Object.create(Game_Event.prototype);
+  Bolder.prototype.constructor = Bolder;
+
+  Bolder.prototype.fromEvent = function (src, target) {
+    target.type = src.type;
+    target.x = src.x;
+    target.y = src.y;
+  }
+
+  Bolder.prototype.initStatus = function (event) {
+    event.type = 'BOLDER';
+  }
+
+  Bolder.prototype.updateDataMap = function () {
+    Bolder.prototype.fromEvent(this, $dataMap.events[this._eventId]);
+  }
+
+  Bolder.prototype.initialize = function (x, y, fromData) {
+    var eventId = -1;
+    if (fromData) {
+      for (var i = 1; i < $dataMap.events.length; i++) {
+        if ($dataMap.events[i] && $dataMap.events[i] == fromData) {
+          eventId = i;
+          Bolder.prototype.fromEvent($dataMap.events[i], this);
+          break;
+        }
+      }
+    } else {
+      // find empty space for new event
+      var eventId = MapUtils.findEmptyFromList($dataMap.events);
+      $dataMap.events[eventId] = newDataMapEvent($gameVariables[0].templateEvents.bolder, eventId, x, y);
+      this.initStatus($dataMap.events[eventId]);
+      this.initStatus(this);
+    }
+    // store new events back to map variable
+    $gameVariables[$gameMap.mapId()].rmDataMap = $dataMap;
+    Game_Event.prototype.initialize.call(this, $gameMap.mapId(), eventId);
+    // setup image
+    this.setImage('!Other1', 1);
+    $gameMap._events[eventId] = this;
+  };
+
+  Bolder.prototype.onPush = function(src) {
+    let data = MapUtils.getDisplacementData(src._x, src._y, this.x, this.y);
+    if (data.moveFunc == 'moveStraight') {
+      this.moveStraight(data.param1);
+      src.moveStraight(data.param1);
+    } else if (data.moveFunc == 'moveDiagonally') {
+      this.moveDiagonally(data.param1, data.param2);
+      src.moveDiagonally(data.param1, data.param2);
+    }
+  }
+
+  //-----------------------------------------------------------------------------
   // Game_Enemy
   //
   // The game object class for an enemy.
@@ -4661,6 +4722,96 @@
   CharUtils.mobTemplates[1].push(Ice_Spirit);
 
   //-----------------------------------------------------------------------------------
+  // Ice_Dragon
+
+  Ice_Dragon = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Ice_Dragon.baseDungeonLevel = 10;
+
+  Ice_Dragon.prototype = Object.create(Game_Mob.prototype);
+  Ice_Dragon.prototype.constructor = Ice_Dragon;
+
+  Ice_Dragon.mobInitData = {
+    name: '冰龍',
+    exp: 100,
+    params: [1, 1, 25, 20, 25, 20, 20, 5],
+    xparams: [3, 3, 0],
+    level: 10,
+    moveType: 2
+  }
+
+  Ice_Dragon.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Ice_Dragon.mobInitData);
+    this.setImage('Dragon', 1);
+    if (!fromData) {
+      this.mob.mobClass = 'Ice_Dragon';
+      this.mob._skills.push(new Skill_Barrier());
+      this.mob._skills.push(new Skill_Bash());
+      this.mob._skills.push(new Skill_IceBolt());
+      this.mob._skills.push(new Skill_IceBreath());
+    }
+  }
+
+  Ice_Dragon.prototype.targetInSightAction = function(target) {
+    if (getRandomInt(100) < 40) { // Skill_Barrier
+      return this.performBuffIfNotPresent(this.mob._skills[0]);
+    }
+    return false;
+  }
+
+  Ice_Dragon.prototype.projectileAction = function(x, y, distance) {
+    if (getRandomInt(100) < 80) {
+      let skill = this.mob._skills[3]; // Skill_IceBreath
+      if (distance <= window[skill.constructor.name].prop.effect[skill.lv - 1].distance
+        && SkillUtils.canPerform(this.mob, skill)) {
+        skill.action(this, x, y);
+        return true;
+      }
+      skill = this.mob._skills[2]; // Skill_IceBolt
+      if (distance <= window[skill.constructor.name].prop.effect[skill.lv - 1].distance
+        && SkillUtils.canPerform(this.mob, skill)) {
+        skill.action(this, x, y);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Ice_Dragon.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[1])) { // Skill_Bash
+      return this.mob._skills[1].action(this, target);
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  Ice_Dragon.prototype.looting = function () {
+    var lootings = [];
+    // TODO: implement looting
+    // if (getRandomInt(10) < 3) {
+    //   lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Cat_Tooth());
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Cat_Claw());
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Cat_Skin());
+    // }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_IceBolt);
+    }
+  }
+  CharUtils.mobTemplates[1].push(Ice_Dragon);
+
+  //-----------------------------------------------------------------------------------
   // Game_Door
   //
   // The game object class for a door (opened/closed/locked), inherit from Game_Event
@@ -4826,43 +4977,20 @@
 
     // setup projectile movement
     this.src = src; // recognize for log purpose
-    this.moveFunc = this.moveStraight;
-    this.param1 = 6;
-    if (src._x == x && src._y == y) {
-      // target self
-      this.moveFunc = function() {};
-    } else if (src._x == x) {
-      if (y - 1 == src._y) {
-        this.param1 = 2;
-      } else {
-        this.param1 = 8;
-      }
-    } else if (src._y == y) {
-      if (x - 1 == src._x) {
-        this.param1 = 6;
-      } else {
-        this.param1 = 4;
-      }
-    } else {
-      this.moveFunc = this.moveDiagonally;
-      if (x - 1 == src._x) {
-        if (y - 1 == src._y) {
-          this.param1 = 6;
-          this.param2 = 2;
-        } else {
-          this.param1 = 6;
-          this.param2 = 8;
-        }
-      } else {
-        if (y - 1 == src._y) {
-          this.param1 = 4;
-          this.param2 = 2;
-        } else {
-          this.param1 = 4;
-          this.param2 = 8;
-        }
-      }
+    let displacementData = MapUtils.getDisplacementData(src._x, src._y, x, y);
+    switch (displacementData.moveFunc) {
+      case '':
+        this.moveFunc = function() {};
+        break;
+      case 'moveStraight':
+        this.moveFunc = this.moveStraight;
+        break;
+      case 'moveDiagonally':
+        this.moveFunc = this.moveDiagonally;
+        break;
     }
+    this.param1 = displacementData.param1;
+    this.param2 = displacementData.param2;
     MapUtils.refreshMap();
   };
 
@@ -9778,6 +9906,22 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Soul_IceBreath
+
+  Soul_IceBreath = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Soul_IceBreath.prototype = Object.create(ItemTemplate.prototype);
+  Soul_IceBreath.prototype.constructor = Soul_IceBreath;
+
+  Soul_IceBreath.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
+    this.name = '冰之吐息';
+    this.description = '你能夠吐出強力的冷氣';
+  }
+
+  //-----------------------------------------------------------------------------------
   // SkillUtils
   //
   // Skill related methods
@@ -11075,11 +11219,11 @@
     subType: "PROJECTILE",
     damageType: "MAGIC",
     effect: [
-      {lv: 1, baseDamage: 15, distance: 5, levelUp: 50},
-      {lv: 2, baseDamage: 20, distance: 5, levelUp: 150},
-      {lv: 3, baseDamage: 25, distance: 6, levelUp: 300},
-      {lv: 4, baseDamage: 30, distance: 6, levelUp: 450},
-      {lv: 5, baseDamage: 35, distance: 7, levelUp: -1}
+      {lv: 1, baseDamage: 10, distance: 5, levelUp: 50},
+      {lv: 2, baseDamage: 12, distance: 5, levelUp: 150},
+      {lv: 3, baseDamage: 14, distance: 6, levelUp: 300},
+      {lv: 4, baseDamage: 16, distance: 6, levelUp: 450},
+      {lv: 5, baseDamage: 18, distance: 7, levelUp: -1}
     ]
   }
 
@@ -11143,11 +11287,11 @@
     subType: "PROJECTILE",
     damageType: "MAGIC",
     effect: [
-      {lv: 1, baseDamage: 15, distance: 5, levelUp: 50},
-      {lv: 2, baseDamage: 20, distance: 5, levelUp: 150},
-      {lv: 3, baseDamage: 25, distance: 6, levelUp: 300},
-      {lv: 4, baseDamage: 30, distance: 6, levelUp: 450},
-      {lv: 5, baseDamage: 35, distance: 7, levelUp: -1}
+      {lv: 1, baseDamage: 10, distance: 5, levelUp: 50},
+      {lv: 2, baseDamage: 12, distance: 5, levelUp: 150},
+      {lv: 3, baseDamage: 14, distance: 6, levelUp: 300},
+      {lv: 4, baseDamage: 16, distance: 6, levelUp: 450},
+      {lv: 5, baseDamage: 18, distance: 7, levelUp: -1}
     ]
   }
 
@@ -11183,6 +11327,74 @@
     let data = new ProjectileData(this, imageData
       , window[this.constructor.name].prop.effect[this.lv - 1].distance, hitCharFunc);
     new Projectile_SingleTarget(src, x, y, data);
+    return true;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Skill_IceBreath
+
+  Skill_IceBreath = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_IceBreath.prototype = Object.create(ItemTemplate.prototype);
+  Skill_IceBreath.prototype.constructor = Skill_IceBreath;
+
+  Skill_IceBreath.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[13]);
+    this.name = '冰之吐息';
+    this.description = '直線吐出冰之氣息, 魔法貫穿傷害';
+    this.iconIndex = 67;
+    this.mpCost = 30;
+    this.lv = 1;
+    this.exp = 0;
+  }
+
+  Skill_IceBreath.prop = {
+    type: "SKILL",
+    subType: "PROJECTILE",
+    damageType: "MAGIC",
+    effect: [
+      {lv: 1, baseDamage: 14, distance: 5, levelUp: 50},
+      {lv: 2, baseDamage: 16, distance: 5, levelUp: 150},
+      {lv: 3, baseDamage: 18, distance: 6, levelUp: 300},
+      {lv: 4, baseDamage: 20, distance: 6, levelUp: 450},
+      {lv: 5, baseDamage: 22, distance: 7, levelUp: -1}
+    ]
+  }
+
+  Skill_IceBreath.prototype.action = function(src, x, y) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    CharUtils.decreaseMp(realSrc, this.mpCost);
+    CharUtils.decreaseTp(realSrc, this.tpCost);
+
+    // parent of this function would be ProjectileData
+    let hitCharFunc = function(vm, target) {
+      let realSrc = BattleUtils.getRealTarget(vm.src);
+      let realTarget = BattleUtils.getRealTarget(target);
+      // player get exp
+      if (realSrc == $gameActors.actor(1)) {
+        CharUtils.playerGainIntExp(1);
+      }
+      let damage = window[this.skill.constructor.name].prop.effect[this.skill.lv - 1].baseDamage
+        + Math.floor(realSrc.param(4) / 5) - realTarget.param(9);
+      damage = BattleUtils.getFinalDamage(damage);
+      CharUtils.decreaseHp(realTarget, damage);
+      if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
+        TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 71));
+        TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
+        LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc)
+          , this.skill.name, LogUtils.getCharName(realTarget), damage));
+      }
+      BattleUtils.checkTargetAlive(realSrc, realTarget, target);
+    }
+    if (CharUtils.playerCanSeeBlock(src._x, src._y)) {
+      LogUtils.addLog(String.format(Message.display('shootProjectile'), LogUtils.getCharName(realSrc), this.name));
+    }
+    let imageData = new ImageData('Collections3', 7, 0, 8);
+    let data = new ProjectileData(this, imageData
+      , window[this.constructor.name].prop.effect[this.lv - 1].distance, hitCharFunc);
+    new Projectile_Ray(src, x, y, data);
     return true;
   }
 
