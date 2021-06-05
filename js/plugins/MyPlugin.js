@@ -448,6 +448,13 @@
       animalMeat: '{0}肉',
       jumpIntoWater: '{0}跳入水中.',
       climbOutOfWater: '{0}爬上岸邊.',
+      pushObject: '{0}推動了{1}.',
+      bolderFilledHole: '{0}填滿了空洞, 形成可行走的陸地.',
+      bolderHitHollow: '{0}墜入了虛空, 不見蹤影.',
+      iceMeltInWater: '{0}在水中融化了.',
+      iceMeltInHole: '{0}融化了, 形成水坑.',
+      iceHitLava: '{0}冷卻了岩漿, 形成可行走的陸地.',
+      objectSummoned: '{0}召喚了{1}!',
       helpMsg: '移動角色:\n'
         + '數字小鍵盤(2468: 下左右上, 1379: 左下、右下、左上、右上, 5:原地等待一回合)\n\n'
         + '戰鬥操作:\n'
@@ -830,7 +837,7 @@
         let location, temp;
         for (let i = 0; i < maxTry; i++) {
           temp = locations[getRandomInt(locations.length)];
-          if ($gamePlayer.pos(temp.x, temp.y)) {
+          if (!MapUtils.isTileAvailableForMob(mapId, temp.x, temp.y)) {
             continue;
           } else if (outOfSight && temp.isVisible) {
             continue;
@@ -1095,6 +1102,10 @@
     $gameVariables[0].transferInfo = null;
     $gameVariables[0].directionalAction = null;
     $gameVariables[0].directionalFlag = false;
+    $gameVariables[0].directionalXy = {
+      x: 0,
+      y: 0
+    };
     $gameVariables[0].messageFlag = false;
     $gameVariables[0].projectileMoving = false;
     $gameVariables[0].logList = []; // only 18 lines can be displayed
@@ -1197,6 +1208,8 @@
     Soul_Obtained_Action.learnSkill(Skill_Barrier);
     Soul_Obtained_Action.learnSkill(Skill_IceBolt);
     Soul_Obtained_Action.learnSkill(Skill_IceBreath);
+    Soul_Obtained_Action.learnSkill(Skill_Charge);
+    Soul_Obtained_Action.learnSkill(Skill_IceBolder);
 
     // modify actor status
     let player = $gameActors.actor(1);
@@ -1233,7 +1246,7 @@
   }
 
   MapUtils.checkInOutWater = function(src, oldX, oldY, nowX, nowY) {
-    if (src != $gamePlayer || !(src.type && src.type == 'MOB')) {
+    if (src != $gamePlayer && !(src.type && src.type == 'MOB')) {
       return;
     }
     let mapData = $gameVariables[$gameMap.mapId()].mapData;
@@ -1352,6 +1365,12 @@
     return false;
   }
 
+  MapUtils.isBolderOnTile = function(x, y) {
+    return $gameMap.eventsXy(x, y).filter(function(evt) {
+      return evt.type && evt.type == 'BOLDER';
+    })[0] != null;
+  }
+
   MapUtils.getTileIndex = function(x, y) {
     return x + ',' + y;
   }
@@ -1425,7 +1444,7 @@
           // does not count the (x, y) point
           if (!(path[i].x == x && path[i].y == y) && !(path[i].x == src._x && path[i].y == src._y)) {
             if (!MapUtils.isTilePassable($gameMap._mapId, path[i].x, path[i].y
-              , mapData[path[i].x][path[i].y].originalTile)) {
+              , mapData[path[i].x][path[i].y].originalTile) || MapUtils.isBolderOnTile(path[i].x, path[i].y)) {
               visible = false;
               break;
             } else {
@@ -1449,7 +1468,8 @@
 
         // start to check if vision blocked
         for (var i = start + 1; i < end; i++) {
-          if (!MapUtils.isTilePassable($gameMap._mapId, x, i, mapData[x][i].originalTile)) {
+          if (!MapUtils.isTilePassable($gameMap._mapId, x, i, mapData[x][i].originalTile)
+          || MapUtils.isBolderOnTile(x, i)) {
             visible = false;
             break;
           } else {
@@ -2027,6 +2047,34 @@
       }
     }
     return new DisplacementData(moveFunc, param1, param2);
+  }
+
+  MapUtils.updateAdjacentTiles = function(centerX, centerY) {
+    let currentMapData = $gameVariables[$gameMap._mapId].mapData;
+    for (let x = centerX - 1; x < centerX + 2; x++) {
+      for (let y = centerY - 1; y < centerY + 2; y++) {
+        if ((x >= 0 && x < currentMapData.length) && (y >= 0 && y < currentMapData[0].length)
+          && currentMapData[x][y].originalTile != WALL) {
+          let tileCenter, tileType;
+          switch (currentMapData[x][y].originalTile) {
+            case FLOOR: case DOOR:
+              tileCenter = currentDungeonTiles.floorCenter;
+              tileType = FLOOR;
+              break;
+            case WATER:
+              tileCenter = currentDungeonTiles.waterCenter;
+              tileType = WATER;
+              break;
+            case HOLLOW:
+              tileCenter = currentDungeonTiles.hollowCenter;
+              tileType = HOLLOW;
+              break;
+          }
+          currentMapData[x][y].base = refineMapTile($gameMap.mapId(), null
+            , x, y, tileCenter, tileType);
+        }
+      }
+    }
   }
 
   var RNG = [
@@ -2794,6 +2842,20 @@
     }
   }
 
+  MapUtils.getCharXy = function(x, y) {
+    let evts = $gameMap.eventsXy(x, y);
+    let target = null;
+    for (let id in evts) {
+      if (evts[id].type == 'MOB') {
+        target = evts[id];
+      }
+    }
+    if ($gamePlayer.pos(x, y)) {
+      target = $gamePlayer;
+    }
+    return target;
+  }
+
   //-----------------------------------------------------------------------------------
   // DataManager
   //
@@ -2990,6 +3052,7 @@
       actor.moved = true;
       TimeUtils.afterPlayerMoved(timeSpent);
     }
+    return moved;
   };
 
   Game_Player.prototype.moveDiagonally = function (horz, vert) {
@@ -3059,6 +3122,7 @@
       actor.moved = true;
       TimeUtils.afterPlayerMoved(timeSpent);
     }
+    return moved;
   };
 
   //-----------------------------------------------------------------------------------
@@ -3081,8 +3145,9 @@
     if (this.isCollidedWithCharacters(x2, y2)) {
         return false;
     }
-    // check moveType
+  
     if (this.mob) {
+      // check mob moveType
       switch (this.mob.moveType) {
         case 0:
           if ($gameVariables[$gameMap.mapId()].mapData[x2][y2].originalTile == HOLLOW) {
@@ -3110,9 +3175,11 @@
       this._realY = $gameMap.yWithDirection(this._y, this.reverseDir(d));
       this.increaseSteps();
       MapUtils.checkInOutWater(this, oldX, oldY, this._x, this._y);
+      return true;
     } else {
       this.setDirection(d);
       this.checkEventTriggerTouchFront(d);
+      return false;
     }
   }
 
@@ -3140,6 +3207,7 @@
     if (!moved) {
       this.checkEventTriggerTouchDiagonal(horz, vert);
     }
+    return moved;
   };
 
   // add check function for diagonal events
@@ -3322,18 +3390,160 @@
     Game_Event.prototype.initialize.call(this, $gameMap.mapId(), eventId);
     // setup image
     this.setImage('!Other1', 1);
+    this.name = '巨岩';
     $gameMap._events[eventId] = this;
   };
 
+  // override this function, so bolder can pass through door/itemPiles
+  Bolder.prototype.isCollidedWithEvents = function (x, y) {
+    return Game_CharacterBase.prototype.isCollidedWithEvents.call(this, x, y);
+  };
+
   Bolder.prototype.onPush = function(src) {
+    if (MapUtils.getCharXy(this._x, this._y)) {
+      // char on this block, do nothing
+      return;
+    }
     let data = MapUtils.getDisplacementData(src._x, src._y, this.x, this.y);
+    let moved = false;
     if (data.moveFunc == 'moveStraight') {
-      this.moveStraight(data.param1);
+      moved = this.moveStraight(data.param1);
       src.moveStraight(data.param1);
     } else if (data.moveFunc == 'moveDiagonally') {
-      this.moveDiagonally(data.param1, data.param2);
+      moved = this.moveDiagonally(data.param1, data.param2);
       src.moveDiagonally(data.param1, data.param2);
     }
+    if (moved) {
+      AudioManager.playSe({name: 'Push', pan: 0, pitch: 100, volume: 100});
+      let realSrc = BattleUtils.getRealTarget(src);
+      LogUtils.addLog(String.format(Message.display('pushObject'), LogUtils.getCharName(realSrc)
+        , this.name));
+      this.checkTerrainEffect();
+    }
+  }
+
+  Bolder.prototype.checkTerrainEffect = function() {
+    let mapData = $gameVariables[$gameMap.mapId()].mapData;
+    // check if hit specific tile
+    switch (mapData[this._x][this._y].originalTile) {
+      case WATER:
+        this.hitWater();
+        break;
+      case LAVA:
+        this.hitLava();
+        break;
+      case HOLLOW:
+        this.hitHollow();
+        break;
+    }
+    // check if hit specific trap
+    let trap = TrapUtils.getMapTrap(this._x, this._y);
+    if (trap) {
+      switch (trap.trap.trapClass) {
+        case 'Trap_GroundHole':
+          this.hitGroundHoleTrap(trap);
+          break;
+      }
+    }
+  }
+
+  Bolder.prototype.hitWater = function() {
+    let mapData = $gameVariables[$gameMap.mapId()].mapData;
+    // change tile to floor
+    mapData[this._x][this._y].originalTile = FLOOR;
+    MapUtils.updateAdjacentTiles(this._x, this._y);
+    // remove bolder
+    this.setPosition(-10, -10);
+    $gameMap._events[this._eventId] = null;
+    $dataMap.events[this._eventId] = null;
+    MapUtils.refreshMap();
+    AudioManager.playSe({name: 'Earth3', pan: 0, pitch: 100, volume: 100});
+    LogUtils.addLog(String.format(Message.display('bolderFilledHole'), this.name));
+  }
+
+  Bolder.prototype.hitLava = function() {
+    this.hitWater();
+  }
+
+  Bolder.prototype.hitHollow = function() {
+    // remove bolder
+    this.setPosition(-10, -10);
+    $gameMap._events[this._eventId] = null;
+    $dataMap.events[this._eventId] = null;
+    MapUtils.refreshMap();
+    AudioManager.playSe({name: 'Fall', pan: 0, pitch: 100, volume: 100});
+    LogUtils.addLog(String.format(Message.display('bolderHitHollow'), this.name));
+  }
+
+  Bolder.prototype.hitGroundHoleTrap = function(trap) {
+    // remove ground hole trap
+    trap.setPosition(-10, -10);
+    $gameMap._events[trap._eventId] = null;
+    $dataMap.events[trap._eventId] = null;
+    // fill the floor
+    this.hitWater();
+  }
+
+  //-----------------------------------------------------------------------------
+  // IceBolder
+  //
+  // inherit from Bolder
+
+  IceBolder = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  IceBolder.prototype = Object.create(Bolder.prototype);
+  IceBolder.prototype.constructor = IceBolder;
+
+  IceBolder.prototype.initialize = function (x, y, fromData) {
+    Bolder.prototype.initialize.call(this, x, y, fromData);
+    this.setImage('!Other1', 2);
+    this.name = '冰岩';
+  }
+
+  IceBolder.prototype.hitWater = function() {
+    // ice bolder melt and disappear
+    this.setPosition(-10, -10);
+    $gameMap._events[this._eventId] = null;
+    $dataMap.events[this._eventId] = null;
+    MapUtils.refreshMap();
+    AudioManager.playSe({name: 'Water5', pan: 0, pitch: 100, volume: 100});
+    LogUtils.addLog(String.format(Message.display('iceMeltInWater'), this.name));
+  }
+
+  IceBolder.prototype.hitLava = function() {
+    // cool lava down to foor
+    let mapData = $gameVariables[$gameMap.mapId()].mapData;
+    // change tile to floor
+    mapData[this._x][this._y].originalTile = FLOOR;
+    MapUtils.updateAdjacentTiles(this._x, this._y);
+    // remove bolder
+    this.setPosition(-10, -10);
+    $gameMap._events[this._eventId] = null;
+    $dataMap.events[this._eventId] = null;
+    MapUtils.refreshMap();
+    AudioManager.playSe({name: 'Water2', pan: 0, pitch: 100, volume: 100});
+    LogUtils.addLog(String.format(Message.display('iceHitLava'), this.name));
+  }
+
+  IceBolder.prototype.hitGroundHoleTrap = function(trap) {
+    // melt and fill pit to water hole
+    // change tile to floor
+    let mapData = $gameVariables[$gameMap.mapId()].mapData;
+    mapData[this._x][this._y].originalTile = WATER;
+    MapUtils.updateAdjacentTiles(this._x, this._y);
+    // remove ground hole trap
+    trap.setPosition(-10, -10);
+    $gameMap._events[trap._eventId] = null;
+    $dataMap.events[trap._eventId] = null;
+    // remove bolder
+    this.setPosition(-10, -10);
+    $gameMap._events[this._eventId] = null;
+    $dataMap.events[this._eventId] = null;
+    MapUtils.refreshMap();
+    AudioManager.playSe({name: 'Water5', pan: 0, pitch: 100, volume: 100});
+    LogUtils.addLog(String.format(Message.display('iceMeltInHole'), this.name));
   }
 
   //-----------------------------------------------------------------------------
@@ -5464,19 +5674,7 @@
     for (let id in mapEvts) {
       let mapEvt = mapEvts[id];
       if (mapEvt.type == 'TRAP') {
-        let target = null;
-        if ($gamePlayer.pos(mapEvt._x, mapEvt._y)) {
-          target = $gamePlayer;
-        } else {
-          let evts = $gameMap.eventsXy(mapEvt._x, mapEvt._y);
-          for (let id in evts) {
-            let evt = evts[id];
-            if (evt.type == 'MOB') {
-              target = evt;
-              break;
-            }
-          }
-        }
+        let target = MapUtils.getCharXy(mapEvt._x, mapEvt._y);
         mapEvt.trap.lastTriggered = target;
       }
     }
@@ -5504,6 +5702,12 @@
       return false;
     }
     return true;
+  }
+
+  TrapUtils.getMapTrap = function(x, y) {
+    return $gameMap.eventsXy(x, y).filter(function(evt) {
+      return evt.type && evt.type == 'TRAP';
+    })[0];
   }
 
   //-----------------------------------------------------------------------------------
@@ -6091,32 +6295,7 @@
               if (Math.random() < 0.2) {
                 $gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(coordinate.x, coordinate.y)].isRevealed = true;
                 if ($gameVariables[$gameMap._mapId].mapData[coordinate.x][coordinate.y].originalTile == DOOR) {
-                  // update adjacent tiles
-                  let currentMapData = $gameVariables[$gameMap._mapId].mapData;
-                  for (let x = coordinate.x - 1; x < coordinate.x + 2; x++) {
-                    for (let y = coordinate.y - 1; y < coordinate.y + 2; y++) {
-                      if ((x >= 0 && x < currentMapData.length) && (y >= 0 && y < currentMapData[0].length)
-                        && currentMapData[x][y].originalTile != WALL) {
-                        let tileCenter, tileType;
-                        switch (currentMapData[x][y].originalTile) {
-                          case FLOOR: case DOOR:
-                            tileCenter = currentDungeonTiles.floorCenter;
-                            tileType = FLOOR;
-                            break;
-                          case WATER:
-                            tileCenter = currentDungeonTiles.waterCenter;
-                            tileType = WATER;
-                            break;
-                          case HOLLOW:
-                            tileCenter = currentDungeonTiles.hollowCenter;
-                            tileType = HOLLOW;
-                            break;
-                        }
-                        currentMapData[x][y].base = refineMapTile($gameMap.mapId(), null
-                          , x, y, tileCenter, tileType);
-                      }
-                    }
-                  }
+                  MapUtils.updateAdjacentTiles(coordinate.x, coordinate.y);
                   new Game_Door(coordinate.x, coordinate.y);
                   LogUtils.addLog(Message.display('secretDoorDiscovered'));
                 }
@@ -9977,16 +10156,9 @@
 
   // for directional skill
   SkillUtils.performDirectionalAction = function(src, x, y) {
-    let target = null;
-    let events = $gameMap.eventsXy(x, y);
-    for (let id in events) {
-      if (events[id].mob) {
-        target = events[id];
-      }
-    }
-    if ($gamePlayer.pos(x, y)) {
-      target = $gamePlayer;
-    }
+    $gameVariables[0].directionalXy.x = x;
+    $gameVariables[0].directionalXy.y = y;
+    let target = MapUtils.getCharXy(x, y);
 
     if (src == $gamePlayer && target) {
       switch ($gameVariables[0].fireProjectileInfo.skill.stypeId) {
@@ -10006,6 +10178,8 @@
 
   // for projectile skill
   SkillUtils.performProjectileAction = function(src, x, y) {
+    $gameVariables[0].directionalXy.x = x;
+    $gameVariables[0].directionalXy.y = y;
     let realSrc = BattleUtils.getRealTarget(src);
     realSrc.attacked = $gameVariables[0].fireProjectileInfo.skill.action(src, x, y);
     return realSrc.attacked;
@@ -10444,6 +10618,8 @@
     CharUtils.decreaseMp(realSrc, this.mpCost);
     CharUtils.decreaseTp(realSrc, this.tpCost);
 
+    LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
+      , LogUtils.getCharName(realSrc), this.name));
     let moveData = MapUtils.getDisplacementData(src._x, src._y, x, y);
     src.setDirection(moveData.param1);
     AudioManager.playSe({name: "Evasion1", pan: 0, pitch: 100, volume: 100});
@@ -10471,17 +10647,26 @@
     let func = function() {
       let data = Skill_Charge.data;
       if (data.nowDistance < data.maxDistance) {
+        let checkX = src._x + data.directionX, checkY = src._y + data.directionY;
         if ((data.moveData.moveFunc == 'moveStraight' && src.canPass(src._x, src._y, data.moveData.param1))
           || (data.moveData.moveFunc == 'moveDiagonally'
           && src.canPassDiagonally(src._x, src._y, data.moveData.param1, data.moveData.param2))) {
           // can pass
-          src.setPosition(src._x + data.directionX, src._y + data.directionY);
-          data.nowDistance++;
+          src.setPosition(checkX, checkY);
+          // check trap stepped
+          TrapUtils.checkTrapStepped(src);
+          TrapUtils.updateLastTriggered();
+          let status = BattleUtils.getRealTarget(src).status;
+          if (status.paralyzeCount > 0 || status.sleepCount > 0 || status.faintCount > 0 || status.groundHoleTrapped) {
+            // src unable to move
+            data.nowDistance = 100;
+          } else {
+            data.nowDistance++;
+          }
         } else {
-          console.log('run into obstacle!');
           // check if bump into wall
           if ($gameVariables[$gameMap._mapId]
-            .mapData[src._x + data.directionX][src._y + data.directionY].originalTile == WALL) {
+            .mapData[checkX][checkY].originalTile == WALL) {
             let value = dice(1, 10);
             TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 2));
             TimeUtils.animeQueue.push(new AnimeObject(src, 'POP_UP', value * -1));
@@ -10491,16 +10676,7 @@
             data.nowDistance = 100;
           }
           // check if bump into target
-          let evts = $gameMap.eventsXy(src._x + data.directionX, src._y + data.directionY);
-          let target;
-          for (let id in evts) {
-            if (evts[id].type == 'MOB') {
-              target = evts[id];
-            }
-          }
-          if ($gamePlayer.pos(src._x + data.directionX, src._y + data.directionY)) {
-            target = $gamePlayer;
-          }
+          let target = MapUtils.getCharXy(checkX, checkY);
           if (target) {
             let realTarget = BattleUtils.getRealTarget(target);
             let prop = Skill_Charge.prop;
@@ -10533,6 +10709,7 @@
             data.nowDistance = 100;
           } else {
             // check if bump into a closed door
+            let evts = $gameMap.eventsXy(checkX, checkY);
             for (let id in evts) {
               let target = evts[id];
               if (target.type == 'DOOR' && target.status == 1) {
@@ -10543,6 +10720,22 @@
                 target.status = 2;
                 data.nowDistance++;
               }
+            }
+            // check if bump into a secret door
+            if ($gameVariables[$gameMap.mapId()].secretBlocks[MapUtils.getTileIndex(checkX, checkY)]
+            && !$gameVariables[$gameMap.mapId()].secretBlocks[MapUtils.getTileIndex(checkX, checkY)].isRevealed
+            && $gameVariables[$gameMap.mapId()].mapData[checkX][checkY].originalTile == DOOR) {
+              // secret door discovered
+              $gameVariables[$gameMap.mapId()].secretBlocks[MapUtils.getTileIndex(checkX, checkY)].isRevealed = true;
+              MapUtils.updateAdjacentTiles(checkX, checkY);
+              let target = new Game_Door(checkX, checkY);
+              LogUtils.addLog(Message.display('secretDoorDiscovered'));
+              // bump into a closed door
+              TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 2));
+              $gameSelfSwitches.setValue([$gameMap.mapId(), target._eventId, 'A'], true);
+              LogUtils.addLog(String.format(Message.display('bumpIntoDoor'), LogUtils.getCharName(realSrc)));
+              target.status = 2;
+              data.nowDistance++;
             }
           }
         }
@@ -11395,6 +11588,67 @@
     let data = new ProjectileData(this, imageData
       , window[this.constructor.name].prop.effect[this.lv - 1].distance, hitCharFunc);
     new Projectile_Ray(src, x, y, data);
+    return true;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Skill_IceBolder
+
+  Skill_IceBolder = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_IceBolder.prototype = Object.create(ItemTemplate.prototype);
+  Skill_IceBolder.prototype.constructor = Skill_IceBolder;
+
+  Skill_IceBolder.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[13]);
+    this.name = '冰岩';
+    this.description = '召喚冰岩, 對敵人造成魔法傷害, 亦可作為障礙物';
+    this.iconIndex = 67;
+    this.mpCost = 50;
+    this.tpCost = 0;
+    this.lv = 1;
+    this.exp = 0;
+  }
+
+  Skill_IceBolder.prop = {
+    type: "SKILL",
+    subType: "DIRECTIONAL",
+    damageType: "MAGIC",
+    effect: [
+      {lv: 1, baseDamage: 20, levelUp: 50},
+      {lv: 2, baseDamage: 25, levelUp: 150},
+      {lv: 3, baseDamage: 30, levelUp: 300},
+      {lv: 4, baseDamage: 35, levelUp: 450},
+      {lv: 5, baseDamage: 40, levelUp: -1}
+    ]
+  }
+
+  Skill_IceBolder.prototype.action = function(src, target) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    CharUtils.decreaseMp(realSrc, this.mpCost);
+    CharUtils.decreaseTp(realSrc, this.tpCost);
+    LogUtils.addLog(String.format(Message.display('objectSummoned'), LogUtils.getCharName(realSrc), this.name));
+    let bolder = new IceBolder($gameVariables[0].directionalXy.x, $gameVariables[0].directionalXy.y);
+
+    if (target) {
+      let realTarget = BattleUtils.getRealTarget(target);
+      let prop = Skill_IceBolder.prop;
+      let index = this.lv - 1;
+      let value = prop.effect[index].baseDamage + Math.floor(realSrc.param(4) / 3)
+        - realTarget.param(9);
+      value = BattleUtils.getFinalDamage(value);
+      TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 4));
+      TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
+      LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)
+        , LogUtils.getPerformedTargetName(realSrc, realTarget), this.name, value));
+      CharUtils.decreaseHp(realTarget, value);
+      SkillUtils.gainSkillExp(realSrc, this, index, prop);
+      BattleUtils.checkTargetAlive(realSrc, realTarget, target);
+    }
+    // deal with tile/trap change
+    bolder.checkTerrainEffect();
     return true;
   }
 
