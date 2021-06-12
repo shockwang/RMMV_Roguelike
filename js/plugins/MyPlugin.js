@@ -123,6 +123,11 @@
     this.lastTime = 0;
   }
 
+  var SkillData = function(skillClass, lv) {
+    this.skillClass = skillClass;
+    this.lv = lv;
+  }
+
   var FLOOR = '□';
   var WALL = '■';
   var DOOR = 'Ｄ';
@@ -1069,6 +1074,17 @@
     }
   }
 
+  CharUtils.calcMobExp = function(realTarget) {
+    let exp = Math.pow(realTarget.level, 2) + 1;
+    let paramSum = 0;
+    for (let i = 2; i < 8; i++) {
+      paramSum += realTarget._params[i];
+    }
+    exp += Math.round(paramSum / 10);
+    exp += realTarget._skills.length;
+    return exp;
+  }
+
   //-----------------------------------------------------------------------------------
   // MapUtils
   //
@@ -1237,21 +1253,21 @@
     Soul_Obtained_Action.learnSkill(Skill_Bash);
 
     // modify actor status
-    let player = $gameActors.actor(1);
-    player._paramPlus[2] = 6;
-    player._paramPlus[3] = 9;
-    player._paramPlus[6] = 9;
-    $gameParty.gainItem(new Bear_Shield(), 1);
-    $gameParty.gainItem(new Bear_Skin(), 1);
-    $gameParty.gainItem(new Bear_Claw(), 1);
-    $gameParty.gainItem(new Cat_Gloves(), 1);
-    $gameParty.gainItem(new Cat_Shoes(), 1);
-    for (let i = 0; i < 6; i++) {
-      $gameParty.gainItem(new Dart_Lv2_T1(), 1);
-      player.levelUp();
-    }
-    player._hp = 120;
-    player._mp = 80;
+    // let player = $gameActors.actor(1);
+    // player._paramPlus[2] = 6;
+    // player._paramPlus[3] = 9;
+    // player._paramPlus[6] = 9;
+    // $gameParty.gainItem(new Bear_Shield(), 1);
+    // $gameParty.gainItem(new Bear_Skin(), 1);
+    // $gameParty.gainItem(new Bear_Claw(), 1);
+    // $gameParty.gainItem(new Cat_Gloves(), 1);
+    // $gameParty.gainItem(new Cat_Shoes(), 1);
+    // for (let i = 0; i < 6; i++) {
+    //   $gameParty.gainItem(new Dart_Lv2_T1(), 1);
+    //   player.levelUp();
+    // }
+    // player._hp = 120;
+    // player._mp = 80;
     // setTimeout(MapUtils.goDownLevels, 500, 7);
   }
 
@@ -3626,1483 +3642,6 @@
     AudioManager.playSe({name: 'Water5', pan: 0, pitch: 100, volume: 100});
     LogUtils.addLog(String.format(Message.display('iceMeltInHole'), this.name));
   }
-
-  //-----------------------------------------------------------------------------
-  // Game_Enemy
-  //
-  // The game object class for an enemy.
-  // Modify this class for mob instance, isolate them from the template
-
-  Game_Enemy.prototype.initialize = function(enemyId, x, y, params, xparams) {
-    Game_Battler.prototype.initialize.call(this);
-    this._params = params;
-    this._xparams = xparams;
-    this.setup(enemyId, x, y);
-  };
-
-  Game_Enemy.prototype.name = function() {
-    return this._name;
-  };
-
-  Game_Enemy.prototype.paramBase = function(paramId) {
-    return this._params[paramId];
-  };
-
-  // overwrite this, so mobs can have their own [armor, magicResistance, weaponAtk]
-  Game_Enemy.prototype.xparam = function(xparamId) {
-    if (xparamId == 2) {
-      return this._xparams[xparamId];
-    } else {
-      return this._xparams[xparamId] / 100;
-    }
-  }
-
-  Game_Enemy.prototype.exp = function() {
-    return this._exp;
-  };
-
-  //-----------------------------------------------------------------------------------
-  // Game_Mob
-  //
-  // The game object class for a mob (aggressive/passive), define mob status in
-  // it. (HP/MP/attribute, etc)
-
-  Game_Mob = function () {
-    this.initialize.apply(this, arguments);
-  }
-
-  Game_Mob.prototype = Object.create(Game_Event.prototype);
-  Game_Mob.prototype.constructor = Game_Mob;
-
-  Game_Mob.prototype.fromEvent = function (src, target) {
-    target.mob = src.mob;
-    target.type = src.type;
-    target.x = src.x;
-    target.y = src.y;
-  }
-
-  Game_Mob.prototype.initStatus = function (event) {
-    // NOTE: attribute name must be the same as Game_Actor
-    event.mob = this.mob;
-    event.type = 'MOB';
-  }
-
-  Game_Mob.prototype.updateDataMap = function () {
-    Game_Mob.prototype.fromEvent(this, $dataMap.events[this._eventId]);
-  }
-
-  Game_Mob.prototype.initialize = function (x, y, mobId, fromData, mobInitData) {
-    var eventId = -1;
-    if (fromData) {
-      for (var i = 1; i < $dataMap.events.length; i++) {
-        if ($dataMap.events[i] && $dataMap.events[i] == fromData) {
-          eventId = i;
-          Game_Mob.prototype.fromEvent($dataMap.events[i], this);
-          break;
-        }
-      }
-    } else {
-      // new mob instance from mobId
-      this.mob = new Game_Enemy(mobId, x, y, mobInitData.params, mobInitData.xparams);
-      this.mob._name = mobInitData.name;
-      this.mob._exp = mobInitData.exp;
-      this.mob.level = mobInitData.level;
-      this.mob.moveType = mobInitData.moveType;
-      this.mob._tp = 100;
-      this.mob.awareDistance = 10;
-      this.mob.status = CharUtils.initStatus();
-      this.mob._skills = [];
-      this.mob.moved = false;
-      this.mob.attacked = false;
-      this.mob.turnCount = 0;
-      // find empty space for new event
-      var eventId = MapUtils.findEmptyFromList($dataMap.events);
-      $dataMap.events[eventId] = newDataMapEvent($gameVariables[0].templateEvents.monster, eventId, x, y);
-      this.initStatus($dataMap.events[eventId]);
-      this.initStatus(this);
-      this.initAttribute();
-    }
-    // store new events back to map variable
-    $gameVariables[$gameMap.mapId()].rmDataMap = $dataMap;
-    Game_Event.prototype.initialize.call(this, $gameMap.mapId(), eventId);
-    $gameMap._events[eventId] = this;
-    // add event to scheduler
-    TimeUtils.eventScheduler.insertEvent(new ScheduleEvent(this, $gameVariables[0].gameTime));
-  };
-
-  Game_Mob.prototype.action = function () {
-    // reset move check
-    this.mob.moved = false;
-    this.mob.attacked = false;
-    TimeUtils.actionDone = true;
-    // check if player is nearby
-    let distance = MapUtils.getDistance(this._x, this._y, $gamePlayer._x, $gamePlayer._y);
-    if (distance < 20) { // only update mobs in distance (for performance issue)
-      // check trap
-      if (this.mob.status.groundHoleTrapped) {
-        this.mob.moved = true;
-        if (Math.random() < 0.3) {
-          if (CharUtils.playerCanSeeChar(this)) {
-            LogUtils.addLog(String.format(Message.display('climbOutSuccess')
-              , LogUtils.getCharName(this.mob)));
-          }
-          this.mob.status.groundHoleTrapped = false;
-        } else {
-          if (CharUtils.playerCanSeeChar(this)) {
-            LogUtils.addLog(String.format(Message.display('climbOutFailed')
-              , LogUtils.getCharName(this.mob)));
-          }
-        }
-      } else {
-        if (this.mob.status.afraidEffect.turns > 0) {
-          this.moveAwayFromCharacter($gamePlayer);
-        } else if (!CharUtils.canSee(this.mob, $gameActors.actor(1))) {
-          // TODO: mob can attack when blind and try to walk into a character
-          this.moveRandom();
-        } else if (this.mob.status.paralyzeEffect.turns > 0 || this.mob.status.sleepEffect.turns > 0
-          || this.mob.status.faintEffect.turns > 0) {
-          // do nothing
-        } else if (distance < 2) {
-          this.turnTowardCharacter($gamePlayer);
-          if (this.meleeAction($gamePlayer)) {
-            this.mob.attacked = true;
-          } else if (CharUtils.playerCanSeeChar(this)) {
-            LogUtils.addLog(String.format(Message.display('attackOutOfEnergy'), LogUtils.getCharName(this.mob)));
-          }
-        } else if (distance < this.mob.awareDistance) {
-          // check remote attack
-          if (MapUtils.checkVisible(this, this.mob.awareDistance, $gamePlayer._x, $gamePlayer._y
-            , $gameVariables[$gameMap._mapId].mapData) && this.targetInSightAction($gamePlayer)) {
-            // alreay done action
-          } else {
-            let data = CharUtils.checkTargetReachable(this, $gamePlayer);
-            if (data && this.projectileAction(data.directionX, data.directionY, data.distance)) {
-              // already done action
-            } else {
-              // find route to player
-              let path = MapUtils.findShortestRoute(this._x, this._y
-                , $gamePlayer._x, $gamePlayer._y, mobTraceRouteMaxDistance, this);
-              if (path) {
-                this.moveTowardPosition(path[0].mapBlock.x, path[0].mapBlock.y);
-              } else {
-                this.moveTowardCharacter($gamePlayer);
-              }
-            }
-          }
-        } else {
-          this.moveRandom();
-        }
-      }
-    }
-    let func = function(vm) {
-      if (TimeUtils.actionDone) {
-        // store data back to $dataMap
-        vm.updateDataMap();
-        TimeUtils.afterPlayerMoved();
-      } else {
-        setTimeout(func, 1, vm);
-      }
-    }
-    func(this);
-  }
-
-  Game_Mob.prototype.performBuffIfNotPresent = function(skill) {
-    if (!CharUtils.getTargetEffect(this.mob, window[skill.constructor.name])
-      && SkillUtils.canPerform(this.mob, skill)) {
-      skill.action(this);
-      return true;
-    }
-    return false;
-  }
-
-  // define target in sight action (buff, range attack)
-  Game_Mob.prototype.targetInSightAction = function(target) {
-    return false;
-  }
-
-  // define melee action
-  Game_Mob.prototype.meleeAction = function(target) {
-    return BattleUtils.meleeAttack(this, target);
-  }
-
-  // define projectile action (target in line)
-  Game_Mob.prototype.projectileAction = function(x, y, distance) {
-    return false;
-  }
-
-  Game_Mob.prototype.moveTowardPosition = function(x, y) {
-    var horz = 0, vert = 0;
-    var sx = this.deltaXFrom(x);
-    var sy = this.deltaYFrom(y);
-    if (sx > 0) {
-      horz = 4;
-    } else if (sx < 0) {
-      horz = 6;
-    }
-    if (sy > 0) {
-      vert = 8;
-    } else if (sy < 0) {
-      vert = 2;
-    }
-    if (sx == 0 || sy == 0) {
-      this.moveStraight((sx == 0) ? vert : horz);
-    } else {
-      this.moveDiagonally(horz, vert);
-    }
-  }
-
-  // Override moveTowardCharacter() function so mobs can move diagonally
-  Game_Mob.prototype.moveTowardCharacter = function (character) {
-    var mapData = $gameVariables[$gameMap.mapId()].mapData;
-    var candidate = [], distanceRecord = [];
-    var nowDistance = MapUtils.getDistance(this._x, this._y, character._x, character._y);
-    for (var i = 0; i < 8; i++) {
-      var coordinate = MapUtils.getNearbyCoordinate(this._x, this._y, i);
-      if (!MapUtils.isTilePassable($gameMap.mapId(), coordinate.x, coordinate.y
-        , mapData[coordinate.x][coordinate.y].originalTile)) {
-        continue;
-      }
-      var distance = MapUtils.getDistance(coordinate.x, coordinate.y, character._x, character._y);
-      if (distance < nowDistance) {
-        if (candidate.length == 0) {
-          candidate.push(coordinate);
-          distanceRecord.push(distance);
-        } else {
-          var added = false;
-          for (var i = 0; i < candidate.length; i++) {
-            if (distance < distanceRecord[i]) {
-              candidate.splice(i, 0, coordinate);
-              distanceRecord.splice(i, 0, distance);
-              added = true;
-              break;
-            }
-          }
-          if (!added) {
-            candidate.push(coordinate);
-            distanceRecord.push(distance);
-          }
-        }
-      }
-    }
-    for (var i = 0; i < candidate.length; i++) {
-      this.moveTowardPosition(candidate[i].x, candidate[i].y);
-      if (this.isMovementSucceeded()) {
-        break;
-      }
-    }
-    return this.isMovementSucceeded();
-  }
-
-  Game_Mob.prototype.moveAwayFromCharacter = function (character) {
-    var mapData = $gameVariables[$gameMap.mapId()].mapData;
-    var candidate = [], distanceRecord = [];
-    var nowDistance = MapUtils.getDistance(this._x, this._y, character._x, character._y);
-    for (var i = 0; i < 8; i++) {
-      var coordinate = MapUtils.getNearbyCoordinate(this._x, this._y, i);
-      if (!MapUtils.isTilePassable($gameMap.mapId(), coordinate.x, coordinate.y
-        , mapData[coordinate.x][coordinate.y].originalTile)) {
-        continue;
-      }
-      var distance = MapUtils.getDistance(coordinate.x, coordinate.y, character._x, character._y);
-      if (distance > nowDistance) {
-        if (candidate.length == 0) {
-          candidate.push(coordinate);
-          distanceRecord.push(distance);
-        } else {
-          var added = false;
-          for (var i = 0; i < candidate.length; i++) {
-            if (distance > distanceRecord[i]) {
-              candidate.splice(i, 0, coordinate);
-              distanceRecord.splice(i, 0, distance);
-              added = true;
-              break;
-            }
-          }
-          if (!added) {
-            candidate.push(coordinate);
-            distanceRecord.push(distance);
-          }
-        }
-      }
-    }
-    for (var i = 0; i < candidate.length; i++) {
-      this.moveTowardPosition(candidate[i].x, candidate[i].y);
-      if (this.isMovementSucceeded()) {
-        break;
-      }
-    }
-    return this.isMovementSucceeded();
-  }
-
-  // Override moveRandom() function so mobs can move diagonally
-  Game_Mob.prototype.moveRandom = function () {
-    var moveType = Math.randomInt(2);
-    if (moveType == 0) { // straight
-      Game_Event.prototype.moveRandom.call(this);
-      this.mob.moved = true;
-    } else { // diagonal
-      var horz = 4 + Math.randomInt(2) * 2;
-      var vert = 2 + Math.randomInt(2) * 6;
-      if (this.canPassDiagonally(this.x, this.y, horz, vert)) {
-        this.moveDiagonally(horz, vert);
-        this.mob.moved = true;
-      }
-    }
-  }
-
-  // override this function, so mobs can pass through door/itemPiles
-  Game_Mob.prototype.isCollidedWithEvents = function (x, y) {
-    return Game_CharacterBase.prototype.isCollidedWithEvents.call(this, x, y);
-  };
-
-  Game_Mob.prototype.looting = function () {
-    // implement in mob instances
-  }
-
-  Game_Mob.prototype.initAttribute = function() {
-    CharUtils.updateHpMp(this.mob);
-  }
-
-  // soul related
-  Game_Mob.prototype.dropSoul = function(soulClass) {
-    let obtained = $gameParty.hasSoul(soulClass);
-    if (!obtained) {
-      let soul = new soulClass();
-      $gameParty._items.push(soul);
-      Soul_Obtained_Action.learnSkill(soulClass);
-      TimeUtils.animeQueue.push(new AnimeObject($gamePlayer, 'ANIME', 58));
-      let msg = String.format(Message.display('absorbSoul'), LogUtils.getCharName(this.mob), soul.name);
-      LogUtils.addLog(msg);
-      setTimeout(function() {
-        $gameMessage.add(msg);
-      }, 200);
-    }
-  }
-  
-  //-----------------------------------------------------------------------------------
-  // Bat
-  //
-  // Game_Mob id 1
-
-  Bat = function () {
-    this.initialize.apply(this, arguments);
-  }
-
-  Bat.prototype = Object.create(Game_Mob.prototype);
-  Bat.prototype.constructor = Bat;
-
-  Bat.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData);
-    this.setImage('Monster', 0);
-    if (!fromData) {
-      this.mob.mobClass = 'Bat';
-    }
-  }
-
-  Bat.prototype.looting = function () {
-    var lootings = [];
-    // TODO: implements Bat looting
-
-    for (var id in lootings) {
-      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
-    }
-  }
-
-  //-----------------------------------------------------------------------------------
-  // Chick
-
-  Chick = function () {
-    this.initialize.apply(this, arguments);
-  }
-  Chick.baseDungeonLevel = 1;
-
-  Chick.prototype = Object.create(Game_Mob.prototype);
-  Chick.prototype.constructor = Chick;
-
-  Chick.mobInitData = {
-    name: '小雞',
-    exp: 27,
-    params: [1, 1, 6, 1, 5, 1, 3, 5],
-    xparams: [0, 0, 0],
-    level: 1,
-    moveType: 0 // 0: walk, 1: swim, 2: float
-  }
-
-  Chick.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Chick.mobInitData);
-    this.setImage('Chick', 0);
-    if (!fromData) {
-      this.mob.mobClass = 'Chick';
-    }
-  }
-
-  Chick.prototype.looting = function () {
-    var lootings = [];
-    if (getRandomInt(10) < 3) {
-      lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
-    }
-
-    for (var id in lootings) {
-      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
-    }
-    if (getRandomInt(100) < 10) {
-      this.dropSoul(Soul_Chick);
-    }
-  }
-  CharUtils.mobTemplates[0].push(Chick);
-
-  //-----------------------------------------------------------------------------------
-  // Dog
-
-  Dog = function () {
-    this.initialize.apply(this, arguments);
-  }
-  Dog.baseDungeonLevel = 1;
-
-  Dog.prototype = Object.create(Game_Mob.prototype);
-  Dog.prototype.constructor = Dog;
-
-  Dog.mobInitData = {
-    name: '小狗',
-    exp: 27,
-    params: [1, 1, 6, 6, 10, 10, 5, 5],
-    xparams: [0, 0, 0],
-    level: 1,
-    moveType: 0
-  }
-
-  Dog.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Dog.mobInitData);
-    this.setImage('Nature', 0);
-    if (!fromData) {
-      this.mob.mobClass = 'Dog';
-      this.mob._skills.push(new Skill_Bite());
-      // for test only
-      // this.mob._skills.push(new Skill_Shield());
-    }
-  }
-
-  Dog.prototype.meleeAction = function(target) {
-    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Bite
-      return this.mob._skills[0].action(this, target);
-    // for test only
-    // } else if (SkillUtils.canPerform(this.mob, this.mob._skills[1])) {
-    //   return this.mob._skills[1].action(this);
-    } else {
-      return BattleUtils.meleeAttack(this, target);
-    }
-  }
-
-  Dog.prototype.looting = function () {
-    var lootings = [];
-    if (getRandomInt(10) < 3) {
-      lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Dog_Skin());
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Dog_Tooth());
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Dog_Bone());
-    }
-
-    for (var id in lootings) {
-      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
-    }
-    if (getRandomInt(100) < 10) {
-      this.dropSoul(Soul_Bite);
-    }
-  }
-  CharUtils.mobTemplates[0].push(Dog);
-
-  //-----------------------------------------------------------------------------------
-  // Bee
-
-  Bee = function () {
-    this.initialize.apply(this, arguments);
-  }
-  Bee.baseDungeonLevel = 3;
-
-  Bee.prototype = Object.create(Game_Mob.prototype);
-  Bee.prototype.constructor = Bee;
-
-  Bee.mobInitData = {
-    name: '蜜蜂',
-    exp: 30,
-    params: [1, 1, 4, 3, 0, 0, 13, 5],
-    xparams: [0, 0, 0],
-    level: 2,
-    moveType: 2
-  }
-
-  Bee.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Bee.mobInitData);
-    this.setImage('Fly1', 0);
-    if (!fromData) {
-      this.mob.mobClass = 'Bee';
-      this.mob._skills.push(new Skill_Pierce());
-    }
-  }
-
-  Bee.prototype.meleeAction = function(target) {
-    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Pierce
-      return this.mob._skills[0].action(this, target);
-    } else {
-      return BattleUtils.meleeAttack(this, target);
-    }
-  }
-
-  Bee.prototype.looting = function () {
-    var lootings = [];
-    if (getRandomInt(10) < 3) {
-      lootings.push(new Flesh(this.mob, 100, 100, 'FRESH'));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Honey());
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Bee_Sting());
-    }
-
-    for (var id in lootings) {
-      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
-    }
-    if (getRandomInt(100) < 10) {
-      this.dropSoul(Soul_Pierce);
-    }
-  }
-  CharUtils.mobTemplates[0].push(Bee);
-
-  //-----------------------------------------------------------------------------------
-  // Rooster
-
-  Rooster = function () {
-    this.initialize.apply(this, arguments);
-  }
-  Rooster.baseDungeonLevel = 3;
-
-  Rooster.prototype = Object.create(Game_Mob.prototype);
-  Rooster.prototype.constructor = Rooster;
-
-  Rooster.mobInitData = {
-    name: '大雞',
-    exp: 33,
-    params: [1, 1, 10, 10, 1, 5, 9, 3],
-    xparams: [0, 0, 0],
-    level: 3,
-    moveType: 0
-  }
-
-  Rooster.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Rooster.mobInitData);
-    this.setImage('Nature', 2);
-    if (!fromData) {
-      this.mob.mobClass = 'Rooster';
-    }
-  }
-
-  Rooster.prototype.looting = function () {
-    var lootings = [];
-    if (getRandomInt(10) < 3) {
-      lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Rooster_Tooth());
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Rooster_Claw());
-    }
-    if (getRandomInt(100) < 50) {
-      lootings.push(new Feather());
-    }
-
-    for (var id in lootings) {
-      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
-    }
-    if (getRandomInt(100) < 10) {
-      this.dropSoul(Soul_Chick);
-    }
-  }
-  CharUtils.mobTemplates[0].push(Rooster);
-
-  //-----------------------------------------------------------------------------------
-  // Rat
-
-  Rat = function () {
-    this.initialize.apply(this, arguments);
-  }
-  Rat.baseDungeonLevel = 4;
-
-  Rat.prototype = Object.create(Game_Mob.prototype);
-  Rat.prototype.constructor = Rat;
-
-  Rat.mobInitData = {
-    name: '老鼠',
-    exp: 36,
-    params: [1, 1, 12, 5, 0, 0, 15, 10],
-    xparams: [0, 0, 0],
-    level: 4,
-    moveType: 0
-  }
-
-  Rat.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Rat.mobInitData);
-    this.setImage('Mice', 1);
-    if (!fromData) {
-      this.mob.mobClass = 'Rat';
-      this.mob._skills.push(new Skill_Hide());
-    }
-  }
-
-  Rat.prototype.targetInSightAction = function(target) {
-    if (getRandomInt(100) < 40 && this.mob.status.invisibleEffect.turns == 0) { // Skill_Hide
-      let skill = this.mob._skills[0];
-      if (SkillUtils.canPerform(this.mob, skill)) {
-        skill.action(this);
-        return true;
-      }
-    }
-    return false;
-  }
-
-  Rat.prototype.looting = function () {
-    // TODO: implement mouse looting
-    // var lootings = [];
-    // if (getRandomInt(10) < 3) {
-    //   lootings.push(new Chicken_Meat());
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Rooster_Tooth());
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Rooster_Claw());
-    // }
-    // if (getRandomInt(100) < 50) {
-    //   lootings.push(new Feather());
-    // }
-
-    // for (var id in lootings) {
-    //   ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
-    // }
-    if (getRandomInt(100) < 10) {
-      this.dropSoul(Soul_EatRot);
-    }
-  }
-  CharUtils.mobTemplates[0].push(Rat);
-
-  //-----------------------------------------------------------------------------------
-  // Cat
-
-  Cat = function () {
-    this.initialize.apply(this, arguments);
-  }
-  Cat.baseDungeonLevel = 4;
-
-  Cat.prototype = Object.create(Game_Mob.prototype);
-  Cat.prototype.constructor = Cat;
-
-  Cat.mobInitData = {
-    name: '貓',
-    exp: 36,
-    params: [1, 1, 6, 6, 30, 20, 15, 5],
-    xparams: [0, 0, 0],
-    level: 4,
-    moveType: 0
-  }
-
-  Cat.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Cat.mobInitData);
-    this.setImage('Nature', 1);
-    if (!fromData) {
-      this.mob.mobClass = 'Cat';
-      this.mob._skills.push(new Skill_Clever());
-      this.mob._skills.push(new Skill_DarkFire());
-    }
-  }
-
-  Cat.prototype.targetInSightAction = function(target) {
-    if (getRandomInt(100) < 40) { // Skill_Clever
-      return this.performBuffIfNotPresent(this.mob._skills[0]);
-    }
-    return false;
-  }
-
-  Cat.prototype.projectileAction = function(x, y, distance) {
-    if (getRandomInt(100) < 80) { // Skill_DarkFire
-      let skill = this.mob._skills[1];
-      if (distance <= window[skill.constructor.name].prop.effect[skill.lv - 1].distance
-        && SkillUtils.canPerform(this.mob, skill)) {
-        skill.action(this, x, y);
-        return true;
-      }
-    }
-    return false;
-  }
-
-  Cat.prototype.looting = function () {
-    var lootings = [];
-    if (getRandomInt(10) < 3) {
-      lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Cat_Tooth());
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Cat_Claw());
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Cat_Skin());
-    }
-
-    for (var id in lootings) {
-      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
-    }
-    if (getRandomInt(100) < 10) {
-      this.dropSoul(Soul_Clever);
-    }
-  }
-  CharUtils.mobTemplates[0].push(Cat);
-
-  //-----------------------------------------------------------------------------------
-  // Boar
-
-  Boar = function () {
-    this.initialize.apply(this, arguments);
-  }
-  Boar.baseDungeonLevel = 5;
-
-  Boar.prototype = Object.create(Game_Mob.prototype);
-  Boar.prototype.constructor = Boar;
-
-  Boar.mobInitData = {
-    name: '野豬',
-    exp: 43,
-    params: [1, 1, 12, 15, 0, 0, 8, 5],
-    xparams: [0, 0, 0],
-    level: 5,
-    moveType: 0
-  }
-
-  Boar.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Boar.mobInitData);
-    this.setImage('Boar', 1);
-    if (!fromData) {
-      this.mob.mobClass = 'Boar';
-      this.mob._skills.push(new Skill_Charge());
-    }
-  }
-
-  Boar.prototype.projectileAction = function(x, y, distance) {
-    if (getRandomInt(100) < 80 && distance < 3) { // Skill_Charge
-      let skill = this.mob._skills[0];
-      if (SkillUtils.canPerform(this.mob, skill)) {
-        skill.action(this, x, y);
-        return true;
-      }
-    }
-    return false;
-  }
-
-  Boar.prototype.looting = function () {
-    var lootings = [];
-    if (getRandomInt(10) < 30) {
-      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Boar_Tooth());
-    }
-
-    for (var id in lootings) {
-      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
-    }
-    if (getRandomInt(100) < 10) {
-      this.dropSoul(Soul_Charge);
-    }
-  }
-  CharUtils.mobTemplates[0].push(Boar);
-
-  //-----------------------------------------------------------------------------------
-  // Wolf
-
-  Wolf = function () {
-    this.initialize.apply(this, arguments);
-  }
-  Wolf.baseDungeonLevel = 5;
-
-  Wolf.prototype = Object.create(Game_Mob.prototype);
-  Wolf.prototype.constructor = Wolf;
-
-  Wolf.mobInitData = {
-    name: '狼',
-    exp: 50,
-    params: [1, 1, 14, 10, 10, 10, 10, 3],
-    xparams: [0, 0, 0],
-    level: 6,
-    moveType: 0
-  }
-
-  Wolf.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Wolf.mobInitData);
-    this.setImage('Animal', 2);
-    if (!fromData) {
-      this.mob.mobClass = 'Wolf';
-      this.mob._skills.push(new Skill_Scud());
-      let toPush = new Skill_Bite();
-      toPush.lv = 2;
-      this.mob._skills.push(toPush);
-    }
-  }
-
-  Wolf.prototype.targetInSightAction = function(target) {
-    if (getRandomInt(100) < 40) { // Skill_Scud
-      return this.performBuffIfNotPresent(this.mob._skills[0]);
-    }
-    return false;
-  }
-
-  Wolf.prototype.meleeAction = function(target) {
-    let randNum = getRandomInt(100);
-    if (randNum < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[1])) { // Skill_Bite
-      return this.mob._skills[1].action(this, target);
-    } else if (randNum < 50 && this.performBuffIfNotPresent(this.mob._skills[0])) {
-      return true;
-    } else {
-      return BattleUtils.meleeAttack(this, target);
-    }
-  }
-
-  Wolf.prototype.looting = function () {
-    var lootings = [];
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Wolf_Tooth());
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Wolf_Skin());
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Wolf_Claw());
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Wolf_Bone());
-    }
-    if (getRandomInt(100) < 30) {
-      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
-    }
-
-    for (var id in lootings) {
-      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
-    }
-    if (getRandomInt(100) < 10) {
-      this.dropSoul(Soul_Scud);
-    }
-  }
-  CharUtils.mobTemplates[0].push(Wolf);
-
-  //-----------------------------------------------------------------------------------
-  // Turtle
-
-  Turtle = function () {
-    this.initialize.apply(this, arguments);
-  }
-  Turtle.baseDungeonLevel = 5;
-
-  Turtle.prototype = Object.create(Game_Mob.prototype);
-  Turtle.prototype.constructor = Turtle;
-
-  Turtle.mobInitData = {
-    name: '烏龜',
-    exp: 50,
-    params: [1, 1, 10, 30, 30, 30, 5, 10],
-    xparams: [3, 3, 0],
-    level: 6,
-    moveType: 0
-  }
-
-  Turtle.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Turtle.mobInitData);
-    this.setImage('Animal', 6);
-    if (!fromData) {
-      this.mob.mobClass = 'Turtle';
-      this.mob._skills.push(new Skill_Shield());
-    }
-  }
-
-  Turtle.prototype.targetInSightAction = function(target) {
-    if (getRandomInt(100) < 40) { // Skill_Shield
-      return this.performBuffIfNotPresent(this.mob._skills[0]);
-    }
-    return false;
-  }
-
-  Turtle.prototype.meleeAction = function(target) {
-    if (getRandomInt(100) < 30 && this.performBuffIfNotPresent(this.mob._skills[0])) { // Skill_Shield
-      return true;
-    } else {
-      return BattleUtils.meleeAttack(this, target);
-    }
-  }
-
-  Turtle.prototype.looting = function () {
-    var lootings = [];
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Turtle_Shell());
-    }
-    if (getRandomInt(100) < 30) {
-      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
-    }
-
-    for (var id in lootings) {
-      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
-    }
-    if (getRandomInt(100) < 10) {
-      this.dropSoul(Soul_Shield);
-    }
-  }
-  CharUtils.mobTemplates[0].push(Turtle);
-
-  //-----------------------------------------------------------------------------------
-  // Bear
-
-  Bear = function () {
-    this.initialize.apply(this, arguments);
-  }
-  Bear.baseDungeonLevel = 5;
-
-  Bear.prototype = Object.create(Game_Mob.prototype);
-  Bear.prototype.constructor = Bear;
-
-  Bear.mobInitData = {
-    name: '熊',
-    exp: 50,
-    params: [1, 1, 16, 20, 10, 10, 8, 5],
-    xparams: [0, 0, 0],
-    level: 6,
-    moveType: 0
-  }
-
-  Bear.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Bear.mobInitData);
-    this.setImage('Bear', 0);
-    if (!fromData) {
-      this.mob.mobClass = 'Bear';
-      this.mob._skills.push(new Skill_Bash());
-    }
-  }
-
-  Bear.prototype.meleeAction = function(target) {
-    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Bash
-      return this.mob._skills[0].action(this, target);
-    } else {
-      return BattleUtils.meleeAttack(this, target);
-    }
-  }
-
-  Bear.prototype.looting = function () {
-    var lootings = [];
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Bear_Skin());
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Bear_Claw());
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Bear_Bone());
-    }
-    if (getRandomInt(100) < 30) {
-      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
-    }
-
-    for (var id in lootings) {
-      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
-    }
-    if (getRandomInt(100) < 10) {
-      this.dropSoul(Soul_Bash);
-    }
-  }
-  CharUtils.mobTemplates[0].push(Bear);
-
-  //-----------------------------------------------------------------------------------
-  // Lion
-
-  Lion = function () {
-    this.initialize.apply(this, arguments);
-  }
-  Lion.baseDungeonLevel = 8;
-
-  Lion.prototype = Object.create(Game_Mob.prototype);
-  Lion.prototype.constructor = Lion;
-
-  Lion.mobInitData = {
-    name: '獅子',
-    exp: 70,
-    params: [1, 1, 20, 20, 10, 10, 18, 5],
-    xparams: [0, 0, 0],
-    level: 8,
-    moveType: 0
-  }
-
-  Lion.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Lion.mobInitData);
-    this.setImage('Lion', 0);
-    if (!fromData) {
-      this.mob.mobClass = 'Lion';
-      this.mob._skills.push(new Skill_Roar());
-    }
-  }
-
-  Lion.prototype.targetInSightAction = function(target) {
-    if (getRandomInt(100) < 40) { // Skill_Roar
-      return this.performBuffIfNotPresent(this.mob._skills[0]);
-    }
-    return false;
-  }
-
-  Lion.prototype.meleeAction = function(target) {
-    if (getRandomInt(100) < 30 && this.performBuffIfNotPresent(this.mob._skills[0])) { // Skill_Roar
-      return true;
-    } else {
-      return BattleUtils.meleeAttack(this, target);
-    }
-  }
-
-  Lion.prototype.looting = function () {
-    var lootings = [];
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Lion_Tooth());
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Lion_Claw());
-    }
-    if (getRandomInt(100) < 30) {
-      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
-    }
-
-    for (var id in lootings) {
-      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
-    }
-    if (getRandomInt(100) < 10) {
-      this.dropSoul(Soul_Roar);
-    }
-  }
-  CharUtils.mobTemplates[0].push(Lion);
-
-  //-----------------------------------------------------------------------------------
-  // Buffalo
-
-  Buffalo = function () {
-    this.initialize.apply(this, arguments);
-  }
-  Buffalo.baseDungeonLevel = 8;
-
-  Buffalo.prototype = Object.create(Game_Mob.prototype);
-  Buffalo.prototype.constructor = Buffalo;
-
-  Buffalo.mobInitData = {
-    name: '水牛',
-    exp: 70,
-    params: [1, 1, 15, 30, 20, 20, 15, 5],
-    xparams: [0, 0, 0],
-    level: 8,
-    moveType: 0
-  }
-
-  Buffalo.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Buffalo.mobInitData);
-    this.setImage('Buffalo', 1);
-    if (!fromData) {
-      this.mob.mobClass = 'Buffalo';
-      this.mob._skills.push(new Skill_Tough());
-    }
-  }
-
-  Buffalo.prototype.targetInSightAction = function(target) {
-    if (getRandomInt(100) < 40) { // Skill_Tough
-      return this.performBuffIfNotPresent(this.mob._skills[0]);
-    }
-    return false;
-  }
-
-  Buffalo.prototype.meleeAction = function(target) {
-    if (getRandomInt(100) < 30 && this.performBuffIfNotPresent(this.mob._skills[0])) { // Skill_Tough
-      return true;
-    } else {
-      return BattleUtils.meleeAttack(this, target);
-    }
-  }
-
-  Buffalo.prototype.looting = function () {
-    var lootings = [];
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Buffalo_Horn());
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Buffalo_Bone());
-    }
-    if (getRandomInt(100) < 30) {
-      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
-    }
-
-    for (var id in lootings) {
-      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
-    }
-    if (getRandomInt(100) < 10) {
-      this.dropSoul(Soul_Tough);
-    }
-  }
-  CharUtils.mobTemplates[0].push(Buffalo);
-
-  //-----------------------------------------------------------------------------------
-  // Shark
-
-  Shark = function () {
-    this.initialize.apply(this, arguments);
-  }
-  Shark.baseDungeonLevel = 5;
-
-  Shark.prototype = Object.create(Game_Mob.prototype);
-  Shark.prototype.constructor = Shark;
-
-  Shark.mobInitData = {
-    name: '鯊魚',
-    exp: 50,
-    params: [1, 1, 15, 15, 10, 10, 19, 5],
-    xparams: [0, 0, 0],
-    level: 5,
-    moveType: 1
-  }
-
-  Shark.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Shark.mobInitData);
-    this.setImage('Shark', 0);
-    if (!fromData) {
-      this.mob.mobClass = 'Shark';
-      this.mob._skills.push(new Skill_Bite());
-      this.mob._skills[0].lv = 3;
-      let skill = new Skill_AdaptWater();
-      skill.lv = 3;
-      this.mob._skills.push(skill);
-    }
-  }
-
-  Shark.prototype.meleeAction = function(target) {
-    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Bite
-      return this.mob._skills[0].action(this, target);
-    } else {
-      return BattleUtils.meleeAttack(this, target);
-    }
-  }
-
-  Shark.prototype.looting = function () {
-    var lootings = [];
-    // TODO: implements looting
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Buffalo_Horn());
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Buffalo_Bone());
-    // }
-    // if (getRandomInt(100) < 30) {
-    //   lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
-    // }
-
-    for (var id in lootings) {
-      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
-    }
-    if (getRandomInt(100) < 10) {
-      this.dropSoul(Soul_AdaptWater);
-    }
-  }
-  CharUtils.mobTemplates[1].push(Shark);
-
-  //-----------------------------------------------------------------------------------
-  // Slime
-
-  Slime = function () {
-    this.initialize.apply(this, arguments);
-  }
-  Slime.baseDungeonLevel = 6;
-
-  Slime.prototype = Object.create(Game_Mob.prototype);
-  Slime.prototype.constructor = Slime;
-
-  Slime.mobInitData = {
-    name: '史萊姆',
-    exp: 50,
-    params: [1, 1, 10, 10, 30, 30, 10, 5],
-    xparams: [5, 0, 0],
-    level: 6,
-    moveType: 0
-  }
-
-  Slime.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Slime.mobInitData);
-    this.setImage('Monster', 1);
-    if (!fromData) {
-      this.mob.mobClass = 'Slime';
-      this.mob._skills.push(new Skill_Acid());
-      let skill = new Skill_AdaptWater();
-      skill.lv = 3;
-      this.mob._skills.push(skill);
-    }
-  }
-
-  Slime.prototype.meleeAction = function(target) {
-    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Acid
-      return this.mob._skills[0].action(this, target);
-    } else {
-      return BattleUtils.meleeAttack(this, target);
-    }
-  }
-
-  Slime.prototype.looting = function () {
-    var lootings = [];
-    // TODO: implements looting
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Buffalo_Horn());
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Buffalo_Bone());
-    // }
-    // if (getRandomInt(100) < 30) {
-    //   lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
-    // }
-
-    for (var id in lootings) {
-      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
-    }
-    if (getRandomInt(100) < 10) {
-      this.dropSoul(Soul_Acid);
-    }
-  }
-  CharUtils.mobTemplates[1].push(Slime);
-
-  //-----------------------------------------------------------------------------------
-  // Jellyfish
-
-  Jellyfish = function () {
-    this.initialize.apply(this, arguments);
-  }
-  Jellyfish.baseDungeonLevel = 6;
-
-  Jellyfish.prototype = Object.create(Game_Mob.prototype);
-  Jellyfish.prototype.constructor = Jellyfish;
-
-  Jellyfish.mobInitData = {
-    name: '水母',
-    exp: 50,
-    params: [1, 1, 6, 10, 20, 30, 10, 5],
-    xparams: [0, 5, 0],
-    level: 6,
-    moveType: 1
-  }
-
-  Jellyfish.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Jellyfish.mobInitData);
-    this.setImage('Jellyfish', 0);
-    if (!fromData) {
-      this.mob.mobClass = 'Jellyfish';
-      this.mob._skills.push(new Skill_Discharge());
-      let skill = new Skill_AdaptWater();
-      skill.lv = 3;
-      this.mob._skills.push(skill);
-    }
-  }
-
-  Jellyfish.prototype.meleeAction = function(target) {
-    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Acid
-      return this.mob._skills[0].action(this, target);
-    } else {
-      return BattleUtils.meleeAttack(this, target);
-    }
-  }
-
-  Jellyfish.prototype.looting = function () {
-    var lootings = [];
-    // TODO: implements looting
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Buffalo_Horn());
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Buffalo_Bone());
-    // }
-    // if (getRandomInt(100) < 30) {
-    //   lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
-    // }
-
-    for (var id in lootings) {
-      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
-    }
-    if (getRandomInt(100) < 10) {
-      this.dropSoul(Soul_Discharge);
-    }
-  }
-  CharUtils.mobTemplates[1].push(Jellyfish);
-
-  //-----------------------------------------------------------------------------------
-  // Ice_Spirit
-
-  Ice_Spirit = function () {
-    this.initialize.apply(this, arguments);
-  }
-  Ice_Spirit.baseDungeonLevel = 7;
-
-  Ice_Spirit.prototype = Object.create(Game_Mob.prototype);
-  Ice_Spirit.prototype.constructor = Ice_Spirit;
-
-  Ice_Spirit.mobInitData = {
-    name: '冰精靈',
-    exp: 70,
-    params: [1, 1, 10, 8, 30, 30, 20, 5],
-    xparams: [0, 0, 0],
-    level: 7,
-    moveType: 2
-  }
-
-  Ice_Spirit.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Ice_Spirit.mobInitData);
-    this.setImage('Fairy', 2);
-    if (!fromData) {
-      this.mob.mobClass = 'Ice_Spirit';
-      this.mob._skills.push(new Skill_Barrier());
-      this.mob._skills.push(new Skill_IceBolt());
-    }
-  }
-
-  Ice_Spirit.prototype.targetInSightAction = function(target) {
-    if (getRandomInt(100) < 40) { // Skill_Barrier
-      return this.performBuffIfNotPresent(this.mob._skills[0]);
-    }
-    return false;
-  }
-
-  Ice_Spirit.prototype.projectileAction = function(x, y, distance) {
-    if (getRandomInt(100) < 80) { // Skill_IceBolt
-      let skill = this.mob._skills[1];
-      if (distance <= window[skill.constructor.name].prop.effect[skill.lv - 1].distance
-        && SkillUtils.canPerform(this.mob, skill)) {
-        skill.action(this, x, y);
-        return true;
-      }
-    }
-    return false;
-  }
-
-  Ice_Spirit.prototype.looting = function () {
-    var lootings = [];
-    // TODO: implement looting
-    // if (getRandomInt(10) < 3) {
-    //   lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Cat_Tooth());
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Cat_Claw());
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Cat_Skin());
-    // }
-
-    for (var id in lootings) {
-      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
-    }
-    if (getRandomInt(100) < 10) {
-      this.dropSoul(Soul_IceBolt);
-    }
-  }
-  CharUtils.mobTemplates[1].push(Ice_Spirit);
-
-  //-----------------------------------------------------------------------------------
-  // Ice_Dragon
-
-  Ice_Dragon = function () {
-    this.initialize.apply(this, arguments);
-  }
-  Ice_Dragon.baseDungeonLevel = 10;
-
-  Ice_Dragon.prototype = Object.create(Game_Mob.prototype);
-  Ice_Dragon.prototype.constructor = Ice_Dragon;
-
-  Ice_Dragon.mobInitData = {
-    name: '冰龍',
-    exp: 100,
-    params: [1, 1, 25, 20, 25, 20, 20, 5],
-    xparams: [3, 3, 0],
-    level: 10,
-    moveType: 2
-  }
-
-  Ice_Dragon.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Ice_Dragon.mobInitData);
-    this.setImage('Dragon', 1);
-    if (!fromData) {
-      this.mob.mobClass = 'Ice_Dragon';
-      this.mob._skills.push(new Skill_Barrier());
-      this.mob._skills.push(new Skill_Bash());
-      this.mob._skills.push(new Skill_IceBolt());
-      this.mob._skills.push(new Skill_IceBreath());
-    }
-  }
-
-  Ice_Dragon.prototype.targetInSightAction = function(target) {
-    if (getRandomInt(100) < 40) { // Skill_Barrier
-      return this.performBuffIfNotPresent(this.mob._skills[0]);
-    }
-    return false;
-  }
-
-  Ice_Dragon.prototype.projectileAction = function(x, y, distance) {
-    if (getRandomInt(100) < 80) {
-      let skill = this.mob._skills[3]; // Skill_IceBreath
-      if (distance <= window[skill.constructor.name].prop.effect[skill.lv - 1].distance
-        && SkillUtils.canPerform(this.mob, skill)) {
-        skill.action(this, x, y);
-        return true;
-      }
-      skill = this.mob._skills[2]; // Skill_IceBolt
-      if (distance <= window[skill.constructor.name].prop.effect[skill.lv - 1].distance
-        && SkillUtils.canPerform(this.mob, skill)) {
-        skill.action(this, x, y);
-        return true;
-      }
-    }
-    return false;
-  }
-
-  Ice_Dragon.prototype.meleeAction = function(target) {
-    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[1])) { // Skill_Bash
-      return this.mob._skills[1].action(this, target);
-    } else {
-      return BattleUtils.meleeAttack(this, target);
-    }
-  }
-
-  Ice_Dragon.prototype.looting = function () {
-    var lootings = [];
-    // TODO: implement looting
-    // if (getRandomInt(10) < 3) {
-    //   lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Cat_Tooth());
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Cat_Claw());
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Cat_Skin());
-    // }
-
-    for (var id in lootings) {
-      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
-    }
-    if (getRandomInt(100) < 10) {
-      this.dropSoul(Soul_IceBolt);
-    }
-  }
-  CharUtils.mobTemplates[1].push(Ice_Dragon);
 
   //-----------------------------------------------------------------------------------
   // Game_Door
@@ -11852,6 +10391,1490 @@
     return true;
   }
 
+  //-----------------------------------------------------------------------------
+  // Game_Enemy
+  //
+  // The game object class for an enemy.
+  // Modify this class for mob instance, isolate them from the template
+
+  Game_Enemy.prototype.initialize = function(enemyId, x, y, params, xparams) {
+    Game_Battler.prototype.initialize.call(this);
+    this._params = params;
+    this._xparams = xparams;
+    this.setup(enemyId, x, y);
+  };
+
+  Game_Enemy.prototype.name = function() {
+    return this._name;
+  };
+
+  Game_Enemy.prototype.paramBase = function(paramId) {
+    return this._params[paramId];
+  };
+
+  // overwrite this, so mobs can have their own [armor, magicResistance, weaponAtk]
+  Game_Enemy.prototype.xparam = function(xparamId) {
+    if (xparamId == 2) {
+      return this._xparams[xparamId];
+    } else {
+      return this._xparams[xparamId] / 100;
+    }
+  }
+
+  Game_Enemy.prototype.exp = function() {
+    return this._exp;
+  };
+
+  //-----------------------------------------------------------------------------------
+  // Game_Mob
+  //
+  // The game object class for a mob (aggressive/passive), define mob status in
+  // it. (HP/MP/attribute, etc)
+
+  Game_Mob = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Game_Mob.prototype = Object.create(Game_Event.prototype);
+  Game_Mob.prototype.constructor = Game_Mob;
+
+  Game_Mob.prototype.fromEvent = function (src, target) {
+    target.mob = src.mob;
+    target.type = src.type;
+    target.x = src.x;
+    target.y = src.y;
+  }
+
+  Game_Mob.prototype.initStatus = function (event) {
+    // NOTE: attribute name must be the same as Game_Actor
+    event.mob = this.mob;
+    event.type = 'MOB';
+  }
+
+  Game_Mob.prototype.updateDataMap = function () {
+    Game_Mob.prototype.fromEvent(this, $dataMap.events[this._eventId]);
+  }
+
+  Game_Mob.prototype.initialize = function (x, y, mobId, fromData, mobInitData) {
+    var eventId = -1;
+    if (fromData) {
+      for (var i = 1; i < $dataMap.events.length; i++) {
+        if ($dataMap.events[i] && $dataMap.events[i] == fromData) {
+          eventId = i;
+          Game_Mob.prototype.fromEvent($dataMap.events[i], this);
+          break;
+        }
+      }
+    } else {
+      // new mob instance from mobId
+      this.mob = new Game_Enemy(mobId, x, y, mobInitData.params, mobInitData.xparams);
+      this.mob._name = mobInitData.name;
+      this.mob.level = mobInitData.level;
+      this.mob.moveType = mobInitData.moveType;
+      this.mob._tp = 100;
+      this.mob.awareDistance = 10;
+      this.mob.status = CharUtils.initStatus();
+      this.mob._skills = [];
+      for (let id in mobInitData.skills) {
+        let skillData = mobInitData.skills[id];
+        let newSkill = new skillData.skillClass();
+        newSkill.lv = skillData.lv;
+        this.mob._skills.push(newSkill);
+      }
+      this.mob._exp = CharUtils.calcMobExp(this.mob);
+      this.mob.moved = false;
+      this.mob.attacked = false;
+      this.mob.turnCount = 0;
+      // find empty space for new event
+      var eventId = MapUtils.findEmptyFromList($dataMap.events);
+      $dataMap.events[eventId] = newDataMapEvent($gameVariables[0].templateEvents.monster, eventId, x, y);
+      this.initStatus($dataMap.events[eventId]);
+      this.initStatus(this);
+      this.initAttribute();
+    }
+    // store new events back to map variable
+    $gameVariables[$gameMap.mapId()].rmDataMap = $dataMap;
+    Game_Event.prototype.initialize.call(this, $gameMap.mapId(), eventId);
+    $gameMap._events[eventId] = this;
+    // add event to scheduler
+    TimeUtils.eventScheduler.insertEvent(new ScheduleEvent(this, $gameVariables[0].gameTime));
+  };
+
+  Game_Mob.prototype.action = function () {
+    // reset move check
+    this.mob.moved = false;
+    this.mob.attacked = false;
+    TimeUtils.actionDone = true;
+    // check if player is nearby
+    let distance = MapUtils.getDistance(this._x, this._y, $gamePlayer._x, $gamePlayer._y);
+    if (distance < 20) { // only update mobs in distance (for performance issue)
+      // check trap
+      if (this.mob.status.groundHoleTrapped) {
+        this.mob.moved = true;
+        if (Math.random() < 0.3) {
+          if (CharUtils.playerCanSeeChar(this)) {
+            LogUtils.addLog(String.format(Message.display('climbOutSuccess')
+              , LogUtils.getCharName(this.mob)));
+          }
+          this.mob.status.groundHoleTrapped = false;
+        } else {
+          if (CharUtils.playerCanSeeChar(this)) {
+            LogUtils.addLog(String.format(Message.display('climbOutFailed')
+              , LogUtils.getCharName(this.mob)));
+          }
+        }
+      } else {
+        if (this.mob.status.afraidEffect.turns > 0) {
+          this.moveAwayFromCharacter($gamePlayer);
+        } else if (!CharUtils.canSee(this.mob, $gameActors.actor(1))) {
+          // TODO: mob can attack when blind and try to walk into a character
+          this.moveRandom();
+        } else if (this.mob.status.paralyzeEffect.turns > 0 || this.mob.status.sleepEffect.turns > 0
+          || this.mob.status.faintEffect.turns > 0) {
+          // do nothing
+        } else if (distance < 2) {
+          this.turnTowardCharacter($gamePlayer);
+          if (this.meleeAction($gamePlayer)) {
+            this.mob.attacked = true;
+          } else if (CharUtils.playerCanSeeChar(this)) {
+            LogUtils.addLog(String.format(Message.display('attackOutOfEnergy'), LogUtils.getCharName(this.mob)));
+          }
+        } else if (distance < this.mob.awareDistance) {
+          // check remote attack
+          if (MapUtils.checkVisible(this, this.mob.awareDistance, $gamePlayer._x, $gamePlayer._y
+            , $gameVariables[$gameMap._mapId].mapData) && this.targetInSightAction($gamePlayer)) {
+            // alreay done action
+          } else {
+            let data = CharUtils.checkTargetReachable(this, $gamePlayer);
+            if (data && this.projectileAction(data.directionX, data.directionY, data.distance)) {
+              // already done action
+            } else {
+              // find route to player
+              let path = MapUtils.findShortestRoute(this._x, this._y
+                , $gamePlayer._x, $gamePlayer._y, mobTraceRouteMaxDistance, this);
+              if (path) {
+                this.moveTowardPosition(path[0].mapBlock.x, path[0].mapBlock.y);
+              } else {
+                this.moveTowardCharacter($gamePlayer);
+              }
+            }
+          }
+        } else {
+          this.moveRandom();
+        }
+      }
+    }
+    let func = function(vm) {
+      if (TimeUtils.actionDone) {
+        // store data back to $dataMap
+        vm.updateDataMap();
+        TimeUtils.afterPlayerMoved();
+      } else {
+        setTimeout(func, 1, vm);
+      }
+    }
+    func(this);
+  }
+
+  Game_Mob.prototype.performBuffIfNotPresent = function(skill) {
+    if (!CharUtils.getTargetEffect(this.mob, window[skill.constructor.name])
+      && SkillUtils.canPerform(this.mob, skill)) {
+      skill.action(this);
+      return true;
+    }
+    return false;
+  }
+
+  // define target in sight action (buff, range attack)
+  Game_Mob.prototype.targetInSightAction = function(target) {
+    return false;
+  }
+
+  // define melee action
+  Game_Mob.prototype.meleeAction = function(target) {
+    return BattleUtils.meleeAttack(this, target);
+  }
+
+  // define projectile action (target in line)
+  Game_Mob.prototype.projectileAction = function(x, y, distance) {
+    return false;
+  }
+
+  Game_Mob.prototype.moveTowardPosition = function(x, y) {
+    var horz = 0, vert = 0;
+    var sx = this.deltaXFrom(x);
+    var sy = this.deltaYFrom(y);
+    if (sx > 0) {
+      horz = 4;
+    } else if (sx < 0) {
+      horz = 6;
+    }
+    if (sy > 0) {
+      vert = 8;
+    } else if (sy < 0) {
+      vert = 2;
+    }
+    if (sx == 0 || sy == 0) {
+      this.moveStraight((sx == 0) ? vert : horz);
+    } else {
+      this.moveDiagonally(horz, vert);
+    }
+  }
+
+  // Override moveTowardCharacter() function so mobs can move diagonally
+  Game_Mob.prototype.moveTowardCharacter = function (character) {
+    var mapData = $gameVariables[$gameMap.mapId()].mapData;
+    var candidate = [], distanceRecord = [];
+    var nowDistance = MapUtils.getDistance(this._x, this._y, character._x, character._y);
+    for (var i = 0; i < 8; i++) {
+      var coordinate = MapUtils.getNearbyCoordinate(this._x, this._y, i);
+      if (!MapUtils.isTilePassable($gameMap.mapId(), coordinate.x, coordinate.y
+        , mapData[coordinate.x][coordinate.y].originalTile)) {
+        continue;
+      }
+      var distance = MapUtils.getDistance(coordinate.x, coordinate.y, character._x, character._y);
+      if (distance < nowDistance) {
+        if (candidate.length == 0) {
+          candidate.push(coordinate);
+          distanceRecord.push(distance);
+        } else {
+          var added = false;
+          for (var i = 0; i < candidate.length; i++) {
+            if (distance < distanceRecord[i]) {
+              candidate.splice(i, 0, coordinate);
+              distanceRecord.splice(i, 0, distance);
+              added = true;
+              break;
+            }
+          }
+          if (!added) {
+            candidate.push(coordinate);
+            distanceRecord.push(distance);
+          }
+        }
+      }
+    }
+    for (var i = 0; i < candidate.length; i++) {
+      this.moveTowardPosition(candidate[i].x, candidate[i].y);
+      if (this.isMovementSucceeded()) {
+        break;
+      }
+    }
+    return this.isMovementSucceeded();
+  }
+
+  Game_Mob.prototype.moveAwayFromCharacter = function (character) {
+    var mapData = $gameVariables[$gameMap.mapId()].mapData;
+    var candidate = [], distanceRecord = [];
+    var nowDistance = MapUtils.getDistance(this._x, this._y, character._x, character._y);
+    for (var i = 0; i < 8; i++) {
+      var coordinate = MapUtils.getNearbyCoordinate(this._x, this._y, i);
+      if (!MapUtils.isTilePassable($gameMap.mapId(), coordinate.x, coordinate.y
+        , mapData[coordinate.x][coordinate.y].originalTile)) {
+        continue;
+      }
+      var distance = MapUtils.getDistance(coordinate.x, coordinate.y, character._x, character._y);
+      if (distance > nowDistance) {
+        if (candidate.length == 0) {
+          candidate.push(coordinate);
+          distanceRecord.push(distance);
+        } else {
+          var added = false;
+          for (var i = 0; i < candidate.length; i++) {
+            if (distance > distanceRecord[i]) {
+              candidate.splice(i, 0, coordinate);
+              distanceRecord.splice(i, 0, distance);
+              added = true;
+              break;
+            }
+          }
+          if (!added) {
+            candidate.push(coordinate);
+            distanceRecord.push(distance);
+          }
+        }
+      }
+    }
+    for (var i = 0; i < candidate.length; i++) {
+      this.moveTowardPosition(candidate[i].x, candidate[i].y);
+      if (this.isMovementSucceeded()) {
+        break;
+      }
+    }
+    return this.isMovementSucceeded();
+  }
+
+  // Override moveRandom() function so mobs can move diagonally
+  Game_Mob.prototype.moveRandom = function () {
+    var moveType = Math.randomInt(2);
+    if (moveType == 0) { // straight
+      Game_Event.prototype.moveRandom.call(this);
+      this.mob.moved = true;
+    } else { // diagonal
+      var horz = 4 + Math.randomInt(2) * 2;
+      var vert = 2 + Math.randomInt(2) * 6;
+      if (this.canPassDiagonally(this.x, this.y, horz, vert)) {
+        this.moveDiagonally(horz, vert);
+        this.mob.moved = true;
+      }
+    }
+  }
+
+  // override this function, so mobs can pass through door/itemPiles
+  Game_Mob.prototype.isCollidedWithEvents = function (x, y) {
+    return Game_CharacterBase.prototype.isCollidedWithEvents.call(this, x, y);
+  };
+
+  Game_Mob.prototype.looting = function () {
+    // implement in mob instances
+  }
+
+  Game_Mob.prototype.initAttribute = function() {
+    CharUtils.updateHpMp(this.mob);
+  }
+
+  // soul related
+  Game_Mob.prototype.dropSoul = function(soulClass) {
+    let obtained = $gameParty.hasSoul(soulClass);
+    if (!obtained) {
+      let soul = new soulClass();
+      $gameParty._items.push(soul);
+      Soul_Obtained_Action.learnSkill(soulClass);
+      TimeUtils.animeQueue.push(new AnimeObject($gamePlayer, 'ANIME', 58));
+      let msg = String.format(Message.display('absorbSoul'), LogUtils.getCharName(this.mob), soul.name);
+      LogUtils.addLog(msg);
+      setTimeout(function() {
+        $gameMessage.add(msg);
+      }, 200);
+    }
+  }
+  
+  //-----------------------------------------------------------------------------------
+  // Bat
+  // 
+  // not implemented yet
+
+  Bat = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Bat.prototype = Object.create(Game_Mob.prototype);
+  Bat.prototype.constructor = Bat;
+
+  Bat.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData);
+    this.setImage('Monster', 0);
+    if (!fromData) {
+      this.mob.mobClass = 'Bat';
+    }
+  }
+
+  Bat.prototype.looting = function () {
+    var lootings = [];
+    // TODO: implements Bat looting
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Chick
+
+  Chick = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Chick.baseDungeonLevel = 1;
+
+  Chick.prototype = Object.create(Game_Mob.prototype);
+  Chick.prototype.constructor = Chick;
+
+  Chick.mobInitData = {
+    name: '小雞',
+    params: [1, 1, 6, 1, 5, 1, 3, 5],
+    xparams: [0, 0, 0],
+    level: 1,
+    moveType: 0, // 0: walk, 1: swim, 2: float
+    skills: []
+  }
+
+  Chick.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Chick.mobInitData);
+    this.setImage('Chick', 0);
+    if (!fromData) {
+      this.mob.mobClass = 'Chick';
+    }
+  }
+
+  Chick.prototype.looting = function () {
+    var lootings = [];
+    if (getRandomInt(10) < 3) {
+      lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
+    }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_Chick);
+    }
+  }
+  CharUtils.mobTemplates[0].push(Chick);
+
+  //-----------------------------------------------------------------------------------
+  // Dog
+
+  Dog = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Dog.baseDungeonLevel = 1;
+
+  Dog.prototype = Object.create(Game_Mob.prototype);
+  Dog.prototype.constructor = Dog;
+
+  Dog.mobInitData = {
+    name: '小狗',
+    params: [1, 1, 6, 6, 10, 10, 5, 5],
+    xparams: [0, 0, 0],
+    level: 1,
+    moveType: 0,
+    skills: [
+      new SkillData(Skill_Bite, 1)
+    ]
+  }
+
+  Dog.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Dog.mobInitData);
+    this.setImage('Nature', 0);
+    if (!fromData) {
+      this.mob.mobClass = 'Dog';
+    }
+  }
+
+  Dog.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Bite
+      return this.mob._skills[0].action(this, target);
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  Dog.prototype.looting = function () {
+    var lootings = [];
+    if (getRandomInt(10) < 3) {
+      lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Dog_Skin());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Dog_Tooth());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Dog_Bone());
+    }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_Bite);
+    }
+  }
+  CharUtils.mobTemplates[0].push(Dog);
+
+  //-----------------------------------------------------------------------------------
+  // Bee
+
+  Bee = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Bee.baseDungeonLevel = 3;
+
+  Bee.prototype = Object.create(Game_Mob.prototype);
+  Bee.prototype.constructor = Bee;
+
+  Bee.mobInitData = {
+    name: '蜜蜂',
+    params: [1, 1, 4, 3, 0, 0, 13, 5],
+    xparams: [0, 0, 0],
+    level: 2,
+    moveType: 2,
+    skills: [
+      new SkillData(Skill_Pierce, 1)
+    ]
+  }
+
+  Bee.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Bee.mobInitData);
+    this.setImage('Fly1', 0);
+    if (!fromData) {
+      this.mob.mobClass = 'Bee';
+    }
+  }
+
+  Bee.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Pierce
+      return this.mob._skills[0].action(this, target);
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  Bee.prototype.looting = function () {
+    var lootings = [];
+    if (getRandomInt(10) < 3) {
+      lootings.push(new Flesh(this.mob, 100, 100, 'FRESH'));
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Honey());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Bee_Sting());
+    }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_Pierce);
+    }
+  }
+  CharUtils.mobTemplates[0].push(Bee);
+
+  //-----------------------------------------------------------------------------------
+  // Rooster
+
+  Rooster = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Rooster.baseDungeonLevel = 3;
+
+  Rooster.prototype = Object.create(Game_Mob.prototype);
+  Rooster.prototype.constructor = Rooster;
+
+  Rooster.mobInitData = {
+    name: '大雞',
+    params: [1, 1, 10, 10, 1, 5, 9, 3],
+    xparams: [0, 0, 0],
+    level: 3,
+    moveType: 0,
+    skills: []
+  }
+
+  Rooster.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Rooster.mobInitData);
+    this.setImage('Nature', 2);
+    if (!fromData) {
+      this.mob.mobClass = 'Rooster';
+    }
+  }
+
+  Rooster.prototype.looting = function () {
+    var lootings = [];
+    if (getRandomInt(10) < 3) {
+      lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Rooster_Tooth());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Rooster_Claw());
+    }
+    if (getRandomInt(100) < 50) {
+      lootings.push(new Feather());
+    }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_Chick);
+    }
+  }
+  CharUtils.mobTemplates[0].push(Rooster);
+
+  //-----------------------------------------------------------------------------------
+  // Rat
+
+  Rat = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Rat.baseDungeonLevel = 4;
+
+  Rat.prototype = Object.create(Game_Mob.prototype);
+  Rat.prototype.constructor = Rat;
+
+  Rat.mobInitData = {
+    name: '老鼠',
+    params: [1, 1, 12, 5, 0, 0, 15, 10],
+    xparams: [0, 0, 0],
+    level: 4,
+    moveType: 0,
+    skills: [
+      new SkillData(Skill_Hide, 1)
+    ]
+  }
+
+  Rat.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Rat.mobInitData);
+    this.setImage('Mice', 1);
+    if (!fromData) {
+      this.mob.mobClass = 'Rat';
+    }
+  }
+
+  Rat.prototype.targetInSightAction = function(target) {
+    if (getRandomInt(100) < 40 && this.mob.status.invisibleEffect.turns == 0) { // Skill_Hide
+      let skill = this.mob._skills[0];
+      if (SkillUtils.canPerform(this.mob, skill)) {
+        skill.action(this);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Rat.prototype.looting = function () {
+    // TODO: implement mouse looting
+    // var lootings = [];
+    // if (getRandomInt(10) < 3) {
+    //   lootings.push(new Chicken_Meat());
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Rooster_Tooth());
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Rooster_Claw());
+    // }
+    // if (getRandomInt(100) < 50) {
+    //   lootings.push(new Feather());
+    // }
+
+    // for (var id in lootings) {
+    //   ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    // }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_EatRot);
+    }
+  }
+  CharUtils.mobTemplates[0].push(Rat);
+
+  //-----------------------------------------------------------------------------------
+  // Cat
+
+  Cat = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Cat.baseDungeonLevel = 4;
+
+  Cat.prototype = Object.create(Game_Mob.prototype);
+  Cat.prototype.constructor = Cat;
+
+  Cat.mobInitData = {
+    name: '貓',
+    params: [1, 1, 6, 6, 30, 20, 15, 5],
+    xparams: [0, 0, 0],
+    level: 4,
+    moveType: 0,
+    skills: [
+      new SkillData(Skill_Clever, 1),
+      new SkillData(Skill_DarkFire, 1)
+    ]
+  }
+
+  Cat.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Cat.mobInitData);
+    this.setImage('Nature', 1);
+    if (!fromData) {
+      this.mob.mobClass = 'Cat';
+    }
+  }
+
+  Cat.prototype.targetInSightAction = function(target) {
+    if (getRandomInt(100) < 40) { // Skill_Clever
+      return this.performBuffIfNotPresent(this.mob._skills[0]);
+    }
+    return false;
+  }
+
+  Cat.prototype.projectileAction = function(x, y, distance) {
+    if (getRandomInt(100) < 80) { // Skill_DarkFire
+      let skill = this.mob._skills[1];
+      if (distance <= window[skill.constructor.name].prop.effect[skill.lv - 1].distance
+        && SkillUtils.canPerform(this.mob, skill)) {
+        skill.action(this, x, y);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Cat.prototype.looting = function () {
+    var lootings = [];
+    if (getRandomInt(10) < 3) {
+      lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Cat_Tooth());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Cat_Claw());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Cat_Skin());
+    }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_Clever);
+    }
+  }
+  CharUtils.mobTemplates[0].push(Cat);
+
+  //-----------------------------------------------------------------------------------
+  // Boar
+
+  Boar = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Boar.baseDungeonLevel = 5;
+
+  Boar.prototype = Object.create(Game_Mob.prototype);
+  Boar.prototype.constructor = Boar;
+
+  Boar.mobInitData = {
+    name: '野豬',
+    params: [1, 1, 12, 15, 0, 0, 8, 5],
+    xparams: [0, 0, 0],
+    level: 5,
+    moveType: 0,
+    skills: [
+      new SkillData(Skill_Charge, 1)
+    ]
+  }
+
+  Boar.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Boar.mobInitData);
+    this.setImage('Boar', 1);
+    if (!fromData) {
+      this.mob.mobClass = 'Boar';
+    }
+  }
+
+  Boar.prototype.projectileAction = function(x, y, distance) {
+    if (getRandomInt(100) < 80 && distance < 3) { // Skill_Charge
+      let skill = this.mob._skills[0];
+      if (SkillUtils.canPerform(this.mob, skill)) {
+        skill.action(this, x, y);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Boar.prototype.looting = function () {
+    var lootings = [];
+    if (getRandomInt(10) < 30) {
+      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Boar_Tooth());
+    }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_Charge);
+    }
+  }
+  CharUtils.mobTemplates[0].push(Boar);
+
+  //-----------------------------------------------------------------------------------
+  // Wolf
+
+  Wolf = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Wolf.baseDungeonLevel = 5;
+
+  Wolf.prototype = Object.create(Game_Mob.prototype);
+  Wolf.prototype.constructor = Wolf;
+
+  Wolf.mobInitData = {
+    name: '狼',
+    params: [1, 1, 14, 10, 10, 10, 10, 3],
+    xparams: [0, 0, 0],
+    level: 6,
+    moveType: 0,
+    skills: [
+      new SkillData(Skill_Scud, 1),
+      new SkillData(Skill_Bite, 2)
+    ]
+  }
+
+  Wolf.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Wolf.mobInitData);
+    this.setImage('Animal', 2);
+    if (!fromData) {
+      this.mob.mobClass = 'Wolf';
+    }
+  }
+
+  Wolf.prototype.targetInSightAction = function(target) {
+    if (getRandomInt(100) < 40) { // Skill_Scud
+      return this.performBuffIfNotPresent(this.mob._skills[0]);
+    }
+    return false;
+  }
+
+  Wolf.prototype.meleeAction = function(target) {
+    let randNum = getRandomInt(100);
+    if (randNum < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[1])) { // Skill_Bite
+      return this.mob._skills[1].action(this, target);
+    } else if (randNum < 50 && this.performBuffIfNotPresent(this.mob._skills[0])) {
+      return true;
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  Wolf.prototype.looting = function () {
+    var lootings = [];
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Wolf_Tooth());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Wolf_Skin());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Wolf_Claw());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Wolf_Bone());
+    }
+    if (getRandomInt(100) < 30) {
+      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
+    }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_Scud);
+    }
+  }
+  CharUtils.mobTemplates[0].push(Wolf);
+
+  //-----------------------------------------------------------------------------------
+  // Turtle
+
+  Turtle = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Turtle.baseDungeonLevel = 5;
+
+  Turtle.prototype = Object.create(Game_Mob.prototype);
+  Turtle.prototype.constructor = Turtle;
+
+  Turtle.mobInitData = {
+    name: '烏龜',
+    params: [1, 1, 10, 30, 30, 30, 5, 10],
+    xparams: [3, 3, 0],
+    level: 6,
+    moveType: 0,
+    skills: [
+      new SkillData(Skill_Shield, 1)
+    ]
+  }
+
+  Turtle.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Turtle.mobInitData);
+    this.setImage('Animal', 6);
+    if (!fromData) {
+      this.mob.mobClass = 'Turtle';
+    }
+  }
+
+  Turtle.prototype.targetInSightAction = function(target) {
+    if (getRandomInt(100) < 40) { // Skill_Shield
+      return this.performBuffIfNotPresent(this.mob._skills[0]);
+    }
+    return false;
+  }
+
+  Turtle.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 30 && this.performBuffIfNotPresent(this.mob._skills[0])) { // Skill_Shield
+      return true;
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  Turtle.prototype.looting = function () {
+    var lootings = [];
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Turtle_Shell());
+    }
+    if (getRandomInt(100) < 30) {
+      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
+    }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_Shield);
+    }
+  }
+  CharUtils.mobTemplates[0].push(Turtle);
+
+  //-----------------------------------------------------------------------------------
+  // Bear
+
+  Bear = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Bear.baseDungeonLevel = 5;
+
+  Bear.prototype = Object.create(Game_Mob.prototype);
+  Bear.prototype.constructor = Bear;
+
+  Bear.mobInitData = {
+    name: '熊',
+    params: [1, 1, 16, 20, 10, 10, 8, 5],
+    xparams: [0, 0, 0],
+    level: 6,
+    moveType: 0,
+    skills: [
+      new SkillData(Skill_Bash, 1)
+    ]
+  }
+
+  Bear.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Bear.mobInitData);
+    this.setImage('Bear', 0);
+    if (!fromData) {
+      this.mob.mobClass = 'Bear';
+    }
+  }
+
+  Bear.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Bash
+      return this.mob._skills[0].action(this, target);
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  Bear.prototype.looting = function () {
+    var lootings = [];
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Bear_Skin());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Bear_Claw());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Bear_Bone());
+    }
+    if (getRandomInt(100) < 30) {
+      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
+    }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_Bash);
+    }
+  }
+  CharUtils.mobTemplates[0].push(Bear);
+
+  //-----------------------------------------------------------------------------------
+  // Lion
+
+  Lion = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Lion.baseDungeonLevel = 8;
+
+  Lion.prototype = Object.create(Game_Mob.prototype);
+  Lion.prototype.constructor = Lion;
+
+  Lion.mobInitData = {
+    name: '獅子',
+    params: [1, 1, 20, 20, 10, 10, 18, 5],
+    xparams: [0, 0, 0],
+    level: 8,
+    moveType: 0,
+    skills: [
+      new SkillData(Skill_Roar, 1)
+    ]
+  }
+
+  Lion.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Lion.mobInitData);
+    this.setImage('Lion', 0);
+    if (!fromData) {
+      this.mob.mobClass = 'Lion';
+    }
+  }
+
+  Lion.prototype.targetInSightAction = function(target) {
+    if (getRandomInt(100) < 40) { // Skill_Roar
+      return this.performBuffIfNotPresent(this.mob._skills[0]);
+    }
+    return false;
+  }
+
+  Lion.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 30 && this.performBuffIfNotPresent(this.mob._skills[0])) { // Skill_Roar
+      return true;
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  Lion.prototype.looting = function () {
+    var lootings = [];
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Lion_Tooth());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Lion_Claw());
+    }
+    if (getRandomInt(100) < 30) {
+      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
+    }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_Roar);
+    }
+  }
+  CharUtils.mobTemplates[0].push(Lion);
+
+  //-----------------------------------------------------------------------------------
+  // Buffalo
+
+  Buffalo = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Buffalo.baseDungeonLevel = 8;
+
+  Buffalo.prototype = Object.create(Game_Mob.prototype);
+  Buffalo.prototype.constructor = Buffalo;
+
+  Buffalo.mobInitData = {
+    name: '水牛',
+    params: [1, 1, 15, 30, 20, 20, 15, 5],
+    xparams: [0, 0, 0],
+    level: 8,
+    moveType: 0,
+    skills: [
+      new SkillData(Skill_Tough, 1)
+    ]
+  }
+
+  Buffalo.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Buffalo.mobInitData);
+    this.setImage('Buffalo', 1);
+    if (!fromData) {
+      this.mob.mobClass = 'Buffalo';
+    }
+  }
+
+  Buffalo.prototype.targetInSightAction = function(target) {
+    if (getRandomInt(100) < 40) { // Skill_Tough
+      return this.performBuffIfNotPresent(this.mob._skills[0]);
+    }
+    return false;
+  }
+
+  Buffalo.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 30 && this.performBuffIfNotPresent(this.mob._skills[0])) { // Skill_Tough
+      return true;
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  Buffalo.prototype.looting = function () {
+    var lootings = [];
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Buffalo_Horn());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Buffalo_Bone());
+    }
+    if (getRandomInt(100) < 30) {
+      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
+    }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_Tough);
+    }
+  }
+  CharUtils.mobTemplates[0].push(Buffalo);
+
+  //-----------------------------------------------------------------------------------
+  // Shark
+
+  Shark = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Shark.baseDungeonLevel = 5;
+
+  Shark.prototype = Object.create(Game_Mob.prototype);
+  Shark.prototype.constructor = Shark;
+
+  Shark.mobInitData = {
+    name: '鯊魚',
+    params: [1, 1, 15, 15, 10, 10, 19, 5],
+    xparams: [0, 0, 0],
+    level: 5,
+    moveType: 1,
+    skills: [
+      new SkillData(Skill_Bite, 3),
+      new SkillData(Skill_AdaptWater, 3)
+    ]
+  }
+
+  Shark.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Shark.mobInitData);
+    this.setImage('Shark', 0);
+    if (!fromData) {
+      this.mob.mobClass = 'Shark';
+    }
+  }
+
+  Shark.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Bite
+      return this.mob._skills[0].action(this, target);
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  Shark.prototype.looting = function () {
+    var lootings = [];
+    // TODO: implements looting
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Buffalo_Horn());
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Buffalo_Bone());
+    // }
+    // if (getRandomInt(100) < 30) {
+    //   lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
+    // }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_AdaptWater);
+    }
+  }
+  CharUtils.mobTemplates[1].push(Shark);
+
+  //-----------------------------------------------------------------------------------
+  // Slime
+
+  Slime = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Slime.baseDungeonLevel = 6;
+
+  Slime.prototype = Object.create(Game_Mob.prototype);
+  Slime.prototype.constructor = Slime;
+
+  Slime.mobInitData = {
+    name: '史萊姆',
+    params: [1, 1, 10, 10, 30, 30, 10, 5],
+    xparams: [5, 0, 0],
+    level: 6,
+    moveType: 0,
+    skills: [
+      new SkillData(Skill_Acid, 1),
+      new SkillData(Skill_AdaptWater, 3)
+    ]
+  }
+
+  Slime.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Slime.mobInitData);
+    this.setImage('Monster', 1);
+    if (!fromData) {
+      this.mob.mobClass = 'Slime';
+    }
+  }
+
+  Slime.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Acid
+      return this.mob._skills[0].action(this, target);
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  Slime.prototype.looting = function () {
+    var lootings = [];
+    // TODO: implements looting
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Buffalo_Horn());
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Buffalo_Bone());
+    // }
+    // if (getRandomInt(100) < 30) {
+    //   lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
+    // }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_Acid);
+    }
+  }
+  CharUtils.mobTemplates[1].push(Slime);
+
+  //-----------------------------------------------------------------------------------
+  // Jellyfish
+
+  Jellyfish = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Jellyfish.baseDungeonLevel = 6;
+
+  Jellyfish.prototype = Object.create(Game_Mob.prototype);
+  Jellyfish.prototype.constructor = Jellyfish;
+
+  Jellyfish.mobInitData = {
+    name: '水母',
+    params: [1, 1, 6, 10, 20, 30, 10, 5],
+    xparams: [0, 5, 0],
+    level: 6,
+    moveType: 1,
+    skills: [
+      new SkillData(Skill_Discharge, 1),
+      new SkillData(Skill_AdaptWater, 3)
+    ]
+  }
+
+  Jellyfish.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Jellyfish.mobInitData);
+    this.setImage('Jellyfish', 0);
+    if (!fromData) {
+      this.mob.mobClass = 'Jellyfish';
+    }
+  }
+
+  Jellyfish.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Acid
+      return this.mob._skills[0].action(this, target);
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  Jellyfish.prototype.looting = function () {
+    var lootings = [];
+    // TODO: implements looting
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Buffalo_Horn());
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Buffalo_Bone());
+    // }
+    // if (getRandomInt(100) < 30) {
+    //   lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
+    // }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_Discharge);
+    }
+  }
+  CharUtils.mobTemplates[1].push(Jellyfish);
+
+  //-----------------------------------------------------------------------------------
+  // Ice_Spirit
+
+  Ice_Spirit = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Ice_Spirit.baseDungeonLevel = 7;
+
+  Ice_Spirit.prototype = Object.create(Game_Mob.prototype);
+  Ice_Spirit.prototype.constructor = Ice_Spirit;
+
+  Ice_Spirit.mobInitData = {
+    name: '冰精靈',
+    params: [1, 1, 10, 8, 30, 30, 20, 5],
+    xparams: [0, 0, 0],
+    level: 7,
+    moveType: 2,
+    skills: [
+      new SkillData(Skill_Barrier, 1),
+      new SkillData(Skill_IceBolt, 1)
+    ]
+  }
+
+  Ice_Spirit.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Ice_Spirit.mobInitData);
+    this.setImage('Fairy', 2);
+    if (!fromData) {
+      this.mob.mobClass = 'Ice_Spirit';
+    }
+  }
+
+  Ice_Spirit.prototype.targetInSightAction = function(target) {
+    if (getRandomInt(100) < 40) { // Skill_Barrier
+      return this.performBuffIfNotPresent(this.mob._skills[0]);
+    }
+    return false;
+  }
+
+  Ice_Spirit.prototype.projectileAction = function(x, y, distance) {
+    if (getRandomInt(100) < 80) { // Skill_IceBolt
+      let skill = this.mob._skills[1];
+      if (distance <= window[skill.constructor.name].prop.effect[skill.lv - 1].distance
+        && SkillUtils.canPerform(this.mob, skill)) {
+        skill.action(this, x, y);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Ice_Spirit.prototype.looting = function () {
+    var lootings = [];
+    // TODO: implement looting
+    // if (getRandomInt(10) < 3) {
+    //   lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Cat_Tooth());
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Cat_Claw());
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Cat_Skin());
+    // }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_IceBolt);
+    }
+  }
+  CharUtils.mobTemplates[1].push(Ice_Spirit);
+
+  //-----------------------------------------------------------------------------------
+  // Ice_Dragon
+
+  Ice_Dragon = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Ice_Dragon.baseDungeonLevel = 10;
+
+  Ice_Dragon.prototype = Object.create(Game_Mob.prototype);
+  Ice_Dragon.prototype.constructor = Ice_Dragon;
+
+  Ice_Dragon.mobInitData = {
+    name: '冰龍',
+    params: [1, 1, 25, 20, 25, 20, 20, 5],
+    xparams: [3, 3, 0],
+    level: 10,
+    moveType: 2,
+    skills: [
+      new SkillData(Skill_Barrier, 1),
+      new SkillData(Skill_Bash, 1),
+      new SkillData(Skill_IceBolt, 1),
+      new SkillData(Skill_IceBreath, 1)
+    ]
+  }
+
+  Ice_Dragon.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Ice_Dragon.mobInitData);
+    this.setImage('Dragon', 1);
+    if (!fromData) {
+      this.mob.mobClass = 'Ice_Dragon';
+    }
+  }
+
+  Ice_Dragon.prototype.targetInSightAction = function(target) {
+    if (getRandomInt(100) < 40) { // Skill_Barrier
+      return this.performBuffIfNotPresent(this.mob._skills[0]);
+    }
+    return false;
+  }
+
+  Ice_Dragon.prototype.projectileAction = function(x, y, distance) {
+    if (getRandomInt(100) < 80) {
+      let skill = this.mob._skills[3]; // Skill_IceBreath
+      if (distance <= window[skill.constructor.name].prop.effect[skill.lv - 1].distance
+        && SkillUtils.canPerform(this.mob, skill)) {
+        skill.action(this, x, y);
+        return true;
+      }
+      skill = this.mob._skills[2]; // Skill_IceBolt
+      if (distance <= window[skill.constructor.name].prop.effect[skill.lv - 1].distance
+        && SkillUtils.canPerform(this.mob, skill)) {
+        skill.action(this, x, y);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Ice_Dragon.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[1])) { // Skill_Bash
+      return this.mob._skills[1].action(this, target);
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  Ice_Dragon.prototype.looting = function () {
+    var lootings = [];
+    // TODO: implement looting
+    // if (getRandomInt(10) < 3) {
+    //   lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Cat_Tooth());
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Cat_Claw());
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Cat_Skin());
+    // }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 10) {
+      this.dropSoul(Soul_IceBolt);
+    }
+  }
+  CharUtils.mobTemplates[1].push(Ice_Dragon);
+
   //-----------------------------------------------------------------------------------
   // Soul_Obtained_Action
   //
@@ -13617,6 +13640,13 @@
 
   Game_Actor.prototype.findNewSkills = function(lastSkills) {
     return [];
+  };
+
+  // modify this so we can assign exp per level
+  Game_Actor.prototype.expForLevel = function(level) {
+    // define player level up exp gap
+    let expPerLevel = [0, 20, 40, 80, 160, 320, 640, 1280, 2560, 4880];
+    return expPerLevel[level - 1];
   };
 
   //-----------------------------------------------------------------------------
