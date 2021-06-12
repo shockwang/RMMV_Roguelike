@@ -151,45 +151,45 @@
         let buffColor = '#00FF23';
         let color;
         for (let id in player.status) {
-            if (Number.isInteger(player.status[id]) && player.status[id] > 0) {
+            if (player.status[id].turns && player.status[id].turns > 0) {
                 switch (id) {
-                    case 'speedUpCount':
+                    case 'speedUpEffect':
                         status = '加速';
                         color = buffColor;
                         break;
-                    case 'invisibleCount':
+                    case 'invisibleEffect':
                         status = '隱形';
                         color = buffColor;
                         break;
-                    case 'seeInvisibleCount':
+                    case 'seeInvisibleEffect':
                         status = '偵測隱形';
                         color = buffColor;
                         break;
-                    case 'blindCount':
+                    case 'blindEffect':
                         status = '失明';
                         color = debuffColor;
                         break;
-                    case 'paralyzeCount':
+                    case 'paralyzeEffect':
                         status = '麻痺';
                         color = debuffColor;
                         break;
-                    case 'sleepCount':
+                    case 'sleepEffect':
                         status = '昏睡';
                         color = debuffColor;
                         break;
-                    case 'poisonCount':
+                    case 'poisonEffect':
                         status = '中毒';
                         color = debuffColor;
                         break;
-                    case 'bleedingCount':
+                    case 'bleedingEffect':
                         status = '出血';
                         color = debuffColor;
                         break;
-                    case 'breakArmorCount':
+                    case 'breakArmorEffect':
                         status = '破甲';
                         color = debuffColor;
                         break;
-                    case 'wetCount':
+                    case 'wetEffect':
                         status = '濡濕';
                         color = debuffColor;
                         break;
@@ -222,16 +222,10 @@
         offset += width + 5;
         this.drawActorLevel(actor, offset, 0);
         offset += 60;
-        // this.drawActorHp(actor, offset, 0, 155);
-        // offset += 160;
         this.drawPlayerHp(actor, offset, 0);
         offset += 100;
-        // this.drawActorMp(actor, offset, 0, 155);
-        // offset += 160;
         this.drawPlayerMp(actor, offset, 0);
         offset += 100;
-        // this.drawActorTp(actor, offset, 0, 155);
-        // offset += 160;
         this.drawPlayerTp(actor, offset, 0);
         offset += 100;
         if ($gameVariables[0]) {

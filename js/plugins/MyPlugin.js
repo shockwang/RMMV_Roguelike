@@ -111,12 +111,26 @@
     this.hollow = hollow;
   }
 
+  var ScheduleEvent = function(target, execTime, statusName, skillEffect) {
+    this.target = target;
+    this.execTime = execTime;
+    this.statusName = statusName;
+    this.skillEffect = skillEffect;
+  }
+
+  var StatusEffect = function() {
+    this.turns = 0;
+    this.lastTime = 0;
+  }
+
   var FLOOR = '□';
   var WALL = '■';
   var DOOR = 'Ｄ';
   var WATER = 'Ｗ';
   var LAVA = 'Ｌ';
   var HOLLOW = 'Ｈ';
+  var UPSTAIR = '＜';
+  var DOWNSTAIR = '＞';
 
   // ----------map constants----------
   var DungeonTiles = {
@@ -145,7 +159,6 @@
       hollowCenter: 3392
     }
   }
-  var currentDungeonTiles = DungeonTiles.earth;
   var warFogCenter = 15;
 
   var dungeonDepth = 9;
@@ -172,6 +185,7 @@
   var walkTpRecover = 3;
   var restTpRecover = 6;
   var mobTraceRouteMaxDistance = 15;
+  var regenTurnCount = 20;
 
   // word attached
   var groundWord = '(地上)';
@@ -453,6 +467,7 @@
       bolderHitHollow: '{0}墜入了虛空, 不見蹤影.',
       iceMeltInWater: '{0}在水中融化了.',
       iceMeltInHole: '{0}融化了, 形成水坑.',
+      iceMelt: '{0}融化了.',
       iceHitLava: '{0}冷卻了岩漿, 形成可行走的陸地.',
       objectSummoned: '{0}召喚了{1}!',
       helpMsg: '移動角色:\n'
@@ -526,18 +541,18 @@
   // initialize character status map
   CharUtils.initStatus = function() {
     var result = {
-      blindCount: 0,
-      paralyzeCount: 0,
-      sleepCount: 0,
-      poisonCount: 0,
-      speedUpCount: 0,
-      invisibleCount: 0,
-      seeInvisibleCount: 0,
-      afraidCount: 0,
-      bleedingCount: 0,
-      faintCount: 0,
-      breakArmorCount: 0,
-      wetCount: 0,
+      blindEffect: new StatusEffect(),
+      paralyzeEffect: new StatusEffect(),
+      sleepEffect: new StatusEffect(),
+      poisonEffect: new StatusEffect(),
+      speedUpEffect: new StatusEffect(),
+      invisibleEffect: new StatusEffect(),
+      seeinvisibleEffect: new StatusEffect(),
+      afraidEffect: new StatusEffect(),
+      bleedingEffect: new StatusEffect(),
+      faintEffect: new StatusEffect(),
+      breakArmorEffect: new StatusEffect(),
+      wetEffect: new StatusEffect(),
       groundHoleTrapped: false,
       skillEffect: [],
       bellyStatus: 'NORMAL' // FAINT, WEAK, HUNGRY, NORMAL, FULL
@@ -555,12 +570,14 @@
     return null;
   }
 
-  CharUtils.updateStatus = function(event) {
+  CharUtils.updateStatus = function(event, statusName, skillEffect) {
     let target = BattleUtils.getRealTarget(event);
-    for (let id in target.status) {
-      if (Number.isInteger(target.status[id]) && target.status[id] > 0) {
-        target.status[id]--;
-        if (id == 'poisonCount') {
+    // for (let id in target.status) {
+    if (statusName) {
+      if (target.status[statusName].turns && target.status[statusName].turns > 0) {
+        target.status[statusName].turns--;
+        target.status[statusName].lastTime = $gameVariables[0].gameTime;
+        if (statusName == 'poisonEffect') {
           let value = 3;
           CharUtils.decreaseHp(target, value);
           if ($gameVariables[$gameMap._mapId].mapData[event._x][event._y].isVisible) {
@@ -569,7 +586,7 @@
               , value));
           }
           BattleUtils.checkTargetAlive(null, target, event);
-        } else if (id == 'bleedingCount') {
+        } else if (statusName == 'bleedingEffect') {
           let value = Math.round(target.mhp / 100);
           value = (value < 1) ? 1 : value;
           CharUtils.decreaseHp(target, value);
@@ -580,87 +597,85 @@
           }
           BattleUtils.checkTargetAlive(null, target, event);
         }
-        if (target.status[id] == 0
+        if (target.status[statusName].turns == 0
           && (event == $gamePlayer || $gameVariables[$gameMap._mapId].mapData[event._x][event._y].isVisible)) {
-          switch (id) {
-            case 'afraidCount':
+          switch (statusName) {
+            case 'afraidEffect':
               LogUtils.addLog(String.format(Message.display('recoverFromAfraid')
                 , LogUtils.getCharName(target)));
               break;
-            case 'blindCount':
+            case 'blindEffect':
               LogUtils.addLog(String.format(Message.display('recoverFromBlind')
                 , LogUtils.getCharName(target)));
               if (event == $gamePlayer) {
                 $gameActors.actor(1).awareDistance = $gameActors.actor(1).originalAwareDistance;
               }
               break;
-            case 'paralyzeCount':
+            case 'paralyzeEffect':
               LogUtils.addLog(String.format(Message.display('recoverFromParalyze')
                 , LogUtils.getCharName(target)));
               break;
-            case 'sleepCount':
+            case 'sleepEffect':
               LogUtils.addLog(String.format(Message.display('recoverFromSleep')
                 , LogUtils.getCharName(target)));
               break;
-            case 'speedUpCount':
+            case 'speedUpEffect':
               LogUtils.addLog(String.format(Message.display('speedUpEnd')
                 , LogUtils.getCharName(target)));
               break;
-            case 'invisibleCount':
+            case 'invisibleEffect':
               LogUtils.addLog(String.format(Message.display('invisibleEnd')
                 , LogUtils.getCharName(target)));
               if (event == $gamePlayer) {
                 $gamePlayer.setOpacity(255);
               }
               break;
-            case 'seeInvisibleCount':
+            case 'seeinvisibleEffect':
               LogUtils.addLog(String.format(Message.display('seeInvisibleEnd')
                 , LogUtils.getCharName(target)));
               break;
-            case 'poisonCount':
+            case 'poisonEffect':
               LogUtils.addLog(String.format(Message.display('recoverFromPoison')
                 , LogUtils.getCharName(target)));
               break;
-            case 'faintCount':
+            case 'faintEffect':
               LogUtils.addLog(String.format(Message.display('recoverFromFaint')
                 , LogUtils.getCharName(target)));
               break;
-            case 'bleedingCount':
+            case 'bleedingEffect':
               LogUtils.addLog(String.format(Message.display('recoverFromBleeding')
                 , LogUtils.getCharName(target)));
               break;
-            case 'breakArmorCount':
+            case 'breakArmorEffect':
               LogUtils.addLog(String.format(Message.display('breakArmorRecovered')
                 , LogUtils.getCharName(target)));
               break;
-            case 'wetCount':
+            case 'wetEffect':
               LogUtils.addLog(String.format(Message.display('recoverFromWet')
                 , LogUtils.getCharName(target)));
               break;
           }
         }
       }
-    }
-    // update skill effects
-    let i = target.status.skillEffect.length;
-    while (i--) {
-      let effect = target.status.skillEffect[i];
-      effect.effectCount--;
-      if (effect.effectCount == 0) {
+    } else if (skillEffect) {
+      // update skill effects
+      skillEffect.effectCount--;
+      skillEffect.lastTime = $gameVariables[0].gameTime;
+      if (skillEffect.effectCount == 0) {
         if (CharUtils.playerCanSeeChar(event)) {
           LogUtils.addLog(String.format(Message.display('skillEffectEnd'), LogUtils.getCharName(target)
-            , effect.skill.name));
+            , skillEffect.skill.name));
         }
-        effect.effectEnd();
-        target.status.skillEffect.splice(i, 1);
+        skillEffect.effectEnd();
+        target.status.skillEffect.splice(target.status.skillEffect.indexOf(skillEffect), 1);
       }
     }
   }
 
-  CharUtils.updateSleepCountWhenHit = function(target) {
-    if (target.status.sleepCount > 0 && target.status.sleepCount <= 15) {
+  CharUtils.updatesleepEffectWhenHit = function(target) {
+    if (target.status.sleepEffect.turns > 0 && target.status.sleepEffect.turns <= 15) {
       // wake up when hit
-      target.status.sleepCount = 0;
+      target.status.sleepEffect.turns = 0;
       LogUtils.addLog(String.format(Message.display('recoverFromSleep')
         , LogUtils.getCharName(target)));
     }
@@ -668,7 +683,7 @@
 
   CharUtils.getActionTime = function(realTarget) {
     let result = Math.ceil(100 / realTarget.param(6) + 10);
-    if (realTarget.status.speedUpCount > 0) {
+    if (realTarget.status.speedUpEffect.turns > 0) {
       result = Math.ceil(result / 2);
     }
     return result;
@@ -693,9 +708,9 @@
     let srcEvt = BattleUtils.getEventFromCharacter(src);
     let targetEvt = BattleUtils.getEventFromCharacter(target);
 
-    if (src.status.blindCount > 0) {
+    if (src.status.blindEffect.turns > 0) {
       return false;
-    } else if (target.status.invisibleCount > 0 && src.status.seeInvisibleCount == 0) {
+    } else if (target.status.invisibleEffect.turns > 0 && src.status.seeinvisibleEffect.turns == 0) {
       return false;
     } else if (srcEvt == $gamePlayer 
       && CharUtils.isCharInWater(targetEvt)) {
@@ -729,7 +744,10 @@
   }
 
   CharUtils.playerCanSeeBlock = function(x, y) {
-    return $gameVariables[$gameMap._mapId].mapData[x][y].isVisible && $gameActors.actor(1).status.blindCount == 0;
+    if (x < 0 || y < 0) {
+      return false;
+    }
+    return $gameVariables[$gameMap._mapId].mapData[x][y].isVisible && $gameActors.actor(1).status.blindEffect.turns == 0;
   }
 
   CharUtils.updateHpMp = function(target) {
@@ -770,7 +788,7 @@
       tpRecover = restTpRecover;
     }
     // check status effect
-    if (realTarget.status.wetCount > 0) {
+    if (realTarget.status.wetEffect.turns > 0) {
       // check if adapts water
       let skill = SkillUtils.getSkillInstance(realTarget, Skill_AdaptWater);
       if (!skill || skill.lv < 3) {
@@ -963,11 +981,12 @@
         }
       }
       // randomly apply faint status
-      if (getRandomInt(100) < 20 && realTarget.status.faintCount == 0) {
+      if (getRandomInt(100) < 20 && realTarget.status.faintEffect.turns == 0) {
         if (isPlayer) {
           LogUtils.addLog(String.format(Message.display('faint'), LogUtils.getCharName(realTarget)));
         }
-        realTarget.status.faintCount = dice(1, 5);
+        realTarget.status.faintEffect.turns = dice(1, 5);
+        TimeUtils.eventScheduler.addStatusEffect(target, 'faintEffect');
       }
     }
   }
@@ -1078,21 +1097,19 @@
     $gameVariables[dungeonDepth].stairToList.push(dungeonDepth - 1);
     $gameVariables[dungeonDepth].stairDownNum = 0;
     // add for test
-    $gameVariables[2].stairDownNum++;
-    $gameVariables[2].stairToList.push(11);
-    $gameVariables[11].stairToList.push(2);
-    $gameVariables[11].stairToList.push(12);
-    $gameVariables[12].stairToList.push(11);
-    $gameVariables[12].stairToList.push(13);
-    $gameVariables[13].stairDownNum = 0;
-    $gameVariables[13].stairToList.push(12);
-    for (let i = 11; i < 14; i++) {
+    let iceEntranceLevel = getRandomIntRange(4, dungeonDepth);
+    $gameVariables[iceEntranceLevel].stairDownNum++;
+    $gameVariables[iceEntranceLevel].stairToList.push(11);
+    $gameVariables[11].stairToList.push(iceEntranceLevel);
+    for (let i = 11; i < 16; i++) {
+      $gameVariables[i].stairToList.push(i - 1);
+      $gameVariables[i].stairToList.push(i + 1);
       $gameVariables[i].mapType = 'ICE';
       $gameVariables[i].dungeonLevel = i - 5;
     }
-    // for test
-    $gameVariables[2].mapType = 'ICE';
-    $gameVariables[2].dungeonLevel = 6;
+    $gameVariables[11].stairToList.splice(1, 1);
+    $gameVariables[15].stairToList.pop();
+    $gameVariables[15].stairDownNum = 0;
 
     // game system setup
     $dataSystem.terms.params.push("武器威力"); // this one should be param(10)
@@ -1146,7 +1163,8 @@
       itemPile: $dataMap.events[6],
       trap: $dataMap.events[7],
       goHome: $dataMap.events[1],
-      bolder: $dataMap.events[8]
+      bolder: $dataMap.events[8],
+      visitIceDungeon: $dataMap.events[9]
     }
     // define data images mapping
     $gameVariables[0].itemImageData = generateImageData();
@@ -1159,6 +1177,12 @@
       item: null,
       skillId: null
     }
+
+    // recognize currentDungeonTiles
+    $gameVariables[0].currentDungeonTiles = DungeonTiles.earth;
+
+    // initialize scheduler event queue
+    $gameVariables[0].eventQueue = [];
 
     // initialize player HP & MP
     CharUtils.updateHpMp($gameActors.actor(1));
@@ -1210,6 +1234,7 @@
     Soul_Obtained_Action.learnSkill(Skill_IceBreath);
     Soul_Obtained_Action.learnSkill(Skill_Charge);
     Soul_Obtained_Action.learnSkill(Skill_IceBolder);
+    Soul_Obtained_Action.learnSkill(Skill_Bash);
 
     // modify actor status
     let player = $gameActors.actor(1);
@@ -1228,6 +1253,47 @@
     player._hp = 120;
     player._mp = 80;
     // setTimeout(MapUtils.goDownLevels, 500, 7);
+  }
+
+  MapUtils.loadFile = function(filePath) {
+    var result = null;
+    var xmlhttp = new XMLHttpRequest();
+    xmlhttp.open("GET", filePath, false);
+    xmlhttp.send();
+    if (xmlhttp.status==200) {
+      result = xmlhttp.responseText;
+    }
+    return result;
+  }
+
+  MapUtils.dataToMap = function(dungeonName) {
+    let str = MapUtils.loadFile('data/MapData.txt');
+    let all = str.split('\r\n');
+    let index = 0;
+    for (; index < all.length; index++) {
+      if (all[index].contains(dungeonName)) {
+        break;
+      }
+    }
+    let temps = [];
+    for (let i = index + 1; i < all.length; i++) {
+      if (temps[i] == '') {
+        break;
+      }
+      temps.push(all[i]);
+    }
+
+    let rawMap = new Array(temps[0].length);
+    for (let i = 0; i < temps[0].length; i++) {
+      rawMap[i] = new Array(temps.length);
+    }
+
+    for (let j = 0; j < temps.length; j++) {
+      for (let i = 0; i < temps[0].length; i++) {
+        rawMap[i][j] = temps[j].charAt(i);
+      }
+    }
+    return rawMap;
   }
 
   MapUtils.getMapTileSet = function(mapType) {
@@ -1260,7 +1326,7 @@
           LogUtils.addLog(String.format(Message.display('climbOutOfWater'), LogUtils.getCharName(realSrc)));
         } else {
           LogUtils.addLog(String.format(Message.display('jumpIntoWater'), LogUtils.getCharName(realSrc)));
-          if (realSrc.status.wetCount == 0) {
+          if (realSrc.status.wetEffect.turns == 0) {
             LogUtils.addLog(String.format(Message.display('wet'), LogUtils.getCharName(realSrc)));
           }
         }
@@ -1677,12 +1743,12 @@
   }
 
   MapUtils.translateMap = function (rawData, mapId) {
-    currentDungeonTiles = MapUtils.getMapTileSet($gameVariables[mapId].mapType);
+    $gameVariables[0].currentDungeonTiles = MapUtils.getMapTileSet($gameVariables[mapId].mapType);
     var mapData = new Array(rawData.length);
     for (var i = 0; i < mapData.length; i++) {
       mapData[i] = new Array(rawData[0].length);
       for (var j = 0; j < rawData[0].length; j++) {
-        let center = refineMapTile(mapId, rawData, i, j, currentDungeonTiles.floorCenter, FLOOR);
+        let center = refineMapTile(mapId, rawData, i, j, $gameVariables[0].currentDungeonTiles.floorCenter, FLOOR);
         mapData[i][j] = new MapData(center, rawData[i][j], i, j);
       }
     }
@@ -1695,17 +1761,18 @@
             // skip the floor tunning
             continue;
           case WALL:
-            mapData[i][j].base = currentDungeonTiles.ceilingCenter;
+            mapData[i][j].base = $gameVariables[0].currentDungeonTiles.ceilingCenter;
             break;
           case DOOR:
             if ($gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(i, j)]) {
-              mapData[i][j].base = currentDungeonTiles.ceilingCenter;
+              mapData[i][j].base = $gameVariables[0].currentDungeonTiles.ceilingCenter;
             } else {
               new Game_Door(i, j);
             }
             break;
           case WATER: case LAVA:
-            mapData[i][j].base = refineMapTile(mapId, rawData, i, j, currentDungeonTiles.waterCenter, rawData[i][j]);
+            mapData[i][j].base = refineMapTile(mapId, rawData, i, j
+              , $gameVariables[0].currentDungeonTiles.waterCenter, rawData[i][j]);
             break;
         }
       }
@@ -1788,7 +1855,7 @@
 
   MapUtils.drawMob = function(mapData, event) {
     if (mapData[event._x][event._y].isVisible) {
-      if (event.mob.status.invisibleCount > 0 || CharUtils.isCharInWater(event)) {
+      if (event.mob.status.invisibleEffect.turns > 0 || CharUtils.isCharInWater(event)) {
         if (CharUtils.canSee($gameActors.actor(1), event.mob)) {
           event.setOpacity(128);
         } else {
@@ -1850,17 +1917,14 @@
     if (character == $gamePlayer) {
       $gameVariables[0].transferInfo = new TransferInfo(stair.toMapId, character._x, character._y);
       $gameScreen.startFadeOut(1);
+      // clear scheduler
+      TimeUtils.eventScheduler.getEventQueue().length = 0;
       // wait until map is fully loaded
       var checkMapReady = function () {
         if (SceneManager.isCurrentSceneStarted()) {
           // update mobs time at target layer
           // TODO: implement mobs recovery mechanism
-          for (var id in $gameMap.events()) {
-            var event = $gameMap.events()[id];
-            if (event instanceof Game_Mob) {
-              event.mob.lastTimeMoved = $gameVariables[0].gameTime;
-            }
-          }
+
           $gameScreen.startFadeIn(1);
           TimeUtils.afterPlayerMoved();
         } else {
@@ -2058,15 +2122,15 @@
           let tileCenter, tileType;
           switch (currentMapData[x][y].originalTile) {
             case FLOOR: case DOOR:
-              tileCenter = currentDungeonTiles.floorCenter;
+              tileCenter = $gameVariables[0].currentDungeonTiles.floorCenter;
               tileType = FLOOR;
               break;
             case WATER:
-              tileCenter = currentDungeonTiles.waterCenter;
+              tileCenter = $gameVariables[0].currentDungeonTiles.waterCenter;
               tileType = WATER;
               break;
             case HOLLOW:
-              tileCenter = currentDungeonTiles.hollowCenter;
+              tileCenter = $gameVariables[0].currentDungeonTiles.hollowCenter;
               tileType = HOLLOW;
               break;
           }
@@ -2075,6 +2139,14 @@
         }
       }
     }
+  }
+
+  MapUtils.playEventFromTemplate = function(evtTemplate) {
+    let eventId = $dataMap.events.length;
+    $dataMap.events.push(newDataMapEvent(evtTemplate, eventId, 0, 0));
+    let evt = new Game_Event($gameMap.mapId(), eventId);
+    $gameMap._events[eventId] = evt;
+    evt.start();
   }
 
   var RNG = [
@@ -2750,9 +2822,15 @@
   MapUtils.setupNewMap = function (mapId) {
     // first load map
     console.log("first load map: " + mapId);
-    var rawMap = MapUtils.generateMapData(genMapRoomsFullMaze, 20, 10);
-    rawMap = MapUtils.removeDeadEnds(rawMap);
-    MapUtils.setupSecretDoor(mapId, rawMap);
+    var rawMap;
+    if (mapId == 15) {
+      // ice boss room
+      rawMap = MapUtils.dataToMap('iceBossRoom');
+    } else {
+      rawMap = MapUtils.generateMapData(genMapRoomsFullMaze, 20, 10);
+      rawMap = MapUtils.removeDeadEnds(rawMap);
+      MapUtils.setupSecretDoor(mapId, rawMap);
+    }
     var newMapData = MapUtils.translateMap(rawMap, mapId);
     $dataMap.width = rawMap.length;
     $dataMap.height = rawMap[0].length;
@@ -2962,6 +3040,9 @@
                 MapUtils.generateNewMapItems(targetMapId, mapBlocks.floor.concat(mapBlocks.water));
                 MapUtils.drawEvents($gameVariables[targetMapId].mapData);
                 SceneManager.goto(Scene_Map);
+                if (targetMapId == 11) {
+                  MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.visitIceDungeon);
+                }
               } else {
                 setTimeout(setupEvents.bind(null, nowMapId, targetMapId, nowStair), 100);
               }
@@ -3029,7 +3110,7 @@
       }
       this._followers.updateMove();
       moved = true;
-    } else if (actor.status.blindCount > 0) {
+    } else if (actor.status.blindEffect.turns > 0) {
       let coordinate = Input.getNextCoordinate($gamePlayer, d.toString());
       if (!$gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].isExplored) {
         $gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].isExplored = true;
@@ -3086,7 +3167,7 @@
       }
       this._followers.updateMove();
       moved = true;
-    } else if (actor.status.blindCount > 0) {
+    } else if (actor.status.blindEffect.turns > 0) {
       let d;
       if (horz == 4) {
         if (vert == 8) {
@@ -3645,6 +3726,8 @@
     $gameVariables[$gameMap.mapId()].rmDataMap = $dataMap;
     Game_Event.prototype.initialize.call(this, $gameMap.mapId(), eventId);
     $gameMap._events[eventId] = this;
+    // add event to scheduler
+    TimeUtils.eventScheduler.insertEvent(new ScheduleEvent(this, $gameVariables[0].gameTime));
   };
 
   Game_Mob.prototype.action = function () {
@@ -3671,13 +3754,13 @@
           }
         }
       } else {
-        if (this.mob.status.afraidCount > 0) {
+        if (this.mob.status.afraidEffect.turns > 0) {
           this.moveAwayFromCharacter($gamePlayer);
         } else if (!CharUtils.canSee(this.mob, $gameActors.actor(1))) {
           // TODO: mob can attack when blind and try to walk into a character
           this.moveRandom();
-        } else if (this.mob.status.paralyzeCount > 0 || this.mob.status.sleepCount > 0
-          || this.mob.status.faintCount > 0) {
+        } else if (this.mob.status.paralyzeEffect.turns > 0 || this.mob.status.sleepEffect.turns > 0
+          || this.mob.status.faintEffect.turns > 0) {
           // do nothing
         } else if (distance < 2) {
           this.turnTowardCharacter($gamePlayer);
@@ -4174,7 +4257,7 @@
   }
 
   Rat.prototype.targetInSightAction = function(target) {
-    if (getRandomInt(100) < 40 && this.mob.status.invisibleCount == 0) { // Skill_Hide
+    if (getRandomInt(100) < 40 && this.mob.status.invisibleEffect.turns == 0) { // Skill_Hide
       let skill = this.mob._skills[0];
       if (SkillUtils.canPerform(this.mob, skill)) {
         skill.action(this);
@@ -5101,7 +5184,7 @@
     }
     // open the door successfully
     door.status = 2;
-    if (character == $gamePlayer && $gameActors.actor(1).status.blindCount > 0) {
+    if (character == $gamePlayer && $gameActors.actor(1).status.blindEffect.turns > 0) {
       MapUtils.drawDoorWhenBlind(x, y);
     }
     $gameSelfSwitches.setValue([$gameMap.mapId(), door._eventId, 'A'], true);
@@ -5144,7 +5227,7 @@
     }
     // close the door successfully
     door.status = 1;
-    if (character == $gamePlayer && $gameActors.actor(1).status.blindCount > 0) {
+    if (character == $gamePlayer && $gameActors.actor(1).status.blindEffect.turns > 0) {
       MapUtils.drawDoorWhenBlind(x, y);
     }
     $gameSelfSwitches.setValue([$gameMap.mapId(), door._eventId, 'A'], false);
@@ -5658,7 +5741,8 @@
     // check if target in the water
     let realTarget = BattleUtils.getRealTarget(target);
     if (CharUtils.isCharInWater(target)) {
-      realTarget.status.wetCount = 10;
+      realTarget.status.wetEffect.turns = 10;
+      TimeUtils.eventScheduler.addStatusEffect(target, 'wetEffect');
       // check if target adapts water
       let skill = SkillUtils.getSkillInstance(realTarget, Skill_AdaptWater);
       if (skill) {
@@ -5964,11 +6048,7 @@
 
   Trap_GoHome.prototype.triggered = function(target) {
     if (target == $gamePlayer) {
-      eventId = $dataMap.events.length;
-      $dataMap.events.push(newDataMapEvent($gameVariables[0].templateEvents.goHome, eventId, 0, 0));
-      let evt = new Game_Event($gameMap.mapId(), eventId);
-      $gameMap._events[eventId] = evt;
-      evt.start();
+      MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.goHome);
     }
   }
 
@@ -6361,6 +6441,144 @@
     this.value = value;
   }
 
+  TimeUtils.eventScheduler = {
+    currentMapId: 0,
+    getEventQueue: function() {
+      return $gameVariables[0].eventQueue;
+    },
+    insertEvent: function(scheduleEvent) {
+      let index = 0;
+      for (; index < this.getEventQueue().length; index++) {
+        if (this.getEventQueue()[index].execTime > scheduleEvent.execTime) {
+          break;
+        }
+      }
+      this.getEventQueue().splice(index, 0, scheduleEvent);
+    },
+    removeEvent: function(target, skillEffect) {
+      if (skillEffect) {
+        for (let id in this.getEventQueue()) {
+          let evt = this.getEventQueue()[id];
+          if (evt.target == target && evt.skillEffect == skillEffect) {
+            this.getEventQueue().splice(id, 1);
+            break;
+          }
+        }
+      } else {
+        // remove all target related events
+        for (let i = this.getEventQueue().length - 1; i >= 0; i--) {
+          if (this.getEventQueue()[i].target == target) {
+            this.getEventQueue().splice(i, 1);
+          }
+        }
+      }
+    },
+    queryEvent: function(target, statusName, skillEffect) {
+      if (statusName) {
+        for (let id in this.getEventQueue()) {
+          let evt = this.getEventQueue()[id];
+          if (evt.target == target && evt.statusName == statusName) {
+            return evt;
+          }
+        }
+      } else if (skillEffect) {
+        for (let id in this.getEventQueue()) {
+          let evt = this.getEventQueue()[id];
+          if (evt.target == target && evt.skillEffect == skillEffect) {
+            return evt;
+          }
+        }
+      } else {
+        for (let id in this.getEventQueue()) {
+          let evt = this.getEventQueue()[id];
+          if (evt.target == target && !evt.statusName && !evt.skillEffect) {
+            return evt;
+          }
+        }
+      }
+      return null;
+    },
+    addStatusEffect: function(target, statusName) {
+      let evt = this.queryEvent(target, statusName);
+      if (!evt) {
+        let realTarget = BattleUtils.getRealTarget(target);
+        this.insertEvent(new ScheduleEvent(target, $gameVariables[0].gameTime + CharUtils.getActionTime(realTarget)
+          , statusName, null));
+      }
+    },
+    addSkillEffect: function(target, skillEffect) {
+      // only add new effect, left remove to each skill action
+      let realTarget = BattleUtils.getRealTarget(target);
+      this.insertEvent(new ScheduleEvent(target, $gameVariables[0].gameTime + CharUtils.getActionTime(realTarget)
+        , null, skillEffect));
+    },
+    execute: function() {
+      if (this.getEventQueue().length > 0) {
+        let event = this.getEventQueue()[0];
+        let target = event.target;
+        this.getEventQueue().splice(0, 1);
+        $gameVariables[0].gameTime = event.execTime;
+        if (event.statusName) {
+          let realTarget = BattleUtils.getRealTarget(target);
+          if (realTarget._hp > 0) {
+            CharUtils.updateStatus(target, event.statusName, null);
+            if (realTarget.status[event.statusName].turns > 0) {
+              this.insertEvent(new ScheduleEvent(target, $gameVariables[0].gameTime
+                + CharUtils.getActionTime(realTarget), event.statusName, null));
+            }
+          }
+          TimeUtils.afterPlayerMoved();
+        } else if (event.skillEffect) {
+          let realTarget = BattleUtils.getRealTarget(target);
+          if (realTarget._hp > 0) {
+            CharUtils.updateStatus(target, null, event.skillEffect);
+            if (event.skillEffect.effectCount > 0) {
+              this.insertEvent(new ScheduleEvent(target, $gameVariables[0].gameTime
+                + CharUtils.getActionTime(realTarget), null, event.skillEffect));
+            }
+          }
+          TimeUtils.afterPlayerMoved();
+        } else if (target == $gamePlayer) {
+          if ($gameActors.actor(1).turnCount % regenTurnCount == 0) {
+            CharUtils.regenerate($gamePlayer);
+          }
+          if ($gameActors.actor(1).status.paralyzeEffect.turns > 0 || $gameActors.actor(1).status.sleepEffect.turns > 0
+            || $gameActors.actor(1).status.faintEffect.turns > 0) {
+            TimeUtils.afterPlayerMovedData.state = 0;
+          } else {
+            TimeUtils.afterPlayerMovedData.state = 3;
+          }
+          TimeUtils.afterPlayerMoved();
+        } else if (target.type == 'MOB') {
+          TimeUtils.afterPlayerMovedData.currentEvent = target;
+          TimeUtils.afterPlayerMovedData.done = false;
+          target.mob.lastTimeMoved = $gameVariables[0].gameTime;
+          target.mob.turnCount++;
+          if (target.mob.turnCount % regenTurnCount == 0) {
+            CharUtils.regenerate(target);
+          }
+          // schedule next turn event
+          this.insertEvent(new ScheduleEvent(target
+            , $gameVariables[0].gameTime + CharUtils.getActionTime(target.mob)));
+          TimeUtils.afterPlayerMovedData.state = 2;
+          target.action();
+        } else if (target instanceof IceBolder) {
+          if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
+            AudioManager.playSe({name: 'Water5', pan: 0, pitch: 100, volume: 100});
+            LogUtils.addLog(String.format(Message.display('iceMelt'), target.name));
+          }
+          target.setPosition(-10, -10);
+          $gameMap._events[target._eventId] = null;
+          $dataMap.events[target._eventId] = null;
+          MapUtils.refreshMap();
+          TimeUtils.afterPlayerMoved();
+        }
+      } else {
+        console.log('ERROR: schedule problem!');
+      }
+    }
+  };
+
   TimeUtils.animeIndicator = 0;
   TimeUtils.animeState = 0;
   TimeUtils.animeQueue = [];
@@ -6517,7 +6735,7 @@
 
   TimeUtils.afterPlayerMovedData = {
     state: 0,
-    mobIndex: 0,
+    currentEvent: null,
     timeSpent: 0,
     tempTimeSpent: 0,
     done: false
@@ -6533,120 +6751,66 @@
           setTimeout(TimeUtils.afterPlayerMoved, 1);
           return;
         }
-        $gameActors.actor(1).turnCount++;
         CharUtils.decreaseNutrition($gamePlayer);
         if (!timeSpent) {
           timeSpent = CharUtils.getActionTime(BattleUtils.getRealTarget($gamePlayer));
         }
+        $gameActors.actor(1).lastTimeMoved = $gameVariables[0].gameTime;
+        $gameActors.actor(1).turnCount++;
         TimeUtils.afterPlayerMovedData.timeSpent = timeSpent;
-
+        // schedule next turn event
+        TimeUtils.eventScheduler.insertEvent(new ScheduleEvent($gamePlayer
+          , $gameVariables[0].gameTime + timeSpent));
         // check trap
         TrapUtils.checkTrapStepped($gamePlayer);
+        TrapUtils.updateLastTriggered();
+
+        // deal with energy calculation
+        if (playerDashed) {
+          // huge movement, do nothing
+        } else {
+          CharUtils.updateTp($gamePlayer);
+        }
 
         // update food status
         ItemUtils.updateFoodStatus();
         TimeUtils.afterPlayerMovedData.state = 1;
       case 1:
-        $gameActors.actor(1).lastTimeMoved += TimeUtils.afterPlayerMovedData.timeSpent;
-        TimeUtils.afterPlayerMovedData.tempTimeSpent = TimeUtils.afterPlayerMovedData.timeSpent;
-        TimeUtils.afterPlayerMovedData.state = 2;
+        if ($gameVariables[0].gameTime % 400 < 10) {
+          MapUtils.addMobToNowMap();
+        }
+        TimeUtils.eventScheduler.execute();
+        return;
       case 2:
-        if (TimeUtils.afterPlayerMovedData.tempTimeSpent > 0) {
-          var updateTime = (TimeUtils.afterPlayerMovedData.tempTimeSpent - $gameVariables[0].gameTimeAmp >= 0) 
-            ? $gameVariables[0].gameTimeAmp : TimeUtils.afterPlayerMovedData.tempTimeSpent;
-          TimeUtils.afterPlayerMovedData.tempTimeSpent -= updateTime;
-          $gameVariables[0].gameTime += updateTime;
-          if ($gameActors.actor(1).turnCount % 20 == 0) {
-            CharUtils.regenerate($gamePlayer);
-          }
-          for (let i = 0; i < $gameMap._events.length; i++) {
-            let event = $gameMap._events[i];
-            if (event && !event._erased && event.type == 'MOB' && event.mob.turnCount % 20 == 0) {
-              CharUtils.regenerate(event);
-            }
-          }
-          if ($gameVariables[0].gameTime % 400 < 10) {
-            MapUtils.addMobToNowMap();
-          }
-          TimeUtils.afterPlayerMovedData.state = 3;
-        } else {
-          TimeUtils.afterPlayerMovedData.state = 7;
-          return TimeUtils.afterPlayerMoved();
-        }
-      case 3:
-        TimeUtils.afterPlayerMovedData.done = true;
-        TimeUtils.afterPlayerMovedData.mobIndex = -1;
-        TimeUtils.afterPlayerMovedData.state = 4;
-      case 4:
-        TimeUtils.afterPlayerMovedData.mobIndex++;
-        if (TimeUtils.afterPlayerMovedData.mobIndex >= $gameMap._events.length) {
-          TimeUtils.afterPlayerMovedData.state = 6;
-          return TimeUtils.afterPlayerMoved();
-        }
         if ($gameActors.actor(1)._hp <= 0) {
           // player died, stop mob action
-          TimeUtils.afterPlayerMovedData.state = 7;
-          return TimeUtils.afterPlayerMoved();
-        }
-        var event = $gameMap._events[TimeUtils.afterPlayerMovedData.mobIndex];
-        if (!event || event._erased) {
-          return TimeUtils.afterPlayerMoved();
-        }
-        if (event.type == 'MOB'
-          && $gameVariables[0].gameTime - event.mob.lastTimeMoved >= CharUtils.getActionTime(event.mob)) {
-          TimeUtils.afterPlayerMovedData.done = false;
-          event.mob.lastTimeMoved += CharUtils.getActionTime(event.mob);
-          event.mob.turnCount++;
-          TimeUtils.afterPlayerMovedData.state = 5;
-          event.action();
-        } else {
-          return TimeUtils.afterPlayerMoved();
-        }
-        return;
-      case 5:
-        var event = $gameMap._events[TimeUtils.afterPlayerMovedData.mobIndex];
-        // check trap
-        TrapUtils.checkTrapStepped(event);
-        CharUtils.updateStatus(event);
-        CharUtils.updateTp(event);
-        TimeUtils.afterPlayerMovedData.state = 4;
-        return TimeUtils.afterPlayerMoved();
-      case 6:
-        if (!TimeUtils.afterPlayerMovedData.done) {
           TimeUtils.afterPlayerMovedData.state = 3;
           return TimeUtils.afterPlayerMoved();
         }
-        // update trap record
+        // var event = $gameMap._events[TimeUtils.afterPlayerMovedData.mobIndex];
+        let event = TimeUtils.afterPlayerMovedData.currentEvent;
+        // check trap
+        TrapUtils.checkTrapStepped(event);
         TrapUtils.updateLastTriggered();
-        TimeUtils.afterPlayerMovedData.state = 2;
+        // CharUtils.updateStatus(event);
+        CharUtils.updateTp(event);
+        TimeUtils.afterPlayerMovedData.state = 1;
         return TimeUtils.afterPlayerMoved();
-      case 7:
-        CharUtils.updateStatus($gamePlayer);
+      case 3:
         // play queued anime
         TimeUtils.playAnime();
-        TimeUtils.afterPlayerMovedData.state = 8;
-      case 8:
+        TimeUtils.afterPlayerMovedData.state = 4;
+      case 4:
         if (TimeUtils.isAnimePlaying) {
           // wait until animation done
           setTimeout(TimeUtils.afterPlayerMoved, 0);
           return;
         } else {
-          // deal with energy calculation
-          if (playerDashed) {
-            // huge movement, do nothing
-          } else {
-            CharUtils.updateTp($gamePlayer);
-          }
           MapUtils.refreshMap();
 
           $gameActors.actor(1).attacked = false;
           $gameActors.actor(1).moved = false;
           playerDashed = false;
-          if ($gameActors.actor(1).status.paralyzeCount > 0 || $gameActors.actor(1).status.sleepCount > 0
-            || $gameActors.actor(1).status.faintCount > 0) {
-            TimeUtils.afterPlayerMovedData.state = 1;
-            return TimeUtils.afterPlayerMoved();
-          }
           // player moveable again
           $gamePlayer._vehicleGettingOn = false;
           TimeUtils.afterPlayerMovedData.state = 0;
@@ -6734,8 +6898,8 @@
   //     player.attacked = false;
   //     $gameActors.actor(1).moved = false;
   //     playerDashed = false;
-  //   } while (player.status.paralyzeCount > 0 || player.status.sleepCount > 0
-  //     || player.status.faintCount > 0); // check if player unable to move
+  //   } while (player.status.paralyzeEffect.turns > 0 || player.status.sleepEffect.turns > 0
+  //     || player.status.faintEffect.turns > 0); // check if player unable to move
 
   //   // player moveable again
   //   $gamePlayer._vehicleGettingOn = false;
@@ -6786,6 +6950,8 @@
           let exp = Math.round(Soul_Chick.expAfterAmplify(realTarget.exp()));
           realSrc.gainExpLvGap(realTarget, exp);
         }
+        // remove from scheduler
+        TimeUtils.eventScheduler.removeEvent(target);
         // remove target event from $dataMap.events
         // NOTE: Do not remove it from $gameMap._events! will cause crash
         $gameMap.eraseEvent(target._eventId);
@@ -6917,7 +7083,7 @@
     LogUtils.addLog(String.format(Message.display('meleeAttack'), LogUtils.getCharName(realSrc)
       , LogUtils.getCharName(realTarget), value));
     CharUtils.decreaseHp(realTarget, value);
-    CharUtils.updateSleepCountWhenHit(realTarget);
+    CharUtils.updatesleepEffectWhenHit(realTarget);
     // hit animation
     TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 16));
     BattleUtils.checkTargetAlive(realSrc, realTarget, target);
@@ -6970,7 +7136,7 @@
     LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc)
       , item.name, LogUtils.getCharName(realTarget), value));
     CharUtils.decreaseHp(realTarget, value);
-    CharUtils.updateSleepCountWhenHit(realTarget);
+    CharUtils.updatesleepEffectWhenHit(realTarget);
     // hit animation
     TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 16));
     BattleUtils.checkTargetAlive(realSrc, realTarget, target);
@@ -9061,7 +9227,8 @@
 
   Potion_Blind.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
-    realUser.status.blindCount = 20;
+    realUser.status.blindEffect.turns = 20;
+    TimeUtils.eventScheduler.addStatusEffect(user, 'blindEffect');
     if (user == $gamePlayer) {
       $gameActors.actor(1).awareDistance = 0;
     }
@@ -9097,7 +9264,8 @@
 
   Potion_Paralyze.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
-    realUser.status.paralyzeCount = 5;
+    realUser.status.paralyzeEffect.turns = 5;
+    TimeUtils.eventScheduler.addStatusEffect(user, 'paralyzeEffect');
     if (CharUtils.playerCanSeeChar(user)) {
       TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 64));
       TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '麻痺'));
@@ -9130,7 +9298,8 @@
 
   Potion_Sleep.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
-    realUser.status.sleepCount = 20;
+    realUser.status.sleepEffect.turns = 20;
+    TimeUtils.eventScheduler.addStatusEffect(user, 'sleepEffect');
     if (CharUtils.playerCanSeeChar(user)) {
       TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 62));
       TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '睡眠'));
@@ -9163,7 +9332,8 @@
 
   Potion_Speed.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
-    realUser.status.speedUpCount = 20;
+    realUser.status.speedUpEffect.turns = 20;
+    TimeUtils.eventScheduler.addStatusEffect(user, 'speedUpEffect');
     if (CharUtils.playerCanSeeChar(user)) {
       TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 51));
       TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '加速'));
@@ -9270,7 +9440,8 @@
 
   Potion_Invisible.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
-    realUser.status.invisibleCount = 20;
+    realUser.status.invisibleEffect.turns = 20;
+    TimeUtils.eventScheduler.addStatusEffect(user, 'invisibleEffect');
     if (user == $gamePlayer) {
       $gamePlayer.setOpacity(64);
     }
@@ -9306,7 +9477,8 @@
 
   Potion_SeeInvisible.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
-    realUser.status.seeInvisibleCount = 40;
+    realUser.status.seeinvisibleEffect.turns = 40;
+    TimeUtils.eventScheduler.addStatusEffect(user, 'seeinvisibleEffect');
     if (CharUtils.playerCanSeeChar(user)) {
       AudioManager.playSe({name: "Ice4", pan: 0, pitch: 100, volume: 100});
       TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '偵測隱形'));
@@ -9376,7 +9548,8 @@
 
   Potion_Poison.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
-    realUser.status.poisonCount = 10;
+    realUser.status.poisonEffect.turns = 10;
+    TimeUtils.eventScheduler.addStatusEffect(user, 'poisonEffect');
     if (CharUtils.playerCanSeeChar(user)) {
       TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 59));
       TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '中毒'));
@@ -9782,7 +9955,8 @@
       for (let id in $gameMap._events) {
         let evt = $gameMap._events[id];
         if (evt && evt.type == 'MOB' && MapUtils.getDistance(evt._x, evt._y, $gamePlayer._x, $gamePlayer._y) <= 10) {
-          evt.mob.status.afraidCount = 20;
+          evt.mob.status.afraidEffect.turns = 20;
+          TimeUtils.eventScheduler.addStatusEffect(evt, 'afraidEffect');
           if ($gameVariables[$gameMap._mapId].mapData[evt._x][evt._y].isVisible) {
             LogUtils.addLog(String.format(Message.display('monsterFlee'), evt.mob.name()));
             seeMonsterScared = true;
@@ -10420,7 +10594,8 @@
       CharUtils.decreaseHp(realTarget, value);
       // check if causes bleeding
       if (Math.random() < prop.effect[index].bleedPercentage) {
-        realTarget.status.bleedingCount += dice(1, prop.effect[index].maxBleedTurn);
+        realTarget.status.bleedingEffect.turns += dice(1, prop.effect[index].maxBleedTurn);
+        TimeUtils.eventScheduler.addStatusEffect(target, 'bleedingEffect');
         TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '出血'));
         LogUtils.addLog(String.format(Message.display('bleeding'), LogUtils.getCharName(realTarget)));
       }
@@ -10486,7 +10661,8 @@
       CharUtils.decreaseHp(realTarget, value);
       // check if causes faint
       if (Math.random() < prop.effect[index].faintPercentage) {
-        realTarget.status.faintCount += dice(1, prop.effect[index].faintTurnMax);
+        realTarget.status.faintEffect.turns += dice(1, prop.effect[index].faintTurnMax);
+        TimeUtils.eventScheduler.addStatusEffect(target, 'faintEffect');
         TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '昏迷'));
         LogUtils.addLog(String.format(Message.display('faint'), LogUtils.getCharName(realTarget)));
       }
@@ -10552,7 +10728,8 @@
       CharUtils.decreaseHp(realTarget, value);
       // check if causes break armor
       if (Math.random() < prop.effect[index].breakArmorPercentage) {
-        realTarget.status.breakArmorCount += dice(1, prop.effect[index].breakArmorTurnMax);
+        realTarget.status.breakArmorEffect.turns += dice(1, prop.effect[index].breakArmorTurnMax);
+        TimeUtils.eventScheduler.addStatusEffect(target, 'breakArmorEffect');
         TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '破甲'));
         LogUtils.addLog(String.format(Message.display('breakArmor'), LogUtils.getCharName(realTarget)));
       }
@@ -10657,7 +10834,7 @@
           TrapUtils.checkTrapStepped(src);
           TrapUtils.updateLastTriggered();
           let status = BattleUtils.getRealTarget(src).status;
-          if (status.paralyzeCount > 0 || status.sleepCount > 0 || status.faintCount > 0 || status.groundHoleTrapped) {
+          if (status.paralyzeEffect.turns > 0 || status.sleepEffect.turns > 0 || status.faintEffect.turns > 0 || status.groundHoleTrapped) {
             // src unable to move
             data.nowDistance = 100;
           } else {
@@ -10700,7 +10877,7 @@
                 LogUtils.addLog(String.format(Message.display('bumpKnockBack'), LogUtils.getCharName(realTarget)));
               } else {
                 TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '昏迷'));
-                realTarget.status.faintCount++;
+                realTarget.status.faintEffect.turns++;
                 LogUtils.addLog(String.format(Message.display('bumpKnockFaint'), LogUtils.getCharName(realTarget)));
               }
             }
@@ -10898,7 +11075,8 @@
       CharUtils.decreaseHp(realTarget, value);
       // check if causes paralysis
       if (Math.random() < prop.effect[index].paralyzePercentage) {
-        realTarget.status.paralyzeCount += dice(1, prop.effect[index].paralyzeTurnMax);
+        realTarget.status.paralyzeEffect.turns += dice(1, prop.effect[index].paralyzeTurnMax);
+        TimeUtils.eventScheduler.addStatusEffect(target, 'paralyzeEffect');
         TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '麻痺'));
         LogUtils.addLog(String.format(Message.display('paralyze'), LogUtils.getCharName(realTarget)));
       }
@@ -10956,6 +11134,7 @@
       effect.effectEnd();
       let index = realSrc.status.skillEffect.indexOf(effect);
       realSrc.status.skillEffect.splice(index, 1);
+      TimeUtils.eventScheduler.removeEvent(src, effect);
     }
     if (CharUtils.playerCanSeeChar(src)) {
       TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 51));
@@ -10966,13 +11145,15 @@
     let index = this.lv - 1;
     let buffAmount = Math.round(10 + 5 * index + realSrc.param(4) * 0.1);
     realSrc._buffs[4] += buffAmount;
-    realSrc.status.skillEffect.push({
+    let newEffect = {
       skill: this,
       effectCount: prop.effect[index].turns,
       effectEnd: function() {
         realSrc._buffs[4] -= buffAmount;
       }
-    });
+    };
+    realSrc.status.skillEffect.push(newEffect);
+    TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
     return true;
   }
 
@@ -11021,6 +11202,7 @@
       effect.effectEnd();
       let index = realSrc.status.skillEffect.indexOf(effect);
       realSrc.status.skillEffect.splice(index, 1);
+      TimeUtils.eventScheduler.removeEvent(src, effect);
     }
     if (CharUtils.playerCanSeeChar(src)) {
       TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 51));
@@ -11031,13 +11213,15 @@
     let index = this.lv - 1;
     let buffAmount = Math.round(10 + 5 * index + realSrc.param(6) * prop.effect[index].buffPercentage);
     realSrc._buffs[6] += buffAmount;
-    realSrc.status.skillEffect.push({
+    let newEffect = {
       skill: this,
       effectCount: prop.effect[index].turns,
       effectEnd: function() {
         realSrc._buffs[6] -= buffAmount;
       }
-    });
+    };
+    realSrc.status.skillEffect.push(newEffect);
+    TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
     return true;
   }
 
@@ -11086,6 +11270,7 @@
       effect.effectEnd();
       let index = realSrc.status.skillEffect.indexOf(effect);
       realSrc.status.skillEffect.splice(index, 1);
+      TimeUtils.eventScheduler.removeEvent(src, effect);
     }
     if (CharUtils.playerCanSeeChar(src)) {
       TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 53));
@@ -11095,14 +11280,16 @@
     }
     let index = this.lv - 1;
     let buffAmount = Math.round(3 + 5 * index + realSrc.param(4) * 0.1);
-    realSrc.status.skillEffect.push({
+    let newEffect = {
       skill: this,
       effectCount: prop.effect[index].turns,
       amount: buffAmount,
       effectEnd: function() {
         // do nothing
       }
-    });
+    };
+    realSrc.status.skillEffect.push(newEffect);
+    TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
     return true;
   }
 
@@ -11151,6 +11338,7 @@
       effect.effectEnd();
       let index = realSrc.status.skillEffect.indexOf(effect);
       realSrc.status.skillEffect.splice(index, 1);
+      TimeUtils.eventScheduler.removeEvent(src, effect);
     }
     if (CharUtils.playerCanSeeChar(src)) {
       TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 120));
@@ -11160,14 +11348,16 @@
     }
     let index = this.lv - 1;
     let buffAmount = Math.round(3 + 5 * index + realSrc.param(4) * 0.1);
-    realSrc.status.skillEffect.push({
+    let newEffect = {
       skill: this,
       effectCount: prop.effect[index].turns,
       amount: buffAmount,
       effectEnd: function() {
         // do nothing
       }
-    });
+    };
+    realSrc.status.skillEffect.push(newEffect);
+    TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
     return true;
   }
 
@@ -11217,6 +11407,7 @@
       effect.effectEnd();
       let index = realSrc.status.skillEffect.indexOf(effect);
       realSrc.status.skillEffect.splice(index, 1);
+      TimeUtils.eventScheduler.removeEvent(src, effect);
     }
     if (CharUtils.playerCanSeeChar(src)) {
       TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 37));
@@ -11227,13 +11418,15 @@
     let index = this.lv - 1;
     let buffAmount = Math.round(5 + 5 * index + realSrc.param(2) * 0.1);
     realSrc._buffs[2] += buffAmount;
-    realSrc.status.skillEffect.push({
+    let newEffect = {
       skill: this,
       effectCount: prop.effect[index].turns,
       effectEnd: function() {
         realSrc._buffs[2] -= buffAmount;
       }
-    });
+    };
+    realSrc.status.skillEffect.push(newEffect);
+    TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
     return true;
   }
 
@@ -11283,6 +11476,7 @@
       effect.effectEnd();
       let index = realSrc.status.skillEffect.indexOf(effect);
       realSrc.status.skillEffect.splice(index, 1);
+      TimeUtils.eventScheduler.removeEvent(src, effect);
     }
     if (CharUtils.playerCanSeeChar(src)) {
       TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 52));
@@ -11293,13 +11487,15 @@
     let index = this.lv - 1;
     let buffAmount = Math.round(5 + 5 * index + realSrc.param(3) * 0.1);
     realSrc._buffs[3] += buffAmount;
-    realSrc.status.skillEffect.push({
+    let newEffect = {
       skill: this,
       effectCount: prop.effect[index].turns,
       effectEnd: function() {
         realSrc._buffs[3] -= buffAmount;
       }
-    });
+    };
+    realSrc.status.skillEffect.push(newEffect);
+    TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
     return true;
   }
 
@@ -11350,8 +11546,9 @@
         , LogUtils.getCharName(realSrc), this.name));
     }
     let index = this.lv - 1;
-    if (realSrc.status.invisibleCount < Skill_Hide.prop.effect[index].turn) {
-      realSrc.status.invisibleCount = Skill_Hide.prop.effect[index].turn;
+    if (realSrc.status.invisibleEffect.turns < Skill_Hide.prop.effect[index].turn) {
+      realSrc.status.invisibleEffect.turns = Skill_Hide.prop.effect[index].turn;
+      TimeUtils.eventScheduler.addStatusEffect(src, 'invisibleEffect');
     }
     return true;
   }
@@ -11617,11 +11814,11 @@
     subType: "DIRECTIONAL",
     damageType: "MAGIC",
     effect: [
-      {lv: 1, baseDamage: 20, levelUp: 50},
-      {lv: 2, baseDamage: 25, levelUp: 150},
-      {lv: 3, baseDamage: 30, levelUp: 300},
-      {lv: 4, baseDamage: 35, levelUp: 450},
-      {lv: 5, baseDamage: 40, levelUp: -1}
+      {lv: 1, baseDamage: 20, sustainTime: 200, levelUp: 50},
+      {lv: 2, baseDamage: 25, sustainTime: 240, levelUp: 150},
+      {lv: 3, baseDamage: 30, sustainTime: 280, levelUp: 300},
+      {lv: 4, baseDamage: 35, sustainTime: 320, levelUp: 450},
+      {lv: 5, baseDamage: 40, sustainTime: 360, levelUp: -1}
     ]
   }
 
@@ -11631,11 +11828,14 @@
     CharUtils.decreaseTp(realSrc, this.tpCost);
     LogUtils.addLog(String.format(Message.display('objectSummoned'), LogUtils.getCharName(realSrc), this.name));
     let bolder = new IceBolder($gameVariables[0].directionalXy.x, $gameVariables[0].directionalXy.y);
+    AudioManager.playSe({name: "Earth3", pan: 0, pitch: 100, volume: 100});
+    let prop = Skill_IceBolder.prop;
+    let index = this.lv - 1;
+    TimeUtils.eventScheduler.insertEvent(new ScheduleEvent(bolder
+      , $gameVariables[0].gameTime + prop.effect[index].sustainTime));
 
     if (target) {
       let realTarget = BattleUtils.getRealTarget(target);
-      let prop = Skill_IceBolder.prop;
-      let index = this.lv - 1;
       let value = prop.effect[index].baseDamage + Math.floor(realSrc.param(4) / 3)
         - realTarget.param(9);
       value = BattleUtils.getFinalDamage(value);
@@ -11994,7 +12194,7 @@
       let modifier = 1;
       if (this.status) {
         if (paramId == 6) { // speed
-          if (this.status.wetCount > 0 && this.moveType != 1
+          if (this.status.wetEffect.turns > 0 && this.moveType != 1
             && !SkillUtils.getSkillInstance(this, Skill_AdaptWater)) {
             modifier *= 0.5;
           }
@@ -12017,7 +12217,7 @@
           if (skillEffect) {
             value += skillEffect.amount;
           }
-          if (this.status.breakArmorCount > 0) {
+          if (this.status.breakArmorEffect.turns > 0) {
             value = Math.floor(value / 2);
           }
         } else if (attrParamId == 1) {
