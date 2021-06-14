@@ -191,6 +191,7 @@
   var restTpRecover = 6;
   var mobTraceRouteMaxDistance = 15;
   var regenTurnCount = 20;
+  var genLocalDungeonObjectPercentage = 0.7;
 
   // word attached
   var groundWord = '(地上)';
@@ -282,12 +283,27 @@
       result.scrolls[i] = new ImageData('Collections3', 3, 1, 4, '卷軸: ' + genScrollName());
     }
 
+    // rings
+    result.rings = [];
+    result.rings.push(new ImageData('Collections3', 0, 0, 8, '銀色戒指'));
+    result.rings.push(new ImageData('Collections3', 0, 1, 8, '銀色蝕刻戒指'));
+    result.rings.push(new ImageData('Collections3', 0, 2, 8, '金色戒指'));
+    result.rings.push(new ImageData('Collections3', 1, 0, 8, '金色蝕刻戒指'));
+    result.rings.push(new ImageData('Collections3', 1, 1, 8, '銀色鑲嵌戒指'));
+    shuffle(result.rings, 0, result.rings.length - 1);
+
     result.items = [];
     // food
-    result.items[11] = new ImageData('Meat', 0, 2, 2);
-    result.items[14] = new ImageData('Outside_B1', 0, 0, 6);
+    result.items[11] = new ImageData('Meat', 0, 2, 2); // flesh
+    result.items[14] = new ImageData('Outside_B1', 0, 0, 6); // drink
+    result.items[20] = new ImageData('Collections1', 3, 0, 4); // cheese
     // material
     result.items[12] = new ImageData('Collections3', 0, 1, 2); // feather
+    result.items[15] = new ImageData('Collections7', 2, 2, 6); // tail
+    result.items[16] = new ImageData('Collections7', 3, 1, 6); // horn
+    result.items[17] = new ImageData('Collections3', 1, 1, 2); // liquid
+    result.items[18] = new ImageData('Collections3', 1, 0, 4); // crystal
+    result.items[19] = new ImageData('Collections3', 2, 1, 6); // tentacle
     // projectile
     result.items[13] = new ImageData('Collections1', 7, 1, 8); // dart
   
@@ -369,6 +385,7 @@
       recoverFromBlind: '{0}的視覺恢復了.',
       paralyze: '{0}麻痺了!',
       recoverFromParalyze: '{0}又能夠行動了.',
+      paralyzeResisted: '{0}打了個冷顫.',
       sleep: '{0}陷入了沉睡.',
       recoverFromSleep: '{0}醒了過來.',
       speedUp: '{0}的速度突然加快了!',
@@ -560,7 +577,20 @@
       wetEffect: new StatusEffect(),
       groundHoleTrapped: false,
       skillEffect: [],
-      bellyStatus: 'NORMAL' // FAINT, WEAK, HUNGRY, NORMAL, FULL
+      bellyStatus: 'NORMAL', // FAINT, WEAK, HUNGRY, NORMAL, FULL
+      resistance: {
+        blind: 0, // actually boolean, use integer to prevent multiple effects
+        paralyze: 0,
+        sleep: 0,
+        poison: 0,
+        afraid: 0,
+        bleeding: 0,
+        faint: 0,
+        breakArmor: 0,
+        wet: 0,
+        acid: 0,
+        cold: 0 // percentage, 0~1
+      }
     }
     return result;
   }
@@ -695,7 +725,6 @@
   }
 
   CharUtils.levelUp = function(target) {
-    // TODO: implement level up mechanism
     target._paramPlus[0] += 3 + Math.round(target.param(3) / 2);
     target._paramPlus[1] += 2 + Math.round(target.param(5) / 2);
   }
@@ -803,84 +832,118 @@
     realTarget.gainTp(tpRecover);
   }
 
-  CharUtils.spawnMob = function(mapId, mapBlocks, outOfSight) {
+  CharUtils.calcMobAppearPercentage = function(mobLevel, dungeonLevel) {
+    let result = 0;
+    if (mobLevel > dungeonLevel) {
+      if (mobLevel - dungeonLevel <= 3) {
+        result = Math.pow(0.5, mobLevel - dungeonLevel);
+      }
+    } else {
+      result = 1 - (dungeonLevel - mobLevel) * 10 / 100;
+    }
+    return result;
+  }
+
+  CharUtils.getMobPools = function(mapId) {
     let mapType = $gameVariables[mapId].mapType;
     let dungeonLevel = $gameVariables[mapId].dungeonLevel;
-    let pool = [], mapTypeIndex;
-    switch (mapType) {
-      case 'EARTH':
-        mapTypeIndex = 0;
-        break;
-      case 'ICE':
-        mapTypeIndex = 1;
-        break;
-    }
+    let pool = [], mapTypeIndex = MapUtils.getMapTypeIndex(mapType);
     let mobTypeIndicator = mapTypeIndex;
-    if (getRandomInt(100) > 70) {
-      // creature from other dungeons
-      let temp;
-      do {
-        temp = getRandomInt(CharUtils.mobTemplates.length);
-      } while (temp == mapTypeIndex);
-      mobTypeIndicator = temp;
-    }
-    for (let id in CharUtils.mobTemplates[mobTypeIndicator]) {
-      let mobClass = CharUtils.mobTemplates[mobTypeIndicator][id];
-      if (dungeonLevel >= mobClass.baseDungeonLevel
-        && (getRandomInt(100) >= (dungeonLevel - mobClass.baseDungeonLevel) * 10)) {
-        pool.push(mobClass);
+    do {
+      if (getRandomInt(100) / 100 > genLocalDungeonObjectPercentage) {
+        // creature from other dungeons
+        let temp;
+        do {
+          temp = getRandomInt(CharUtils.mobTemplates.length);
+        } while (temp == mapTypeIndex);
+        mobTypeIndicator = temp;
       }
-    }
-    if (pool.length == 0 && mobTypeIndicator != mapTypeIndex) {
-      // recalculate: use local dungeon creature
-      for (let id in CharUtils.mobTemplates[mapTypeIndex]) {
-        let mobClass = CharUtils.mobTemplates[mapTypeIndex][id];
-        if (dungeonLevel >= mobClass.baseDungeonLevel
-          && (getRandomInt(100) > (dungeonLevel - mobClass.baseDungeonLevel) * 10)) {
+      for (let id in CharUtils.mobTemplates[mobTypeIndicator]) {
+        let mobClass = CharUtils.mobTemplates[mobTypeIndicator][id];
+        if (CharUtils.calcMobAppearPercentage(mobClass.mobInitData.level, dungeonLevel) > Math.random()) {
           pool.push(mobClass);
         }
       }
-    }
-    if (pool.length > 0) {
-      let mobClass = pool[getRandomInt(pool.length)];
-      let locations = [];
-      switch (mobClass.mobInitData.moveType) {
-        case 0:
-          locations = mapBlocks.floor;
-          break;
-        case 1:
-          locations = mapBlocks.water;
-          break;
-        case 2:
-          locations = mapBlocks.floor.concat(mapBlocks.hollow);
-          break;
-      }
-      if (locations.length > 0) {
-        let maxTry = 20;
-        let location, temp;
-        for (let i = 0; i < maxTry; i++) {
-          temp = locations[getRandomInt(locations.length)];
-          if (!MapUtils.isTileAvailableForMob(mapId, temp.x, temp.y)) {
-            continue;
-          } else if (outOfSight && temp.isVisible) {
-            continue;
-          } else {
-            location = temp;
-            break;
+      if (pool.length == 0 && mobTypeIndicator != mapTypeIndex) {
+        // recalculate: use local dungeon creature
+        for (let id in CharUtils.mobTemplates[mapTypeIndex]) {
+          let mobClass = CharUtils.mobTemplates[mapTypeIndex][id];
+          if (CharUtils.calcMobAppearPercentage(mobClass.mobInitData.level, dungeonLevel) > Math.random()) {
+            pool.push(mobClass);
           }
         }
-        if (location) {
-          return new mobClass(location.x, location.y);
+      }
+    } while (pool.length == 0);
+    return pool;
+  }
+
+  CharUtils.spawnMob = function(mapId, mapBlocks, outOfSight) {
+    let pool = CharUtils.getMobPools(mapId);
+    let mobClass = pool[getRandomInt(pool.length)];
+    let locations = [];
+    switch (mobClass.mobInitData.moveType) {
+      case 0:
+        locations = mapBlocks.floor;
+        break;
+      case 1:
+        locations = mapBlocks.water;
+        break;
+      case 2:
+        locations = mapBlocks.floor.concat(mapBlocks.hollow);
+        break;
+    }
+    if (locations.length > 0) {
+      let maxTry = 20;
+      let location, temp;
+      for (let i = 0; i < maxTry; i++) {
+        temp = locations[getRandomInt(locations.length)];
+        if (!MapUtils.isTileAvailableForMob(mapId, temp.x, temp.y)) {
+          continue;
+        } else if (outOfSight && temp.isVisible) {
+          continue;
         } else {
-          console.log('can not find location out of sight!');
+          location = temp;
+          break;
         }
+      }
+      if (location) {
+        return new mobClass(location.x, location.y);
       } else {
-        console.log('no place to spawn mob: ' + mobClass.name);
+        console.log('can not find location out of sight!');
       }
     } else {
-      console.log('no available mob to spawn!');
+      console.log('no place to spawn mob: ' + mobClass.name);
     }
     return null;
+  }
+
+  CharUtils.spawnMobXy = function(mapId, x, y) {
+    let pool;
+    let tileType = $gameVariables[mapId].mapData[x][y].originalTile;
+    let candidates = [];
+    do {
+      pool = CharUtils.getMobPools(mapId);
+      for (let id in pool) {
+        let toCheck = pool[id];
+        let moveType = toCheck.mobInitData.moveType;
+        switch (tileType) {
+          case FLOOR:
+            if (moveType != 1) {
+              candidates.push(toCheck);
+            }
+            break;
+          case WATER:
+            candidates.push(toCheck);
+            break;
+          case HOLLOW: case LAVA:
+            if (moveType == 2) {
+              candidates.push(toCheck);
+            }
+            break;
+        }
+      }
+    } while (candidates.length == 0);
+    return new candidates[getRandomInt(candidates.length)](x, y);
   }
 
   CharUtils.spawnMobNearPlayer = function(mobType, xOffset, yOffset) {
@@ -1112,8 +1175,12 @@
     }
     $gameVariables[dungeonDepth].stairToList.push(dungeonDepth - 1);
     $gameVariables[dungeonDepth].stairDownNum = 0;
+
     // add for test
-    let iceEntranceLevel = getRandomIntRange(4, dungeonDepth);
+    // $gameVariables[2].mapType = 'ICE';
+    // $gameVariables[2].dungeonLevel = 6;
+
+    let iceEntranceLevel = 2; // getRandomIntRange(4, dungeonDepth);
     $gameVariables[iceEntranceLevel].stairDownNum++;
     $gameVariables[iceEntranceLevel].stairToList.push(11);
     $gameVariables[11].stairToList.push(iceEntranceLevel);
@@ -1121,7 +1188,7 @@
       $gameVariables[i].stairToList.push(i - 1);
       $gameVariables[i].stairToList.push(i + 1);
       $gameVariables[i].mapType = 'ICE';
-      $gameVariables[i].dungeonLevel = i - 5;
+      $gameVariables[i].dungeonLevel = i - 6;
     }
     $gameVariables[11].stairToList.splice(1, 1);
     $gameVariables[15].stairToList.pop();
@@ -1245,29 +1312,36 @@
 
     // $gameParty._items.push(new Soul_Bite());
     // Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
-    Soul_Obtained_Action.learnSkill(Skill_Barrier);
-    Soul_Obtained_Action.learnSkill(Skill_IceBolt);
-    Soul_Obtained_Action.learnSkill(Skill_IceBreath);
-    Soul_Obtained_Action.learnSkill(Skill_Charge);
-    Soul_Obtained_Action.learnSkill(Skill_IceBolder);
-    Soul_Obtained_Action.learnSkill(Skill_Bash);
+    // Soul_Obtained_Action.learnSkill(Skill_Barrier);
+    // Soul_Obtained_Action.learnSkill(Skill_IceBolt);
+    // Soul_Obtained_Action.learnSkill(Skill_IceBreath);
+    // Soul_Obtained_Action.learnSkill(Skill_Charge);
+    // Soul_Obtained_Action.learnSkill(Skill_IceBolder);
+    // Soul_Obtained_Action.learnSkill(Skill_Bash);
+    Soul_Obtained_Action.learnSkill(Skill_Bite);
+    Soul_Obtained_Action.learnSkill(Skill_Pierce);
 
     // modify actor status
-    // let player = $gameActors.actor(1);
-    // player._paramPlus[2] = 6;
-    // player._paramPlus[3] = 9;
-    // player._paramPlus[6] = 9;
-    // $gameParty.gainItem(new Bear_Shield(), 1);
-    // $gameParty.gainItem(new Bear_Skin(), 1);
-    // $gameParty.gainItem(new Bear_Claw(), 1);
-    // $gameParty.gainItem(new Cat_Gloves(), 1);
-    // $gameParty.gainItem(new Cat_Shoes(), 1);
-    // for (let i = 0; i < 6; i++) {
-    //   $gameParty.gainItem(new Dart_Lv2_T1(), 1);
-    //   player.levelUp();
-    // }
-    // player._hp = 120;
-    // player._mp = 80;
+    let player = $gameActors.actor(1);
+    player._paramPlus[2] = 9;
+    player._paramPlus[3] = 9;
+    player._paramPlus[6] = 9;
+    $gameParty.gainItem(new Lion_Shield(), 1);
+    $gameParty.gainItem(new Bear_Skin(), 1);
+    $gameParty.gainItem(new Bear_Claw(), 1);
+    $gameParty.gainItem(new Cat_Gloves(), 1);
+    $gameParty.gainItem(new Cat_Shoes(), 1);
+    // $gameParty.gainItem(new Ring_Protection(), 1);
+    // $gameParty.gainItem(new Ring_ColdResistance(), 1);
+    $gameParty.gainItem(new Cheese(), 1);
+    for (let i = 0; i < 6; i++) {
+      // $gameParty.gainItem(new Dart_Lv2_T1(), 1);
+      // $gameParty.gainItem(new Potion_Acid(), 1);
+      // $gameParty.gainItem(new Scroll_CreateMonster(), 1);
+      player.levelUp();
+    }
+    player._hp = 120;
+    player._mp = 80;
     // setTimeout(MapUtils.goDownLevels, 500, 7);
   }
 
@@ -1276,7 +1350,7 @@
     var xmlhttp = new XMLHttpRequest();
     xmlhttp.open("GET", filePath, false);
     xmlhttp.send();
-    if (xmlhttp.status==200) {
+    if (xmlhttp.status == 200) {
       result = xmlhttp.responseText;
     }
     return result;
@@ -1325,6 +1399,27 @@
     }
     console.log('error: no such mapType: ' + mapType);
     return null;
+  }
+
+  MapUtils.getMapTypeIndex = function(mapType) {
+    let mapTypeIndex;
+    switch (mapType) {
+      case 'EARTH':
+        mapTypeIndex = 0;
+        break;
+      case 'ICE':
+        mapTypeIndex = 1;
+        break;
+    }
+    return mapTypeIndex;
+  }
+
+  MapUtils.getDungeonLevelByMapId = function(mapId) {
+    if (mapId < 11) {
+      return mapId - 1;
+    } else {
+      return mapId - 10;
+    }
   }
 
   MapUtils.checkInOutWater = function(src, oldX, oldY, nowX, nowY) {
@@ -1934,7 +2029,7 @@
       $gameVariables[0].transferInfo = new TransferInfo(stair.toMapId, character._x, character._y);
       $gameScreen.startFadeOut(1);
       // clear scheduler
-      TimeUtils.eventScheduler.getEventQueue().length = 0;
+      TimeUtils.eventScheduler.clearEventExceptPlayer();
       // wait until map is fully loaded
       var checkMapReady = function () {
         if (SceneManager.isCurrentSceneStarted()) {
@@ -2137,9 +2232,20 @@
           && currentMapData[x][y].originalTile != WALL) {
           let tileCenter, tileType;
           switch (currentMapData[x][y].originalTile) {
-            case FLOOR: case DOOR:
+            case FLOOR:
               tileCenter = $gameVariables[0].currentDungeonTiles.floorCenter;
               tileType = FLOOR;
+              break;
+            case DOOR:
+              let mapId = $gameMap.mapId();
+              if ($gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(x, y)]
+                && !$gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(x, y)].isRevealed) {
+                tileCenter = $gameVariables[0].currentDungeonTiles.ceilingCenter;
+                tileType = WALL;
+              } else {
+                tileCenter = $gameVariables[0].currentDungeonTiles.floorCenter;
+                tileType = FLOOR;
+              }
               break;
             case WATER:
               tileCenter = $gameVariables[0].currentDungeonTiles.waterCenter;
@@ -2236,20 +2342,6 @@
           east = FLOOR;
         }
         map[i * 2 + 1 + index][j * 2 + index] = east;
-      }
-    }
-
-    // add for test only
-    let xBound = map.length;
-    let yBound = map[0].length;
-    let poolNum = 10;
-    for (let i = 0; i < poolNum; i++) {
-      let x = getRandomIntRange(2, xBound - 3);
-      let y = getRandomIntRange(2, yBound - 3);
-      for (let j = x - 1; j < x + 2; j++) {
-        for (let k = y - 1; k < y + 2; k++) {
-          map[j][k] = WATER;
-        }
       }
     }
     return map;
@@ -2660,9 +2752,27 @@
     return map;
   }
 
-  MapUtils.generateMapData = function (genMapFunction, width, height) {
+  MapUtils.generateMapData = function (mapId, genMapFunction, width, height) {
     var mapRaw = genMapFunction(width, height);
     var mapPixel = genMapToMap(mapRaw);
+
+    // change map feature by mapId
+    let mapType = $gameVariables[mapId].mapType;
+    let xBound = mapPixel.length;
+    let yBound = mapPixel[0].length;
+    let poolNum = getRandomInt(2);
+    if (mapType == 'ICE') {
+      poolNum = getRandomIntRange(6, 10);
+    }
+    for (let i = 0; i < poolNum; i++) {
+      let x = getRandomIntRange(2, xBound - 3);
+      let y = getRandomIntRange(2, yBound - 3);
+      for (let j = x - 1; j < x + 2; j++) {
+        for (let k = y - 1; k < y + 2; k++) {
+          mapPixel[j][k] = WATER;
+        }
+      }
+    }
     return mapPixel;
   }
 
@@ -2767,7 +2877,7 @@
             let mapBlock = mapData[coordinate.x][coordinate.y];
             let tile = mapBlock.originalTile;
             let weight = -1;
-            // TODO: consider water/hollow/lava tile
+            // TODO: consider hollow/lava tile
             if ((tile == FLOOR && mob.moveType != 1) || tile == WATER || (tile == HOLLOW && mob.moveType == 2)) {
               // check if mob on it
               let mob = $gameMap.eventsXy(coordinate.x, coordinate.y).filter(function(evt) {
@@ -2843,7 +2953,7 @@
       // ice boss room
       rawMap = MapUtils.dataToMap('iceBossRoom');
     } else {
-      rawMap = MapUtils.generateMapData(genMapRoomsFullMaze, 20, 10);
+      rawMap = MapUtils.generateMapData(mapId, genMapRoomsFullMaze, 20, 10);
       rawMap = MapUtils.removeDeadEnds(rawMap);
       MapUtils.setupSecretDoor(mapId, rawMap);
     }
@@ -3521,6 +3631,10 @@
 
   Bolder.prototype.checkTerrainEffect = function() {
     let mapData = $gameVariables[$gameMap.mapId()].mapData;
+    if (this._x < 0 || this._y < 0) {
+      // event already removed
+      return;
+    }
     // check if hit specific tile
     switch (mapData[this._x][this._y].originalTile) {
       case WATER:
@@ -4074,6 +4188,16 @@
     this.initialize.apply(this, arguments);
   }
 
+  Projectile_Item.checkItemBroken = function(evt, x, y) {
+    if (getRandomInt(100) < 90) {
+      ItemUtils.addItemToItemPile(x, y, $gameVariables[0].fireProjectileInfo.item);
+    } else if (CharUtils.playerCanSeeBlock(x, y)) {
+      AudioManager.playSe({name: 'Buzzer2', pan: 0, pitch: 100, volume: 100});
+      LogUtils.addLog(String.format(Message.display('throwItemBroken')
+        , ItemUtils.getItemDisplayName($gameVariables[0].fireProjectileInfo.item)));
+    }
+  }
+
   Projectile_Item.prototype = Object.create(Game_Projectile.prototype);
   Projectile_Item.prototype.constructor = Projectile_Item;
 
@@ -4138,7 +4262,7 @@
   Projectile_Item.prototype.hitCharacter = function(vm, evt) {
     TimeUtils.animeQueue.push(new AnimeObject(null, 'SE', "Slash3"));
     BattleUtils.projectileAttack(vm.src, evt, $gameVariables[0].fireProjectileInfo.item);
-    ItemUtils.addItemToItemPile(evt._x, evt._y, $gameVariables[0].fireProjectileInfo.item);
+    Projectile_Item.checkItemBroken(evt, evt._x, evt._y);
     return true;
   }
 
@@ -4149,7 +4273,8 @@
       LogUtils.addLog(String.format(Message.display('throwItemHitObstacle')
         , ItemUtils.getItemDisplayName($gameVariables[0].fireProjectileInfo.item)));
     }
-    ItemUtils.addItemToItemPile(lastPos.x, lastPos.y, $gameVariables[0].fireProjectileInfo.item);
+    // ItemUtils.addItemToItemPile(lastPos.x, lastPos.y, $gameVariables[0].fireProjectileInfo.item);
+    Projectile_Item.checkItemBroken(vm, lastPos.x, lastPos.y);
     return true;
   }
 
@@ -4163,7 +4288,8 @@
       let direction = this.calcLastPosition(this);
       let newX = this._x - (direction.x - this._x) * this.distance;
       let newY = this._y - (direction.y - this._y) * this.distance;
-      ItemUtils.addItemToItemPile(newX, newY, $gameVariables[0].fireProjectileInfo.item);
+      // ItemUtils.addItemToItemPile(newX, newY, $gameVariables[0].fireProjectileInfo.item);
+      Projectile_Item.checkItemBroken(this, newX, newY);
     }
   }
 
@@ -4237,7 +4363,7 @@
         new UpStair(stairData.x, stairData.y);
       }
     }
-    // TODO: implement trap generating mechanism
+    // generate traps
     let trapCounts = Math.round(floors.length * trapSpawnPercentage);
     for (let i = 0; i < trapCounts; i++) {
       while (true) {
@@ -5051,6 +5177,15 @@
       this.insertEvent(new ScheduleEvent(target, $gameVariables[0].gameTime + CharUtils.getActionTime(realTarget)
         , null, skillEffect));
     },
+    clearEventExceptPlayer: function() {
+      let eventQueue = this.getEventQueue();
+      for (let i = eventQueue.length; i > 0; i--) {
+        let evt = eventQueue[i - 1];
+        if (evt.target != $gamePlayer) {
+          eventQueue.splice(i - 1, 1);
+        }
+      }
+    },
     execute: function() {
       if (this.getEventQueue().length > 0) {
         let event = this.getEventQueue()[0];
@@ -5102,6 +5237,7 @@
           TimeUtils.afterPlayerMovedData.state = 2;
           target.action();
         } else if (target instanceof IceBolder) {
+          MapUtils.refreshMap();
           if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
             AudioManager.playSe({name: 'Water5', pan: 0, pitch: 100, volume: 100});
             LogUtils.addLog(String.format(Message.display('iceMelt'), target.name));
@@ -5527,30 +5663,39 @@
     return result;
   }
 
-  BattleUtils.calcPhysicalDamage = function(realSrc, realTarget, weaponBonus, skillAmplify) {
+  BattleUtils.calcPhysicalDamage = function(realSrc, realTarget, atkValue) {
     if (realSrc == $gameActors.actor(1)) {
       CharUtils.playerGainStrExp(1);
     }
     // calculate attack damage
-    let weaponDamage = (BattleUtils.rollWeaponDamage(realSrc.param(10)) + weaponBonus) * (1 + realSrc.param(2) / 200);
-    let attrDamage = 2 * (realSrc.level / 4 + realSrc.param(2) + realSrc.param(7) / 3);
-    let attrDef = (realTarget.level + realTarget.param(3)) / 2 + realTarget.param(6) / 5;
+    let attrDamage = (realSrc.level + realSrc.param(2)) * 2 / 3;
+    let attrDef = (realTarget.level + realTarget.param(3)) / 3;
     let equipDef = realTarget.param(8);
-    let damage = Math.round(((weaponDamage + attrDamage) * skillAmplify - equipDef - attrDef) / 4);
+    let damage = (atkValue + attrDamage - attrDef) * Math.pow(0.5, equipDef / 10);
     return BattleUtils.getFinalDamage(damage);
   }
 
-  BattleUtils.calcProjectileDamage = function(realSrc, realTarget, item, weaponBonus, skillAmplify) {
+  BattleUtils.calcMagicDamage = function(realSrc, realTarget, atkValue) {
     if (realSrc == $gameActors.actor(1)) {
-      CharUtils.playerGainStrExp(1);
+      CharUtils.playerGainIntExp(1);
     }
-    // calculate projectile damage
-    let weaponDamage = (BattleUtils.rollWeaponDamage(item.damage) + weaponBonus) * (1 + realSrc.param(2) / 200);
-    let attrDamage = 2 * (realSrc.level / 4 + realSrc.param(2) + realSrc.param(7) / 3);
-    let attrDef = (realTarget.level + realTarget.param(3)) / 2 + realTarget.param(6) / 5;
-    let equipDef = realTarget.param(8);
-    let damage = Math.round(((weaponDamage + attrDamage) * skillAmplify - equipDef - attrDef) / 4);
+    // calculate attack damage
+    atkValue *= (1 + realSrc.param(4) / 100);
+    let attrDamage = (realSrc.level + realSrc.param(4)) * 2 / 3;
+    let attrDef = (realTarget.level + realTarget.param(5)) / 3;
+    let equipDef = realTarget.param(9);
+    let damage = (atkValue + attrDamage - attrDef) * Math.pow(0.5, equipDef / 10);
     return BattleUtils.getFinalDamage(damage);
+  }
+
+  BattleUtils.calcMeleeDamage = function(realSrc, realTarget, weaponBonus) {
+    let weaponDamage = (BattleUtils.rollWeaponDamage(realSrc.param(10)) + weaponBonus) * (1 + realSrc.param(2) / 200);
+    return BattleUtils.calcPhysicalDamage(realSrc, realTarget, weaponDamage);
+  }
+
+  BattleUtils.calcProjectileDamage = function(realSrc, realTarget, item, weaponBonus) {
+    let weaponDamage = (BattleUtils.rollWeaponDamage(item.damage) + weaponBonus) * (1 + realSrc.param(2) / 200);
+    return BattleUtils.calcPhysicalDamage(realSrc, realTarget, weaponDamage);
   }
 
   BattleUtils.getWeaponClass = function(realSrc) {
@@ -5617,7 +5762,7 @@
       }
     }
 
-    let value = BattleUtils.calcPhysicalDamage(realSrc, realTarget, weaponBonus, 1);
+    let value = BattleUtils.calcMeleeDamage(realSrc, realTarget, weaponBonus);
     TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
     LogUtils.addLog(String.format(Message.display('meleeAttack'), LogUtils.getCharName(realSrc)
       , LogUtils.getCharName(realTarget), value));
@@ -5669,8 +5814,7 @@
       }
     }
 
-    // TODO: implement projectile damage
-    let value = BattleUtils.calcProjectileDamage(realSrc, realTarget, item, weaponBonus, 1);
+    let value = BattleUtils.calcProjectileDamage(realSrc, realTarget, item, weaponBonus);
     TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
     LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc)
       , item.name, LogUtils.getCharName(realTarget), value));
@@ -5715,19 +5859,25 @@
 
   ItemUtils.potionTemplates = [];
   ItemUtils.scrollTemplates = [];
-  ItemUtils.lootingTemplates = {
-    skin: [],
-    tooth: [],
-    claw: [],
-    bone: [],
-    material: []
+  ItemUtils.lootingTemplates = new Array(2); // 0: earth, 1: ice
+  for (let i = 0; i < ItemUtils.lootingTemplates.length; i++) {
+    ItemUtils.lootingTemplates[i] = {
+      skin: [],
+      tooth: [],
+      claw: [],
+      bone: [],
+      material: []
+    }
   }
-  ItemUtils.EquipTemplates = {
-    helmet: [],
-    gloves: [],
-    shoes: [],
-    shield: [],
-    coat: []
+  ItemUtils.equipTemplates = new Array(2);
+  for (let i = 0; i < ItemUtils.equipTemplates.length; i++) {
+    ItemUtils.equipTemplates[i] = {
+      helmet: [],
+      gloves: [],
+      shoes: [],
+      shield: [],
+      coat: []
+    }
   }
   ItemUtils.recipes = [];
 
@@ -5822,7 +5972,7 @@
   ItemUtils.identifyObject = function(item) {
     let prop = JSON.parse(item.note);
     switch (prop.type) {
-      case 'POTION': case 'SCROLL': case 'BOOK':
+      case 'POTION': case 'SCROLL': case 'BOOK': case 'ACCESSORY':
         // write to global database
         SetUtils.add(prop.type + '_' + item.id, $gameVariables[0].identifiedObjects);
         break;
@@ -5839,7 +5989,7 @@
   ItemUtils.checkItemIdentified = function(item) {
     let prop = JSON.parse(item.note);
     switch (prop.type) {
-      case 'POTION': case 'SCROLL': case 'BOOK':
+      case 'POTION': case 'SCROLL': case 'BOOK': case 'ACCESSORY':
         // check global database
         if (SetUtils.has(prop.type + '_' + item.id, $gameVariables[0].identifiedObjects)) {
           return true;
@@ -5871,6 +6021,9 @@
           break;
         case 'SCROLL':
           displayName = $gameVariables[0].itemImageData.scrolls[item.id].name;
+          break;
+        case 'ACCESSORY':
+          displayName = $gameVariables[0].itemImageData.rings[item.id].name;
           break;
         case 'WEAPON': case 'ARMOR':
           displayName = item.templateName;
@@ -5994,25 +6147,29 @@
           break;
       }
     } else if (DataManager.isArmor(obj)) {
-      switch (prop.subType) {
-        case 'SKIN':
-          imageData = new ImageData('Collections3', 0, 1, 6);
-          break;
-        case 'SHOES':
-          imageData = new ImageData('Collections2', 4, 0, 6);
-          break;
-        case 'GLOVES':
-          imageData = new ImageData('Collections2', 6, 1, 6);
-          break;
-        case 'SHIELD':
-          imageData = new ImageData('Collections2', 4, 0, 2);
-          break;
-        case 'HELMET':
-          imageData = new ImageData('Collections2', 7, 1, 4);
-          break;
-        case 'COAT':
-          imageData = new ImageData('Collections2', 4, 1, 4);
-          break;
+      if (prop.type == 'ACCESSORY') {
+        imageData = $gameVariables[0].itemImageData.rings[obj.id];
+      } else {
+        switch (prop.subType) {
+          case 'SKIN':
+            imageData = new ImageData('Collections3', 0, 1, 6);
+            break;
+          case 'SHOES':
+            imageData = new ImageData('Collections2', 4, 0, 6);
+            break;
+          case 'GLOVES':
+            imageData = new ImageData('Collections2', 6, 1, 6);
+            break;
+          case 'SHIELD':
+            imageData = new ImageData('Collections2', 4, 0, 2);
+            break;
+          case 'HELMET':
+            imageData = new ImageData('Collections2', 7, 1, 4);
+            break;
+          case 'COAT':
+            imageData = new ImageData('Collections2', 4, 1, 4);
+            break;
+        }
       }
     } else {
       console.log('ERROR: ItemUtils.updateItemPile: no such type!');
@@ -6096,10 +6253,10 @@
     return name;
   }
 
-  ItemUtils.spawnItemFromList = function(list, dungeonLevel) {
+  ItemUtils.getItemClassFromList = function(list, dungeonLevel) {
     let probs = []; // item: {itemClass: class, prob: float}
     for (let id in list) {
-      let p = 100 - Math.abs(dungeonLevel - list[id].spawnLevel) * 20;
+      let p = CharUtils.calcMobAppearPercentage(list[id].spawnLevel, dungeonLevel);
       p = (p < 0) ? 0 : p;
       probs.push({itemClass: list[id], prob: p});
     }
@@ -6118,67 +6275,81 @@
     for (let id in probs) {
       compareProb += probs[id].prob;
       if (indicator < compareProb) {
-        return new probs[id].itemClass();
+        return probs[id].itemClass;
       }
     }
-    return new list[getRandomInt(list.length)]();
+    return list[getRandomInt(list.length)];
   }
 
-  ItemUtils.spawnItem = function(dungeonLevel) {
+  ItemUtils.spawnItem = function(mapId) {
     let list;
-    let itemType = getRandomInt(100);
-    if (itemType < 67) {
-      // spawn material
-      let indicator = getRandomInt(5);
-      switch (indicator) {
-        case 0: // skin
-          list = ItemUtils.lootingTemplates.skin;
-          break;
-        case 1: // tooth
-          list = ItemUtils.lootingTemplates.tooth;
-          break;
-        case 2: // claw
-          list = ItemUtils.lootingTemplates.claw;
-          break;
-        case 3: // bone
-          list = ItemUtils.lootingTemplates.bone;
-          break;
-        case 4: // material
-          list = ItemUtils.lootingTemplates.material;
-          break;
+    let newItemClass;
+    let dungeonLevel = $gameVariables[mapId].dungeonLevel;
+    do {
+      let mapTypeIndex = MapUtils.getMapTypeIndex($gameVariables[mapId].mapType);
+      if (getRandomInt(100) / 100 > genLocalDungeonObjectPercentage) {
+        // item from other dungeons
+        let temp;
+        do {
+          temp = getRandomInt(ItemUtils.lootingTemplates.length);
+        } while (temp == mapTypeIndex);
+        mapTypeIndex = temp;
       }
-      return ItemUtils.spawnItemFromList(list, dungeonLevel);
-    } else if (itemType < 97) {
-      // spawn scroll/potion
-      if (getRandomInt(2) == 0) {
-        // scroll
-        list = ItemUtils.scrollTemplates;
+      let itemType = getRandomInt(100);
+      if (itemType < 60) {
+        // spawn material
+        let indicator = getRandomInt(5);
+        switch (indicator) {
+          case 0: // skin
+            list = ItemUtils.lootingTemplates[mapTypeIndex].skin;
+            break;
+          case 1: // tooth
+            list = ItemUtils.lootingTemplates[mapTypeIndex].tooth;
+            break;
+          case 2: // claw
+            list = ItemUtils.lootingTemplates[mapTypeIndex].claw;
+            break;
+          case 3: // bone
+            list = ItemUtils.lootingTemplates[mapTypeIndex].bone;
+            break;
+          case 4: // material
+            list = ItemUtils.lootingTemplates[mapTypeIndex].material;
+            break;
+        }
+        newItemClass = ItemUtils.getItemClassFromList(list, dungeonLevel);
+      } else if (itemType < 99) {
+        // spawn scroll/potion
+        if (getRandomInt(2) == 0) {
+          // scroll
+          list = ItemUtils.scrollTemplates;
+        } else {
+          list = ItemUtils.potionTemplates;
+        }
+        newItemClass = list[getRandomInt(list.length)];
       } else {
-        list = ItemUtils.potionTemplates;
+        // spawn equipment
+        let indicator = getRandomInt(5);
+        switch (indicator) {
+          case 0: // helmet
+            list = ItemUtils.equipTemplates[mapTypeIndex].helmet;
+            break;
+          case 1: // gloves
+            list = ItemUtils.equipTemplates[mapTypeIndex].gloves;
+            break;
+          case 2: // shoes
+            list = ItemUtils.equipTemplates[mapTypeIndex].shoes;
+            break;
+          case 3: // shield
+            list = ItemUtils.equipTemplates[mapTypeIndex].shield;
+            break;
+          case 4: // coat
+            list = ItemUtils.equipTemplates[mapTypeIndex].coat;
+            break;
+        }
+        newItemClass = ItemUtils.getItemClassFromList(list, dungeonLevel);
       }
-      return new list[getRandomInt(list.length)]();
-    } else {
-      // spawn equipment
-      let indicator = getRandomInt(5);
-      switch (indicator) {
-        case 0: // helmet
-          list = ItemUtils.EquipTemplates.helmet;
-          break;
-        case 1: // gloves
-          list = ItemUtils.EquipTemplates.gloves;
-          break;
-        case 2: // shoes
-          list = ItemUtils.EquipTemplates.shoes;
-          break;
-        case 3: // shield
-          list = ItemUtils.EquipTemplates.shield;
-          break;
-        case 4: // coat
-          list = ItemUtils.EquipTemplates.coat;
-          break;
-      }
-      return ItemUtils.spawnItemFromList(list, dungeonLevel);
-    }
+    } while (!newItemClass);
+    return new newItemClass();
   }
 
   ItemUtils.checkFoodTime = function(food, isInventory, itemPileEvent) {
@@ -6273,12 +6444,11 @@
 
   EquipTemplate.prototype.initialize = function (template) {
     ItemTemplate.prototype.initialize.call(this, template);
-    if (getRandomInt(10) < 3) {
-      if (getRandomInt(2) == 1) {
-        this.bucState = 1;
-      } else {
-        this.bucState = -1;
-      }
+    let rng = getRandomInt(100);
+    if (rng < 5) {
+      this.bucState = -1;
+    } else if (rng < 15) {
+      this.bucState = 1;
     }
   };
 
@@ -6298,7 +6468,127 @@
   Feather.prototype.initialize = function () {
     ItemTemplate.prototype.initialize.call(this, $dataItems[12]);
   }
-  ItemUtils.lootingTemplates.material.push(Feather);
+  ItemUtils.lootingTemplates[0].material.push(Feather);
+
+  //-----------------------------------------------------------------------------------
+  // Rat_Tail
+  //
+  // type: MATERIAL
+
+  Rat_Tail = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Rat_Tail.spawnLevel = 4;
+
+  Rat_Tail.prototype = Object.create(ItemTemplate.prototype);
+  Rat_Tail.prototype.constructor = Rat_Tail;
+
+  Rat_Tail.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[15]);
+    this.name = '鼠尾巴';
+    this.description = '細長的尾巴, 可以用來做什麼呢?';
+  }
+  ItemUtils.lootingTemplates[0].material.push(Rat_Tail);
+
+  //-----------------------------------------------------------------------------------
+  // Buffalo_Horn
+  //
+  // type: MATERIAL
+
+  Buffalo_Horn = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Buffalo_Horn.spawnLevel = 8;
+
+  Buffalo_Horn.prototype = Object.create(ItemTemplate.prototype);
+  Buffalo_Horn.prototype.constructor = Buffalo_Horn;
+
+  Buffalo_Horn.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[16]);
+    this.name = '牛角';
+    this.description = '堅硬的牛角(麵包?)';
+  }
+  ItemUtils.lootingTemplates[0].material.push(Buffalo_Horn);
+
+  //-----------------------------------------------------------------------------------
+  // Mucus
+  //
+  // type: MATERIAL
+
+  Mucus = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Mucus.spawnLevel = 5;
+
+  Mucus.prototype = Object.create(ItemTemplate.prototype);
+  Mucus.prototype.constructor = Mucus;
+
+  Mucus.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[17]);
+    this.name = '黏液';
+    this.description = '具有包覆作用';
+  }
+  ItemUtils.lootingTemplates[1].material.push(Mucus);
+
+  //-----------------------------------------------------------------------------------
+  // Blue_Crystal
+  //
+  // type: MATERIAL
+
+  Blue_Crystal = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Blue_Crystal.spawnLevel = 5;
+
+  Blue_Crystal.prototype = Object.create(ItemTemplate.prototype);
+  Blue_Crystal.prototype.constructor = Blue_Crystal;
+
+  Blue_Crystal.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[18]);
+    this.name = '藍色結晶';
+    this.description = '史萊姆體內產生的堅硬物質';
+  }
+  ItemUtils.lootingTemplates[1].material.push(Blue_Crystal);
+
+  //-----------------------------------------------------------------------------------
+  // Glue
+  //
+  // type: MATERIAL
+
+  Glue = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Glue.spawnLevel = 6;
+
+  Glue.prototype = Object.create(ItemTemplate.prototype);
+  Glue.prototype.constructor = Glue;
+
+  Glue.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[17]);
+    this.name = '膠質';
+    this.description = '具有絕緣作用';
+  }
+  ItemUtils.lootingTemplates[1].material.push(Glue);
+
+  //-----------------------------------------------------------------------------------
+  // Tentacle
+  //
+  // type: MATERIAL
+
+  Tentacle = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Tentacle.spawnLevel = 6;
+
+  Tentacle.prototype = Object.create(ItemTemplate.prototype);
+  Tentacle.prototype.constructor = Tentacle;
+
+  Tentacle.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[19]);
+    this.name = '觸手';
+    this.description = '帶電的觸手';
+  }
+  ItemUtils.lootingTemplates[1].material.push(Tentacle);
 
   //-----------------------------------------------------------------------------------
   // Flesh (for animal)
@@ -6345,7 +6635,31 @@
     this.status = 'PERMANENT'; // never rots
     this.producedTime = $gameVariables[0].gameTime;
   }
-  ItemUtils.lootingTemplates.material.push(Honey);
+  ItemUtils.lootingTemplates[0].material.push(Honey);
+
+  //-----------------------------------------------------------------------------------
+  // Cheese
+  //
+  // type: FOOD
+
+  Cheese = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Cheese.spawnLevel = 4;
+
+  Cheese.prototype = Object.create(ItemTemplate.prototype);
+  Cheese.prototype.constructor = Cheese;
+
+  Cheese.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[20]);
+    this.name = '起司'
+    this.description = '誰偷走了我的起司?';
+    this.templateName = this.name;
+    this.nutrition = 300;
+    this.status = 'PERMANENT'; // never rots
+    this.producedTime = $gameVariables[0].gameTime;
+  }
+  ItemUtils.lootingTemplates[0].material.push(Cheese);
 
   //-----------------------------------------------------------------------------------
   // Bee_Sting
@@ -6377,7 +6691,7 @@
     }
     ItemUtils.updateEquipDescription(this);
   }
-  ItemUtils.lootingTemplates.tooth.push(Bee_Sting);
+  ItemUtils.lootingTemplates[0].tooth.push(Bee_Sting);
 
   //-----------------------------------------------------------------------------------
   // Dog_Tooth
@@ -6409,7 +6723,7 @@
     }
     ItemUtils.updateEquipDescription(this);
   }
-  ItemUtils.lootingTemplates.tooth.push(Dog_Tooth);
+  ItemUtils.lootingTemplates[0].tooth.push(Dog_Tooth);
 
   //-----------------------------------------------------------------------------------
   // Rooster_Tooth
@@ -6441,7 +6755,7 @@
     }
     ItemUtils.updateEquipDescription(this);
   }
-  ItemUtils.lootingTemplates.tooth.push(Rooster_Tooth);
+  ItemUtils.lootingTemplates[0].tooth.push(Rooster_Tooth);
 
   //-----------------------------------------------------------------------------------
   // Cat_Tooth
@@ -6473,7 +6787,7 @@
     }
     ItemUtils.updateEquipDescription(this);
   }
-  ItemUtils.lootingTemplates.tooth.push(Cat_Tooth);
+  ItemUtils.lootingTemplates[0].tooth.push(Cat_Tooth);
 
   //-----------------------------------------------------------------------------------
   // Boar_Tooth
@@ -6505,7 +6819,7 @@
     }
     ItemUtils.updateEquipDescription(this);
   }
-  ItemUtils.lootingTemplates.tooth.push(Boar_Tooth);
+  ItemUtils.lootingTemplates[0].tooth.push(Boar_Tooth);
 
   //-----------------------------------------------------------------------------------
   // Wolf_Tooth
@@ -6537,7 +6851,7 @@
     }
     ItemUtils.updateEquipDescription(this);
   }
-  ItemUtils.lootingTemplates.tooth.push(Wolf_Tooth);
+  ItemUtils.lootingTemplates[0].tooth.push(Wolf_Tooth);
 
   //-----------------------------------------------------------------------------------
   // Lion_Tooth
@@ -6569,31 +6883,31 @@
     }
     ItemUtils.updateEquipDescription(this);
   }
-  ItemUtils.lootingTemplates.tooth.push(Lion_Tooth);
+  ItemUtils.lootingTemplates[0].tooth.push(Lion_Tooth);
 
   //-----------------------------------------------------------------------------------
-  // Buffalo_Horn
+  // Shark_Tooth
   //
   // weapon type: TOOTH
 
-  Buffalo_Horn = function() {
+  Shark_Tooth = function() {
     this.initialize.apply(this, arguments);
   }
-  Buffalo_Horn.spawnLevel = 8;
+  Shark_Tooth.spawnLevel = 8;
 
-  Buffalo_Horn.prototype = Object.create(EquipTemplate.prototype);
-  Buffalo_Horn.prototype.constructor = Buffalo_Horn;
+  Shark_Tooth.prototype = Object.create(EquipTemplate.prototype);
+  Shark_Tooth.prototype.constructor = Shark_Tooth;
 
-  Buffalo_Horn.prototype.initialize = function () {
+  Shark_Tooth.prototype.initialize = function () {
     EquipTemplate.prototype.initialize.call(this, $dataWeapons[11]);
-    this.name = '牛角';
-    this.description = '粗壯又尖銳的角';
+    this.name = '鯊魚牙';
+    this.description = '尖銳且鋒利的牙齒';
     this.templateName = this.name;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    let modifier = getRandomIntRange(1, 4);
+    let modifier = getRandomIntRange(0, 3);
     modifier += this.bucState;
-    this.traits[2].value = '1d7';
+    this.traits[2].value = '1d8';
     if (modifier > 0) {
       this.traits[2].value += '+' + modifier;
     } else if (modifier < 0) {
@@ -6601,7 +6915,39 @@
     }
     ItemUtils.updateEquipDescription(this);
   }
-  ItemUtils.lootingTemplates.tooth.push(Buffalo_Horn);
+  ItemUtils.lootingTemplates[1].tooth.push(Shark_Tooth);
+
+  //-----------------------------------------------------------------------------------
+  // Dragon_Tooth
+  //
+  // weapon type: TOOTH
+
+  Dragon_Tooth = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dragon_Tooth.spawnLevel = 10;
+
+  Dragon_Tooth.prototype = Object.create(EquipTemplate.prototype);
+  Dragon_Tooth.prototype.constructor = Dragon_Tooth;
+
+  Dragon_Tooth.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[11]);
+    this.name = '龍牙';
+    this.description = '神秘且充滿力量的牙齒';
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(0, 3);
+    modifier += this.bucState;
+    this.traits[2].value = '1d9';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    ItemUtils.updateEquipDescription(this);
+  }
+  ItemUtils.lootingTemplates[1].tooth.push(Dragon_Tooth);
 
   //-----------------------------------------------------------------------------------
   // Dog_Bone
@@ -6624,10 +6970,36 @@
     ItemUtils.updateEquipName(this);
     // randomize attributes
     this.traits[2].value = '1';
-    // TODO: implement magic power amplifier
+    this.params[4] = 1;
     ItemUtils.updateEquipDescription(this);
   }
-  ItemUtils.lootingTemplates.bone.push(Dog_Bone);
+  ItemUtils.lootingTemplates[0].bone.push(Dog_Bone);
+
+  //-----------------------------------------------------------------------------------
+  // Cat_Bone
+  //
+  // weapon type: BONE
+
+  Cat_Bone = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Cat_Bone.spawnLevel = 4;
+
+  Cat_Bone.prototype = Object.create(EquipTemplate.prototype);
+  Cat_Bone.prototype.constructor = Cat_Bone;
+
+  Cat_Bone.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[12]);
+    this.name = '貓骨';
+    this.description = '輕巧的骨頭';
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    this.traits[2].value = '1d2';
+    this.params[4] = 2;
+    ItemUtils.updateEquipDescription(this);
+  }
+  ItemUtils.lootingTemplates[0].bone.push(Cat_Bone);
 
   //-----------------------------------------------------------------------------------
   // Wolf_Bone
@@ -6649,11 +7021,11 @@
     this.templateName = this.name;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    this.traits[2].value = '2';
-    // TODO: implement magic power amplifier
+    this.traits[2].value = '1d2';
+    this.params[4] = 4;
     ItemUtils.updateEquipDescription(this);
   }
-  ItemUtils.lootingTemplates.bone.push(Wolf_Bone);
+  ItemUtils.lootingTemplates[0].bone.push(Wolf_Bone);
 
   //-----------------------------------------------------------------------------------
   // Bear_Bone
@@ -6675,11 +7047,11 @@
     this.templateName = this.name;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    this.traits[2].value = '3';
-    // TODO: implement magic power amplifier
+    this.traits[2].value = '1d3';
+    this.params[4] = 5;
     ItemUtils.updateEquipDescription(this);
   }
-  ItemUtils.lootingTemplates.bone.push(Bear_Bone);
+  ItemUtils.lootingTemplates[0].bone.push(Bear_Bone);
 
   //-----------------------------------------------------------------------------------
   // Buffalo_Bone
@@ -6701,11 +7073,63 @@
     this.templateName = this.name;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    this.traits[2].value = '4';
-    // TODO: implement magic power amplifier
+    this.traits[2].value = '1d3';
+    this.params[4] = 6;
     ItemUtils.updateEquipDescription(this);
   }
-  ItemUtils.lootingTemplates.bone.push(Buffalo_Bone);
+  ItemUtils.lootingTemplates[0].bone.push(Buffalo_Bone);
+
+  //-----------------------------------------------------------------------------------
+  // Lion_Bone
+  //
+  // weapon type: BONE
+
+  Lion_Bone = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Lion_Bone.spawnLevel = 8;
+
+  Lion_Bone.prototype = Object.create(EquipTemplate.prototype);
+  Lion_Bone.prototype.constructor = Lion_Bone;
+
+  Lion_Bone.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[12]);
+    this.name = '獅骨';
+    this.description = '百獸之王的骨頭';
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    this.traits[2].value = '1d4';
+    this.params[4] = 7;
+    ItemUtils.updateEquipDescription(this);
+  }
+  ItemUtils.lootingTemplates[0].bone.push(Lion_Bone);
+
+  //-----------------------------------------------------------------------------------
+  // Dragon_Bone
+  //
+  // weapon type: BONE
+
+  Dragon_Bone = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dragon_Bone.spawnLevel = 10;
+
+  Dragon_Bone.prototype = Object.create(EquipTemplate.prototype);
+  Dragon_Bone.prototype.constructor = Dragon_Bone;
+
+  Dragon_Bone.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[12]);
+    this.name = '龍骨';
+    this.description = '充滿古老的魔法力量';
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    this.traits[2].value = '1d4';
+    this.params[4] = 8;
+    ItemUtils.updateEquipDescription(this);
+  }
+  ItemUtils.lootingTemplates[1].bone.push(Dragon_Bone);
 
   //-----------------------------------------------------------------------------------
   // Rooster_Claw
@@ -6737,7 +7161,7 @@
     }
     ItemUtils.updateEquipDescription(this);
   }
-  ItemUtils.lootingTemplates.claw.push(Rooster_Claw);
+  ItemUtils.lootingTemplates[0].claw.push(Rooster_Claw);
 
   //-----------------------------------------------------------------------------------
   // Cat_Claw
@@ -6759,7 +7183,7 @@
     this.templateName = this.name;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    let modifier = getRandomIntRange(2, 5);
+    let modifier = getRandomIntRange(1, 4);
     modifier += this.bucState;
     this.traits[2].value = '2d2';
     if (modifier > 0) {
@@ -6769,7 +7193,7 @@
     }
     ItemUtils.updateEquipDescription(this);
   }
-  ItemUtils.lootingTemplates.claw.push(Cat_Claw);
+  ItemUtils.lootingTemplates[0].claw.push(Cat_Claw);
 
   //-----------------------------------------------------------------------------------
   // Wolf_Claw
@@ -6791,7 +7215,7 @@
     this.templateName = this.name;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    let modifier = getRandomIntRange(2, 5);
+    let modifier = getRandomIntRange(0, 3);
     modifier += this.bucState;
     this.traits[2].value = '2d3';
     if (modifier > 0) {
@@ -6801,7 +7225,7 @@
     }
     ItemUtils.updateEquipDescription(this);
   }
-  ItemUtils.lootingTemplates.claw.push(Wolf_Claw);
+  ItemUtils.lootingTemplates[0].claw.push(Wolf_Claw);
 
   //-----------------------------------------------------------------------------------
   // Bear_Claw
@@ -6823,7 +7247,7 @@
     this.templateName = this.name;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    let modifier = getRandomIntRange(1, 4);
+    let modifier = getRandomIntRange(2, 5);
     modifier += this.bucState;
     this.traits[2].value = '2d3';
     if (modifier > 0) {
@@ -6833,7 +7257,7 @@
     }
     ItemUtils.updateEquipDescription(this);
   }
-  ItemUtils.lootingTemplates.claw.push(Bear_Claw);
+  ItemUtils.lootingTemplates[0].claw.push(Bear_Claw);
 
   //-----------------------------------------------------------------------------------
   // Lion_Claw
@@ -6855,7 +7279,39 @@
     this.templateName = this.name;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    let modifier = getRandomIntRange(0, 3);
+    let modifier = getRandomIntRange(1, 4);
+    modifier += this.bucState;
+    this.traits[2].value = '2d3';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    ItemUtils.updateEquipDescription(this);
+  }
+  ItemUtils.lootingTemplates[0].claw.push(Lion_Claw);
+
+  //-----------------------------------------------------------------------------------
+  // Dragon_Claw
+  //
+  // weapon type: CLAW
+
+  Dragon_Claw = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dragon_Claw.spawnLevel = 10;
+
+  Dragon_Claw.prototype = Object.create(EquipTemplate.prototype);
+  Dragon_Claw.prototype.constructor = Dragon_Claw;
+
+  Dragon_Claw.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[13]);
+    this.name = '龍爪';
+    this.description = '古老又神秘的爪';
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(1, 4);
     modifier += this.bucState;
     this.traits[2].value = '2d4';
     if (modifier > 0) {
@@ -6865,7 +7321,7 @@
     }
     ItemUtils.updateEquipDescription(this);
   }
-  ItemUtils.lootingTemplates.claw.push(Lion_Claw);
+  ItemUtils.lootingTemplates[1].claw.push(Dragon_Claw);
 
   //-----------------------------------------------------------------------------------
   // Dog_Skin
@@ -6890,7 +7346,7 @@
     ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
-  ItemUtils.lootingTemplates.skin.push(Dog_Skin);
+  ItemUtils.lootingTemplates[0].skin.push(Dog_Skin);
 
   //-----------------------------------------------------------------------------------
   // Cat_Skin
@@ -6916,7 +7372,7 @@
     ItemUtils.modifyAttr(this.traits[1], 2 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
-  ItemUtils.lootingTemplates.skin.push(Cat_Skin);
+  ItemUtils.lootingTemplates[0].skin.push(Cat_Skin);
 
   //-----------------------------------------------------------------------------------
   // Wolf_Skin
@@ -6939,9 +7395,10 @@
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 3 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 1);
     ItemUtils.updateEquipDescription(this);
   };
-  ItemUtils.lootingTemplates.skin.push(Wolf_Skin);
+  ItemUtils.lootingTemplates[0].skin.push(Wolf_Skin);
 
   //-----------------------------------------------------------------------------------
   // Bear_Skin
@@ -6966,7 +7423,59 @@
     ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
-  ItemUtils.lootingTemplates.skin.push(Bear_Skin);
+  ItemUtils.lootingTemplates[0].skin.push(Bear_Skin);
+
+  //-----------------------------------------------------------------------------------
+  // Lion_Skin
+  //
+  // armor type: SKIN
+
+  Lion_Skin = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Lion_Skin.spawnLevel = 8;
+
+  Lion_Skin.prototype = Object.create(EquipTemplate.prototype);
+  Lion_Skin.prototype.constructor = Lion_Skin;
+
+  Lion_Skin.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[11]);
+    this.name = '獅皮';
+    this.description = '百獸之王的毛皮';
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 3);
+    ItemUtils.modifyAttr(this.traits[1], 2 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.lootingTemplates[0].skin.push(Lion_Skin);
+
+  //-----------------------------------------------------------------------------------
+  // Dragon_Skin
+  //
+  // armor type: SKIN
+
+  Dragon_Skin = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dragon_Skin.spawnLevel = 10;
+
+  Dragon_Skin.prototype = Object.create(EquipTemplate.prototype);
+  Dragon_Skin.prototype.constructor = Dragon_Skin;
+
+  Dragon_Skin.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[11]);
+    this.name = '龍皮';
+    this.description = '古老又神秘的毛皮';
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 4);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.lootingTemplates[1].skin.push(Dragon_Skin);
 
   //-----------------------------------------------------------------------------------
   // Turtle_Shell
@@ -6988,10 +7497,11 @@
     this.templateName = this.name;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 3 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 2);
     ItemUtils.updateEquipDescription(this);
   };
-  ItemUtils.lootingTemplates.skin.push(Turtle_Shell);
+  ItemUtils.lootingTemplates[0].skin.push(Turtle_Shell);
 
   //-----------------------------------------------------------------------------------
   // Dart_Lv1_T1
@@ -7018,7 +7528,7 @@
     this.templateName = this.name;
   }
   ItemUtils.recipes.push(Dart_Lv1_T1);
-  ItemUtils.lootingTemplates.material.push(Dart_Lv1_T1);
+  ItemUtils.lootingTemplates[0].material.push(Dart_Lv1_T1);
 
   //-----------------------------------------------------------------------------------
   // Dart_Lv1_T2
@@ -7045,7 +7555,7 @@
     this.templateName = this.name;
   }
   ItemUtils.recipes.push(Dart_Lv1_T2);
-  ItemUtils.lootingTemplates.material.push(Dart_Lv1_T2);
+  ItemUtils.lootingTemplates[0].material.push(Dart_Lv1_T2);
 
   //-----------------------------------------------------------------------------------
   // Dart_Lv2_T1
@@ -7072,7 +7582,7 @@
     this.templateName = this.name;
   }
   ItemUtils.recipes.push(Dart_Lv2_T1);
-  ItemUtils.lootingTemplates.material.push(Dart_Lv2_T1);
+  ItemUtils.lootingTemplates[0].material.push(Dart_Lv2_T1);
 
   //-----------------------------------------------------------------------------------
   // Dart_Lv2_T2
@@ -7099,7 +7609,7 @@
     this.templateName = this.name;
   }
   ItemUtils.recipes.push(Dart_Lv2_T2);
-  ItemUtils.lootingTemplates.material.push(Dart_Lv2_T2);
+  ItemUtils.lootingTemplates[0].material.push(Dart_Lv2_T2);
 
   //-----------------------------------------------------------------------------------
   // Dog_Gloves
@@ -7129,7 +7639,7 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dog_Gloves);
-  ItemUtils.EquipTemplates.gloves.push(Dog_Gloves);
+  ItemUtils.equipTemplates[0].gloves.push(Dog_Gloves);
 
   //-----------------------------------------------------------------------------------
   // Dog_Shoes
@@ -7159,7 +7669,7 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dog_Shoes);
-  ItemUtils.EquipTemplates.shoes.push(Dog_Shoes);
+  ItemUtils.equipTemplates[0].shoes.push(Dog_Shoes);
 
   //-----------------------------------------------------------------------------------
   // Dog_Shield
@@ -7173,7 +7683,7 @@
 
   Dog_Shield.itemName = '狗皮盾';
   Dog_Shield.itemDescription = '簡單的輕盾';
-  Dog_Shield.material = [{itemClass: Dog_Skin, amount: 2}, {itemClass: Dog_Bone, amount: 2}];
+  Dog_Shield.material = [{itemClass: Dog_Skin, amount: 3}, {itemClass: Dog_Bone, amount: 3}];
 
   Dog_Shield.prototype = Object.create(EquipTemplate.prototype);
   Dog_Shield.prototype.constructor = Dog_Shield;
@@ -7186,10 +7696,11 @@
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 3 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 1);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dog_Shield);
-  ItemUtils.EquipTemplates.shield.push(Dog_Shield);
+  ItemUtils.equipTemplates[0].shield.push(Dog_Shield);
 
   //-----------------------------------------------------------------------------------
   // Dog_Helmet
@@ -7219,7 +7730,7 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dog_Helmet);
-  ItemUtils.EquipTemplates.helmet.push(Dog_Helmet);
+  ItemUtils.equipTemplates[0].helmet.push(Dog_Helmet);
 
   //-----------------------------------------------------------------------------------
   // Dog_Coat
@@ -7249,7 +7760,7 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dog_Coat);
-  ItemUtils.EquipTemplates.coat.push(Dog_Coat);
+  ItemUtils.equipTemplates[0].coat.push(Dog_Coat);
 
   //-----------------------------------------------------------------------------------
   // Cat_Gloves
@@ -7280,7 +7791,7 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Cat_Gloves);
-  ItemUtils.EquipTemplates.gloves.push(Cat_Gloves);
+  ItemUtils.equipTemplates[0].gloves.push(Cat_Gloves);
 
   //-----------------------------------------------------------------------------------
   // Cat_Shoes
@@ -7311,7 +7822,7 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Cat_Shoes);
-  ItemUtils.EquipTemplates.shoes.push(Cat_Shoes);
+  ItemUtils.equipTemplates[0].shoes.push(Cat_Shoes);
 
   //-----------------------------------------------------------------------------------
   // Cat_Helmet
@@ -7342,7 +7853,7 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Cat_Helmet);
-  ItemUtils.EquipTemplates.helmet.push(Cat_Helmet);
+  ItemUtils.equipTemplates[0].helmet.push(Cat_Helmet);
 
   //-----------------------------------------------------------------------------------
   // Cat_Coat
@@ -7373,7 +7884,38 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Cat_Coat);
-  ItemUtils.EquipTemplates.coat.push(Cat_Coat);
+  ItemUtils.equipTemplates[0].coat.push(Cat_Coat);
+
+  //-----------------------------------------------------------------------------------
+  // Cat_Shield
+  //
+  // armor type: SHIELD
+
+  Cat_Shield = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Cat_Shield.spawnLevel = 4;
+
+  Cat_Shield.itemName = '貓皮盾';
+  Cat_Shield.itemDescription = '泛著光澤的輕盾';
+  Cat_Shield.material = [{itemClass: Cat_Skin, amount: 3}, {itemClass: Cat_Bone, amount: 3}];
+
+  Cat_Shield.prototype = Object.create(EquipTemplate.prototype);
+  Cat_Shield.prototype.constructor = Cat_Shield;
+
+  Cat_Shield.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[14]);
+    this.name = Cat_Shield.itemName;
+    this.description = Cat_Shield.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 2);
+    ItemUtils.modifyAttr(this.traits[1], 3 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Cat_Shield);
+  ItemUtils.equipTemplates[0].shield.push(Cat_Shield);
 
   //-----------------------------------------------------------------------------------
   // Wolf_Gloves
@@ -7400,10 +7942,11 @@
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 3 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 1);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Wolf_Gloves);
-  ItemUtils.EquipTemplates.gloves.push(Wolf_Gloves);
+  ItemUtils.equipTemplates[0].gloves.push(Wolf_Gloves);
 
   //-----------------------------------------------------------------------------------
   // Wolf_Shoes
@@ -7430,10 +7973,11 @@
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 3 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 1);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Wolf_Shoes);
-  ItemUtils.EquipTemplates.shoes.push(Wolf_Shoes);
+  ItemUtils.equipTemplates[0].shoes.push(Wolf_Shoes);
 
   //-----------------------------------------------------------------------------------
   // Wolf_Shield
@@ -7447,7 +7991,7 @@
 
   Wolf_Shield.itemName = '狼皮盾';
   Wolf_Shield.itemDescription = '堅韌的輕盾';
-  Wolf_Shield.material = [{itemClass: Wolf_Skin, amount: 2}, {itemClass: Wolf_Bone, amount: 2}];
+  Wolf_Shield.material = [{itemClass: Wolf_Skin, amount: 3}, {itemClass: Wolf_Bone, amount: 3}];
 
   Wolf_Shield.prototype = Object.create(EquipTemplate.prototype);
   Wolf_Shield.prototype.constructor = Wolf_Shield;
@@ -7460,10 +8004,11 @@
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 2);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Wolf_Shield);
-  ItemUtils.EquipTemplates.shield.push(Wolf_Shield);
+  ItemUtils.equipTemplates[0].shield.push(Wolf_Shield);
 
   //-----------------------------------------------------------------------------------
   // Wolf_Helmet
@@ -7490,10 +8035,11 @@
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 3 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 1);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Wolf_Helmet);
-  ItemUtils.EquipTemplates.helmet.push(Wolf_Helmet);
+  ItemUtils.equipTemplates[0].helmet.push(Wolf_Helmet);
 
   //-----------------------------------------------------------------------------------
   // Wolf_Coat
@@ -7519,11 +8065,12 @@
     this.templateName = this.name;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 5 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 6 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 2);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Wolf_Coat);
-  ItemUtils.EquipTemplates.coat.push(Wolf_Coat);
+  ItemUtils.equipTemplates[0].coat.push(Wolf_Coat);
 
   //-----------------------------------------------------------------------------------
   // Bear_Gloves
@@ -7553,7 +8100,7 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Bear_Gloves);
-  ItemUtils.EquipTemplates.gloves.push(Bear_Gloves);
+  ItemUtils.equipTemplates[0].gloves.push(Bear_Gloves);
 
   //-----------------------------------------------------------------------------------
   // Bear_Shoes
@@ -7565,7 +8112,7 @@
   }
   Bear_Shoes.spawnLevel = 6;
 
-  Bear_Shoes.itemName = '熊皮靴子';
+  Bear_Shoes.itemName = '熊皮靴';
   Bear_Shoes.itemDescription = '厚實的靴子';
   Bear_Shoes.material = [{itemClass: Bear_Skin, amount: 4}];
 
@@ -7583,7 +8130,7 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Bear_Shoes);
-  ItemUtils.EquipTemplates.shoes.push(Bear_Shoes);
+  ItemUtils.equipTemplates[0].shoes.push(Bear_Shoes);
 
   //-----------------------------------------------------------------------------------
   // Bear_Shield
@@ -7596,8 +8143,8 @@
   Bear_Shield.spawnLevel = 6;
 
   Bear_Shield.itemName = '熊皮盾';
-  Bear_Shield.itemDescription = '厚實的輕盾';
-  Bear_Shield.material = [{itemClass: Bear_Skin, amount: 2}, {itemClass: Bear_Bone, amount: 2}];
+  Bear_Shield.itemDescription = '厚實的盾';
+  Bear_Shield.material = [{itemClass: Bear_Skin, amount: 3}, {itemClass: Bear_Bone, amount: 3}];
 
   Bear_Shield.prototype = Object.create(EquipTemplate.prototype);
   Bear_Shield.prototype.constructor = Bear_Shield;
@@ -7610,10 +8157,11 @@
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 5 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 1);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Bear_Shield);
-  ItemUtils.EquipTemplates.shield.push(Bear_Shield);
+  ItemUtils.equipTemplates[0].shield.push(Bear_Shield);
 
   //-----------------------------------------------------------------------------------
   // Bear_Helmet
@@ -7643,7 +8191,7 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Bear_Helmet);
-  ItemUtils.EquipTemplates.helmet.push(Bear_Helmet);
+  ItemUtils.equipTemplates[0].helmet.push(Bear_Helmet);
 
   //-----------------------------------------------------------------------------------
   // Bear_Coat
@@ -7669,11 +8217,524 @@
     this.templateName = this.name;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 6 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Bear_Coat);
-  ItemUtils.EquipTemplates.coat.push(Bear_Coat);
+  ItemUtils.equipTemplates[0].coat.push(Bear_Coat);
+
+  //-----------------------------------------------------------------------------------
+  // Lion_Gloves
+  //
+  // armor type: GLOVES
+
+  Lion_Gloves = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Lion_Gloves.spawnLevel = 8;
+
+  Lion_Gloves.itemName = '獅皮手套';
+  Lion_Gloves.itemDescription = '大貓皮手套';
+  Lion_Gloves.material = [{itemClass: Lion_Skin, amount: 4}];
+
+  Lion_Gloves.prototype = Object.create(EquipTemplate.prototype);
+  Lion_Gloves.prototype.constructor = Lion_Gloves;
+
+  Lion_Gloves.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[12]);
+    this.name = Lion_Gloves.itemName;
+    this.description = Lion_Gloves.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 2);
+    ItemUtils.modifyAttr(this.traits[1], 3 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Lion_Gloves);
+  ItemUtils.equipTemplates[0].gloves.push(Lion_Gloves);
+
+  //-----------------------------------------------------------------------------------
+  // Lion_Shoes
+  //
+  // armor type: SHOES
+
+  Lion_Shoes = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Lion_Shoes.spawnLevel = 8;
+
+  Lion_Shoes.itemName = '獅皮靴';
+  Lion_Shoes.itemDescription = '大貓皮靴子';
+  Lion_Shoes.material = [{itemClass: Lion_Skin, amount: 4}];
+
+  Lion_Shoes.prototype = Object.create(EquipTemplate.prototype);
+  Lion_Shoes.prototype.constructor = Lion_Shoes;
+
+  Lion_Shoes.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[13]);
+    this.name = Lion_Shoes.itemName;
+    this.description = Lion_Shoes.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 2);
+    ItemUtils.modifyAttr(this.traits[1], 3 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Lion_Shoes);
+  ItemUtils.equipTemplates[0].shoes.push(Lion_Shoes);
+
+  //-----------------------------------------------------------------------------------
+  // Lion_Shield
+  //
+  // armor type: SHIELD
+
+  Lion_Shield = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Lion_Shield.spawnLevel = 8;
+
+  Lion_Shield.itemName = '獅皮盾';
+  Lion_Shield.itemDescription = '大貓皮盾';
+  Lion_Shield.material = [{itemClass: Lion_Skin, amount: 3}, {itemClass: Lion_Bone, amount: 3}];
+
+  Lion_Shield.prototype = Object.create(EquipTemplate.prototype);
+  Lion_Shield.prototype.constructor = Lion_Shield;
+
+  Lion_Shield.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[14]);
+    this.name = Lion_Shield.itemName;
+    this.description = Lion_Shield.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 3);
+    ItemUtils.modifyAttr(this.traits[1], 4 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Lion_Shield);
+  ItemUtils.equipTemplates[0].shield.push(Lion_Shield);
+
+  //-----------------------------------------------------------------------------------
+  // Lion_Helmet
+  //
+  // armor type: HELMET
+
+  Lion_Helmet = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Lion_Helmet.spawnLevel = 8;
+
+  Lion_Helmet.itemName = '獅皮帽';
+  Lion_Helmet.itemDescription = '大貓皮帽';
+  Lion_Helmet.material = [{itemClass: Lion_Skin, amount: 4}];
+
+  Lion_Helmet.prototype = Object.create(EquipTemplate.prototype);
+  Lion_Helmet.prototype.constructor = Lion_Helmet;
+
+  Lion_Helmet.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[15]);
+    this.name = Lion_Helmet.itemName;
+    this.description = Lion_Helmet.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 2);
+    ItemUtils.modifyAttr(this.traits[1], 3 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Lion_Helmet);
+  ItemUtils.equipTemplates[0].helmet.push(Lion_Helmet);
+
+  //-----------------------------------------------------------------------------------
+  // Lion_Coat
+  //
+  // armor type: COAT
+
+  Lion_Coat = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Lion_Coat.spawnLevel = 8;
+
+  Lion_Coat.itemName = '獅皮大衣';
+  Lion_Coat.itemDescription = '大貓皮大衣';
+  Lion_Coat.material = [{itemClass: Lion_Skin, amount: 8}];
+
+  Lion_Coat.prototype = Object.create(EquipTemplate.prototype);
+  Lion_Coat.prototype.constructor = Lion_Coat;
+
+  Lion_Coat.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[16]);
+    this.name = Lion_Coat.itemName;
+    this.description = Lion_Coat.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 4);
+    ItemUtils.modifyAttr(this.traits[1], 6 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Lion_Coat);
+  ItemUtils.equipTemplates[0].coat.push(Lion_Coat);
+
+  //-----------------------------------------------------------------------------------
+  // Dragon_Gloves
+  //
+  // armor type: GLOVES
+
+  Dragon_Gloves = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dragon_Gloves.spawnLevel = 10;
+
+  Dragon_Gloves.itemName = '龍皮手套';
+  Dragon_Gloves.itemDescription = '蘊含神秘力量的手套';
+  Dragon_Gloves.material = [{itemClass: Dragon_Skin, amount: 4}];
+
+  Dragon_Gloves.prototype = Object.create(EquipTemplate.prototype);
+  Dragon_Gloves.prototype.constructor = Dragon_Gloves;
+
+  Dragon_Gloves.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[12]);
+    this.name = Dragon_Gloves.itemName;
+    this.description = Dragon_Gloves.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 4);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Dragon_Gloves);
+  ItemUtils.equipTemplates[1].gloves.push(Dragon_Gloves);
+
+  //-----------------------------------------------------------------------------------
+  // Dragon_Shoes
+  //
+  // armor type: SHOES
+
+  Dragon_Shoes = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dragon_Shoes.spawnLevel = 10;
+
+  Dragon_Shoes.itemName = '龍皮靴';
+  Dragon_Shoes.itemDescription = '蘊含神秘力量的靴子';
+  Dragon_Shoes.material = [{itemClass: Dragon_Skin, amount: 4}];
+
+  Dragon_Shoes.prototype = Object.create(EquipTemplate.prototype);
+  Dragon_Shoes.prototype.constructor = Dragon_Shoes;
+
+  Dragon_Shoes.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[13]);
+    this.name = Dragon_Shoes.itemName;
+    this.description = Dragon_Shoes.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 4);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Dragon_Shoes);
+  ItemUtils.equipTemplates[1].shoes.push(Dragon_Shoes);
+
+  //-----------------------------------------------------------------------------------
+  // Dragon_Shield
+  //
+  // armor type: SHIELD
+
+  Dragon_Shield = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dragon_Shield.spawnLevel = 10;
+
+  Dragon_Shield.itemName = '龍皮盾';
+  Dragon_Shield.itemDescription = '蘊含神秘力量的皮盾';
+  Dragon_Shield.material = [{itemClass: Dragon_Skin, amount: 3}, {itemClass: Dragon_Bone, amount: 3}];
+
+  Dragon_Shield.prototype = Object.create(EquipTemplate.prototype);
+  Dragon_Shield.prototype.constructor = Dragon_Shield;
+
+  Dragon_Shield.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[14]);
+    this.name = Dragon_Shield.itemName;
+    this.description = Dragon_Shield.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 5 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 5);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Dragon_Shield);
+  ItemUtils.equipTemplates[1].shield.push(Dragon_Shield);
+
+  //-----------------------------------------------------------------------------------
+  // Dragon_Helmet
+  //
+  // armor type: HELMET
+
+  Dragon_Helmet = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dragon_Helmet.spawnLevel = 10;
+
+  Dragon_Helmet.itemName = '龍皮帽';
+  Dragon_Helmet.itemDescription = '蘊含神秘力量的皮帽';
+  Dragon_Helmet.material = [{itemClass: Dragon_Skin, amount: 4}];
+
+  Dragon_Helmet.prototype = Object.create(EquipTemplate.prototype);
+  Dragon_Helmet.prototype.constructor = Dragon_Helmet;
+
+  Dragon_Helmet.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[15]);
+    this.name = Dragon_Helmet.itemName;
+    this.description = Dragon_Helmet.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 4);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Dragon_Helmet);
+  ItemUtils.equipTemplates[1].helmet.push(Dragon_Helmet);
+
+  //-----------------------------------------------------------------------------------
+  // Dragon_Coat
+  //
+  // armor type: COAT
+
+  Dragon_Coat = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dragon_Coat.spawnLevel = 10;
+
+  Dragon_Coat.itemName = '龍皮大衣';
+  Dragon_Coat.itemDescription = '蘊含神秘力量的大衣';
+  Dragon_Coat.material = [{itemClass: Dragon_Skin, amount: 8}];
+
+  Dragon_Coat.prototype = Object.create(EquipTemplate.prototype);
+  Dragon_Coat.prototype.constructor = Dragon_Coat;
+
+  Dragon_Coat.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[16]);
+    this.name = Dragon_Coat.itemName;
+    this.description = Dragon_Coat.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 8);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Dragon_Coat);
+  ItemUtils.equipTemplates[1].coat.push(Dragon_Coat);
+
+  //-----------------------------------------------------------------------------------
+  // Ice_Coat
+  //
+  // armor type: COAT
+
+  Ice_Coat = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Ice_Coat.spawnLevel = 7;
+
+  Ice_Coat.itemName = '冰雪之衣';
+  Ice_Coat.itemDescription = '冰涼的輕薄衣裝';
+
+  Ice_Coat.prototype = Object.create(EquipTemplate.prototype);
+  Ice_Coat.prototype.constructor = Ice_Coat;
+
+  Ice_Coat.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[16]);
+    this.name = Ice_Coat.itemName;
+    this.description = Ice_Coat.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 4);
+    ItemUtils.modifyAttr(this.traits[1], 4 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.equipTemplates[1].coat.push(Ice_Coat);
+
+  //-----------------------------------------------------------------------------------
+  // Ring_Protection
+  // 
+  // armor type: ACCESSORY
+
+  Ring_Protection = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Ring_Protection.spawnLevel = 7;
+
+  Ring_Protection.itemName = '守護戒指';
+  Ring_Protection.itemDescription = '提高護甲強度';
+  Ring_Protection.material = [{itemClass: Buffalo_Horn, amount: 4}, {itemClass: Rat_Tail, amount: 1}];
+
+  Ring_Protection.prototype = Object.create(EquipTemplate.prototype);
+  Ring_Protection.prototype.constructor = Ring_Protection;
+
+  Ring_Protection.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[18]);
+    this.id = 0;
+    this.bucState = 0;
+    this.name = Ring_Protection.itemName;
+    this.description = Ring_Protection.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 4);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Ring_Protection);
+
+  //-----------------------------------------------------------------------------------
+  // Ring_MagicResistance
+  // 
+  // armor type: ACCESSORY
+
+  Ring_MagicResistance = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Ring_MagicResistance.spawnLevel = 7;
+
+  Ring_MagicResistance.itemName = '抗魔戒指';
+  Ring_MagicResistance.itemDescription = '提高魔法防禦';
+  Ring_MagicResistance.material = [{itemClass: Glue, amount: 2}, {itemClass: Blue_Crystal, amount: 2}, {itemClass: Rat_Tail, amount: 1}];
+
+  Ring_MagicResistance.prototype = Object.create(EquipTemplate.prototype);
+  Ring_MagicResistance.prototype.constructor = Ring_MagicResistance;
+
+  Ring_MagicResistance.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[18]);
+    this.id = 1;
+    this.bucState = 0;
+    this.name = Ring_MagicResistance.itemName;
+    this.description = Ring_MagicResistance.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[1], 4);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Ring_MagicResistance);
+
+  //-----------------------------------------------------------------------------------
+  // Ring_ParalyzeResistance
+  // 
+  // armor type: ACCESSORY
+
+  Ring_ParalyzeResistance = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Ring_ParalyzeResistance.spawnLevel = 7;
+
+  Ring_ParalyzeResistance.itemName = '抗麻戒指';
+  Ring_ParalyzeResistance.itemDescription = '免疫麻痺';
+  Ring_ParalyzeResistance.material = [{itemClass: Glue, amount: 4}, {itemClass: Rat_Tail, amount: 1}];
+
+  Ring_ParalyzeResistance.prototype = Object.create(EquipTemplate.prototype);
+  Ring_ParalyzeResistance.prototype.constructor = Ring_ParalyzeResistance;
+
+  Ring_ParalyzeResistance.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[18]);
+    this.id = 2;
+    this.bucState = 0;
+    this.name = Ring_ParalyzeResistance.itemName;
+    this.description = Ring_ParalyzeResistance.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.updateEquipDescription(this);
+
+    // define wear/remove effect
+    this.onWear = function(realTarget) {
+      realTarget.status.resistance.paralyze++;
+    }
+    this.onRemove = function(realTarget) {
+      realTarget.status.resistance.paralyze--;
+    }
+  };
+  ItemUtils.recipes.push(Ring_ParalyzeResistance);
+
+  //-----------------------------------------------------------------------------------
+  // Ring_AcidResistance
+  // 
+  // armor type: ACCESSORY
+
+  Ring_AcidResistance = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Ring_AcidResistance.spawnLevel = 7;
+
+  Ring_AcidResistance.itemName = '抗酸戒指';
+  Ring_AcidResistance.itemDescription = '酸蝕傷害減半, 裝備不受酸蝕傷害';
+  Ring_AcidResistance.material = [{itemClass: Mucus, amount: 4}, {itemClass: Rat_Tail, amount: 1}];
+
+  Ring_AcidResistance.prototype = Object.create(EquipTemplate.prototype);
+  Ring_AcidResistance.prototype.constructor = Ring_AcidResistance;
+
+  Ring_AcidResistance.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[18]);
+    this.id = 3;
+    this.bucState = 0;
+    this.name = Ring_AcidResistance.itemName;
+    this.description = Ring_AcidResistance.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.updateEquipDescription(this);
+
+    // define wear/remove effect
+    this.onWear = function(realTarget) {
+      realTarget.status.resistance.acid++;
+    }
+    this.onRemove = function(realTarget) {
+      realTarget.status.resistance.acid--;
+    }
+  };
+  ItemUtils.recipes.push(Ring_AcidResistance);
+
+  //-----------------------------------------------------------------------------------
+  // Ring_ColdResistance
+  // 
+  // armor type: ACCESSORY
+
+  Ring_ColdResistance = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Ring_ColdResistance.spawnLevel = 7;
+
+  Ring_ColdResistance.itemName = '抗寒戒指';
+  Ring_ColdResistance.itemDescription = '冰屬性傷害減半';
+
+  Ring_ColdResistance.prototype = Object.create(EquipTemplate.prototype);
+  Ring_ColdResistance.prototype.constructor = Ring_ColdResistance;
+
+  Ring_ColdResistance.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[18]);
+    this.id = 4;
+    this.bucState = 0;
+    this.name = Ring_ColdResistance.itemName;
+    this.description = Ring_ColdResistance.itemDescription;
+    this.templateName = this.name;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.updateEquipDescription(this);
+
+    // define wear/remove effect
+    this.onWear = function(realTarget) {
+      realTarget.status.resistance.cold += 0.5;
+    }
+    this.onRemove = function(realTarget) {
+      realTarget.status.resistance.cold -= 0.5;
+    }
+  };
 
   //-----------------------------------------------------------------------------------
   // Potion_Heal
@@ -7803,16 +8864,27 @@
 
   Potion_Paralyze.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
-    realUser.status.paralyzeEffect.turns = 5;
-    TimeUtils.eventScheduler.addStatusEffect(user, 'paralyzeEffect');
-    if (CharUtils.playerCanSeeChar(user)) {
-      TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 64));
-      TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '麻痺'));
-      let msg = String.format(Message.display('paralyze'), LogUtils.getCharName(realUser));
-      if (identifyObject) {
-        ItemUtils.identifyObject(this);
+    if (realUser.status.resistance.paralyze == 0) {
+      realUser.status.paralyzeEffect.turns = 5;
+      TimeUtils.eventScheduler.addStatusEffect(user, 'paralyzeEffect');
+      if (CharUtils.playerCanSeeChar(user)) {
+        TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 64));
+        TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '麻痺'));
+        let msg = String.format(Message.display('paralyze'), LogUtils.getCharName(realUser));
+        if (identifyObject) {
+          ItemUtils.identifyObject(this);
+        }
+        LogUtils.addLog(msg);
       }
-      LogUtils.addLog(msg);
+    } else {
+      if (CharUtils.playerCanSeeChar(user)) {
+        TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 64));
+        let msg = String.format(Message.display('paralyzeResisted'), LogUtils.getCharName(realUser));
+        if (identifyObject) {
+          ItemUtils.identifyObject(this);
+        }
+        LogUtils.addLog(msg);
+      }
     }
   }
 
@@ -8051,10 +9123,15 @@
   Potion_Acid.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
     let damage = 30;
+    if (realUser.status.resistance.acid > 0) {
+      damage /= 2;
+    }
     CharUtils.decreaseHp(realUser, damage);
     let msg = String.format(Message.display('acidDamage'), LogUtils.getCharName(realUser), damage);
     // damage armor/weapon
-    Skill_Acid.damageEquip(user, realUser);
+    if (realUser.status.resistance.acid == 0) {
+      Skill_Acid.damageEquip(user, realUser);
+    }
 
     if (CharUtils.playerCanSeeChar(user)) {
       TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 39));
@@ -8445,7 +9522,7 @@
       while (blocks.length > 0) {
         let id = getRandomInt(blocks.length);
         let floor = blocks[id];
-        if (MapUtils.isTileAvailableForMob($gameMap._mapId, floor.x, floor.y)) {
+        if (MapUtils.isTileAvailableForMob($gameMap.mapId(), floor.x, floor.y)) {
           targetFloor = floor;
           break;
         } else {
@@ -8453,8 +9530,7 @@
         }
       }
       if (targetFloor) {
-        // TODO: implement mob generating method
-        new Chick(targetFloor.x, targetFloor.y);
+        CharUtils.spawnMobXy($gameMap.mapId(), targetFloor.x, targetFloor.y);
         MapUtils.refreshMap();
         msg = Message.display('scrollCreateMonsterRead');
         if (identifyObject) {
@@ -8824,17 +9900,6 @@
 
   SkillUtils.skillList = []; // save all skills
 
-  SkillUtils.meleeDamage = function(realSrc, realTarget, skillAmplify) {
-    // get weapon bonus
-    let weaponSkill = BattleUtils.getWeaponSkill(realSrc);
-    let weaponBonus = 0;
-    if (weaponSkill) {
-      let prop = window[weaponSkill.constructor.name].prop;
-      weaponBonus = prop.effect[weaponSkill.lv].atk;
-    }
-    return BattleUtils.calcPhysicalDamage(realSrc, realTarget, weaponBonus, skillAmplify);
-  }
-
   SkillUtils.canPerform = function(realSrc, skill) {
     if (realSrc._tp < skill.tpCost) {
       if (realSrc == $gameActors.actor(1)) {
@@ -8974,16 +10039,16 @@
     subType:"PASSIVE",
     effect: [
       {lv: 0, atk: 0, levelUp: 20},
-      {lv: 1, atk: 2, levelUp: 20},
-      {lv: 2, atk: 5, levelUp: 40},
-      {lv: 3, atk: 8, levelUp: 60},
-      {lv: 4, atk: 10, levelUp: 80},
-      {lv: 5, atk: 12, levelUp: 100},
-      {lv: 6, atk: 15, levelUp: 150},
-      {lv: 7, atk: 20, levelUp: 300},
-      {lv: 8, atk: 28, levelUp: 450},
-      {lv: 9, atk: 35, levelUp: 500},
-      {lv: 10, atk: 40, levelUp: -1}
+      {lv: 1, atk: 1, levelUp: 20},
+      {lv: 2, atk: 2, levelUp: 40},
+      {lv: 3, atk: 3, levelUp: 60},
+      {lv: 4, atk: 4, levelUp: 80},
+      {lv: 5, atk: 5, levelUp: 100},
+      {lv: 6, atk: 6, levelUp: 150},
+      {lv: 7, atk: 7, levelUp: 300},
+      {lv: 8, atk: 8, levelUp: 450},
+      {lv: 9, atk: 9, levelUp: 500},
+      {lv: 10, atk: 10, levelUp: -1}
     ]
   }
 
@@ -9106,11 +10171,11 @@
     subType: "DIRECTIONAL",
     damageType: "MELEE",
     effect: [
-      {lv: 1, baseDamage: 10, bleedPercentage: 0.1, maxBleedTurn: 3, levelUp: 50},
-      {lv: 2, baseDamage: 12, bleedPercentage: 0.2, maxBleedTurn: 5, levelUp: 150},
-      {lv: 3, baseDamage: 14, bleedPercentage: 0.3, maxBleedTurn: 7, levelUp: 300},
-      {lv: 4, baseDamage: 16, bleedPercentage: 0.4, maxBleedTurn: 9, levelUp: 450},
-      {lv: 5, baseDamage: 18, bleedPercentage: 0.5, maxBleedTurn: 11, levelUp: -1}
+      {lv: 1, baseDamage: 6, bleedPercentage: 0.1, maxBleedTurn: 3, levelUp: 50},
+      {lv: 2, baseDamage: 8, bleedPercentage: 0.2, maxBleedTurn: 5, levelUp: 150},
+      {lv: 3, baseDamage: 10, bleedPercentage: 0.3, maxBleedTurn: 7, levelUp: 300},
+      {lv: 4, baseDamage: 12, bleedPercentage: 0.4, maxBleedTurn: 9, levelUp: 450},
+      {lv: 5, baseDamage: 14, bleedPercentage: 0.5, maxBleedTurn: 11, levelUp: -1}
     ]
   }
 
@@ -9123,9 +10188,8 @@
       let realTarget = BattleUtils.getRealTarget(target);
       let prop = Skill_Bite.prop;
       let index = this.lv - 1;
-      let value = prop.effect[index].baseDamage + Math.floor(realSrc.param(2) / 3)
-        - realTarget.param(8);
-      value = BattleUtils.getFinalDamage(value);
+      let atkValue = prop.effect[index].baseDamage + realSrc.param(2) / 3;
+      let value = BattleUtils.calcPhysicalDamage(realSrc, realTarget, atkValue);
       TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 12));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
       LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)
@@ -9173,11 +10237,11 @@
     subType: "DIRECTIONAL",
     damageType: "MELEE",
     effect: [
-      {lv: 1, baseDamage: 10, faintPercentage: 0.1, faintTurnMax: 2, levelUp: 50},
-      {lv: 2, baseDamage: 12, faintPercentage: 0.2, faintTurnMax: 3, levelUp: 150},
-      {lv: 3, baseDamage: 14, faintPercentage: 0.3, faintTurnMax: 4, levelUp: 300},
-      {lv: 4, baseDamage: 16, faintPercentage: 0.4, faintTurnMax: 5, levelUp: 450},
-      {lv: 5, baseDamage: 18, faintPercentage: 0.5, faintTurnMax: 6, levelUp: -1}
+      {lv: 1, baseDamage: 6, faintPercentage: 0.1, faintTurnMax: 2, levelUp: 50},
+      {lv: 2, baseDamage: 8, faintPercentage: 0.2, faintTurnMax: 3, levelUp: 150},
+      {lv: 3, baseDamage: 10, faintPercentage: 0.3, faintTurnMax: 4, levelUp: 300},
+      {lv: 4, baseDamage: 12, faintPercentage: 0.4, faintTurnMax: 5, levelUp: 450},
+      {lv: 5, baseDamage: 14, faintPercentage: 0.5, faintTurnMax: 6, levelUp: -1}
     ]
   }
 
@@ -9190,9 +10254,8 @@
       let realTarget = BattleUtils.getRealTarget(target);
       let prop = Skill_Bash.prop;
       let index = this.lv - 1;
-      let value = prop.effect[index].baseDamage + Math.floor(realSrc.param(2) / 3)
-        - realTarget.param(8);
-      value = BattleUtils.getFinalDamage(value);
+      let atkValue = prop.effect[index].baseDamage + realSrc.param(2) / 3;
+      let value = BattleUtils.calcPhysicalDamage(realSrc, realTarget, atkValue);
       TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 1));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
       LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)
@@ -9240,11 +10303,11 @@
     subType: "DIRECTIONAL",
     damageType: "MELEE",
     effect: [
-      {lv: 1, baseDamage: 10, breakArmorPercentage: 0.1, breakArmorTurnMax: 5, levelUp: 50},
-      {lv: 2, baseDamage: 12, breakArmorPercentage: 0.2, breakArmorTurnMax: 7, levelUp: 150},
-      {lv: 3, baseDamage: 14, breakArmorPercentage: 0.3, breakArmorTurnMax: 9, levelUp: 300},
-      {lv: 4, baseDamage: 16, breakArmorPercentage: 0.4, breakArmorTurnMax: 11, levelUp: 450},
-      {lv: 5, baseDamage: 18, breakArmorPercentage: 0.5, breakArmorTurnMax: 13, levelUp: -1}
+      {lv: 1, baseDamage: 6, breakArmorPercentage: 0.1, breakArmorTurnMax: 5, levelUp: 50},
+      {lv: 2, baseDamage: 8, breakArmorPercentage: 0.2, breakArmorTurnMax: 7, levelUp: 150},
+      {lv: 3, baseDamage: 10, breakArmorPercentage: 0.3, breakArmorTurnMax: 9, levelUp: 300},
+      {lv: 4, baseDamage: 12, breakArmorPercentage: 0.4, breakArmorTurnMax: 11, levelUp: 450},
+      {lv: 5, baseDamage: 14, breakArmorPercentage: 0.5, breakArmorTurnMax: 13, levelUp: -1}
     ]
   }
 
@@ -9257,9 +10320,8 @@
       let realTarget = BattleUtils.getRealTarget(target);
       let prop = Skill_Pierce.prop;
       let index = this.lv - 1;
-      let value = prop.effect[index].baseDamage + Math.floor(realSrc.param(2) / 3)
-        - realTarget.param(8);
-      value = BattleUtils.getFinalDamage(value);
+      let atkValue = prop.effect[index].baseDamage + realSrc.param(2) / 3;
+      let value = BattleUtils.calcPhysicalDamage(realSrc, realTarget, atkValue);
       TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 11));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
       LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)
@@ -9307,11 +10369,11 @@
     subType: "PROJECTILE",
     damageType: "MELEE",
     effect: [
-      {lv: 1, baseDamage: 10, knockBackPercentage: 0.1, levelUp: 50},
-      {lv: 2, baseDamage: 12, knockBackPercentage: 0.2, levelUp: 150},
-      {lv: 3, baseDamage: 14, knockBackPercentage: 0.3, levelUp: 300},
-      {lv: 4, baseDamage: 16, knockBackPercentage: 0.4, levelUp: 450},
-      {lv: 5, baseDamage: 18, knockBackPercentage: 0.5, levelUp: -1}
+      {lv: 1, baseDamage: 6, knockBackPercentage: 0.1, levelUp: 50},
+      {lv: 2, baseDamage: 8, knockBackPercentage: 0.2, levelUp: 150},
+      {lv: 3, baseDamage: 10, knockBackPercentage: 0.3, levelUp: 300},
+      {lv: 4, baseDamage: 12, knockBackPercentage: 0.4, levelUp: 450},
+      {lv: 5, baseDamage: 14, knockBackPercentage: 0.5, levelUp: -1}
     ]
   }
 
@@ -9397,9 +10459,8 @@
             let realTarget = BattleUtils.getRealTarget(target);
             let prop = Skill_Charge.prop;
             let index = data.skill.lv - 1;
-            let value = prop.effect[index].baseDamage + Math.floor(realSrc.param(2) / 3)
-              - realTarget.param(8);
-            value = BattleUtils.getFinalDamage(value);
+            let atkValue = prop.effect[index].baseDamage + realSrc.param(2) / 3;
+            let value = BattleUtils.calcPhysicalDamage(realSrc, realTarget, atkValue);
             TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 2));
             TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
             LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)
@@ -9490,11 +10551,11 @@
     subType: "DIRECTIONAL",
     damageType: "MAGIC",
     effect: [
-      {lv: 1, baseDamage: 10, acidPercentage: 0.3, levelUp: 50},
-      {lv: 2, baseDamage: 12, acidPercentage: 0.4, levelUp: 150},
-      {lv: 3, baseDamage: 14, acidPercentage: 0.5, levelUp: 300},
-      {lv: 4, baseDamage: 16, acidPercentage: 0.6, levelUp: 450},
-      {lv: 5, baseDamage: 18, acidPercentage: 0.7, levelUp: -1}
+      {lv: 1, baseDamage: 6, acidPercentage: 0.3, levelUp: 50},
+      {lv: 2, baseDamage: 8, acidPercentage: 0.4, levelUp: 150},
+      {lv: 3, baseDamage: 10, acidPercentage: 0.5, levelUp: 300},
+      {lv: 4, baseDamage: 12, acidPercentage: 0.6, levelUp: 450},
+      {lv: 5, baseDamage: 14, acidPercentage: 0.7, levelUp: -1}
     ]
   }
 
@@ -9539,16 +10600,18 @@
       let realTarget = BattleUtils.getRealTarget(target);
       let prop = Skill_Acid.prop;
       let index = this.lv - 1;
-      let value = prop.effect[index].baseDamage + Math.floor(realSrc.param(4) / 3)
-        - realTarget.param(9);
-      value = BattleUtils.getFinalDamage(value);
+      let atkValue = prop.effect[index].baseDamage + realSrc.param(4) / 3;
+      let value = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
+      if (realTarget.status.resistance.acid > 0) {
+        value = Math.round(value / 2);
+      }
       TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 39));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
       LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)
         , LogUtils.getPerformedTargetName(realSrc, realTarget), this.name, value));
       CharUtils.decreaseHp(realTarget, value);
       // check if causes bleeding
-      if (Math.random() < prop.effect[index].acidPercentage) {
+      if (Math.random() < prop.effect[index].acidPercentage && realTarget.status.resistance.acid == 0) {
         // damage armor/weapon
         Skill_Acid.damageEquip(target, realTarget);
       }
@@ -9587,11 +10650,11 @@
     subType: "DIRECTIONAL",
     damageType: "MAGIC",
     effect: [
-      {lv: 1, baseDamage: 10, paralyzePercentage: 0.3, paralyzeTurnMax: 4, levelUp: 50},
-      {lv: 2, baseDamage: 12, paralyzePercentage: 0.4, paralyzeTurnMax: 5, levelUp: 150},
-      {lv: 3, baseDamage: 14, paralyzePercentage: 0.5, paralyzeTurnMax: 6, levelUp: 300},
-      {lv: 4, baseDamage: 16, paralyzePercentage: 0.6, paralyzeTurnMax: 7, levelUp: 450},
-      {lv: 5, baseDamage: 18, paralyzePercentage: 0.7, paralyzeTurnMax: 8, levelUp: -1}
+      {lv: 1, baseDamage: 6, paralyzePercentage: 0.3, paralyzeTurnMax: 4, levelUp: 50},
+      {lv: 2, baseDamage: 8, paralyzePercentage: 0.4, paralyzeTurnMax: 5, levelUp: 150},
+      {lv: 3, baseDamage: 10, paralyzePercentage: 0.5, paralyzeTurnMax: 6, levelUp: 300},
+      {lv: 4, baseDamage: 12, paralyzePercentage: 0.6, paralyzeTurnMax: 7, levelUp: 450},
+      {lv: 5, baseDamage: 14, paralyzePercentage: 0.7, paralyzeTurnMax: 8, levelUp: -1}
     ]
   }
 
@@ -9604,9 +10667,9 @@
       let realTarget = BattleUtils.getRealTarget(target);
       let prop = Skill_Discharge.prop;
       let index = this.lv - 1;
-      let value = prop.effect[index].baseDamage + Math.floor(realSrc.param(4) / 3)
-        - realTarget.param(9);
-      value = BattleUtils.getFinalDamage(value);
+      let atkValue = prop.effect[index].baseDamage + realSrc.param(4) / 3;
+      let value = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
+      value = Math.round(value * (1 - realTarget.status.resistance.cold));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 77));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
       LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)
@@ -9614,10 +10677,14 @@
       CharUtils.decreaseHp(realTarget, value);
       // check if causes paralysis
       if (Math.random() < prop.effect[index].paralyzePercentage) {
-        realTarget.status.paralyzeEffect.turns += dice(1, prop.effect[index].paralyzeTurnMax);
-        TimeUtils.eventScheduler.addStatusEffect(target, 'paralyzeEffect');
-        TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '麻痺'));
-        LogUtils.addLog(String.format(Message.display('paralyze'), LogUtils.getCharName(realTarget)));
+        if (realTarget.status.resistance.paralyze == 0) {
+          realTarget.status.paralyzeEffect.turns += dice(1, prop.effect[index].paralyzeTurnMax);
+          TimeUtils.eventScheduler.addStatusEffect(target, 'paralyzeEffect');
+          TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '麻痺'));
+          LogUtils.addLog(String.format(Message.display('paralyze'), LogUtils.getCharName(realTarget)));
+        } else {
+          LogUtils.addLog(String.format(Message.display('paralyzeResisted'), LogUtils.getCharName(realTarget)));
+        }
       }
       SkillUtils.gainSkillExp(realSrc, this, index, prop);
       BattleUtils.checkTargetAlive(realSrc, realTarget, target);
@@ -9818,7 +10885,7 @@
         , LogUtils.getCharName(realSrc), this.name));
     }
     let index = this.lv - 1;
-    let buffAmount = Math.round(3 + 5 * index + realSrc.param(4) * 0.1);
+    let buffAmount = Math.round(5 + 2 * index + realSrc.param(4) * prop.effect[index].buffPercentage);
     let newEffect = {
       skill: this,
       effectCount: prop.effect[index].turns,
@@ -9886,7 +10953,7 @@
         , LogUtils.getCharName(realSrc), this.name));
     }
     let index = this.lv - 1;
-    let buffAmount = Math.round(3 + 5 * index + realSrc.param(4) * 0.1);
+    let buffAmount = Math.round(5 + 2 * index + realSrc.param(4) * prop.effect[index].buffPercentage);
     let newEffect = {
       skill: this,
       effectCount: prop.effect[index].turns,
@@ -10216,11 +11283,11 @@
     subType: "PROJECTILE",
     damageType: "MAGIC",
     effect: [
-      {lv: 1, baseDamage: 10, distance: 5, levelUp: 50},
-      {lv: 2, baseDamage: 12, distance: 5, levelUp: 150},
-      {lv: 3, baseDamage: 14, distance: 6, levelUp: 300},
-      {lv: 4, baseDamage: 16, distance: 6, levelUp: 450},
-      {lv: 5, baseDamage: 18, distance: 7, levelUp: -1}
+      {lv: 1, baseDamage: 6, distance: 5, levelUp: 50},
+      {lv: 2, baseDamage: 8, distance: 5, levelUp: 150},
+      {lv: 3, baseDamage: 10, distance: 6, levelUp: 300},
+      {lv: 4, baseDamage: 12, distance: 6, levelUp: 450},
+      {lv: 5, baseDamage: 14, distance: 7, levelUp: -1}
     ]
   }
 
@@ -10233,13 +11300,10 @@
     let hitCharFunc = function(vm, target) {
       let realSrc = BattleUtils.getRealTarget(vm.src);
       let realTarget = BattleUtils.getRealTarget(target);
-      // player get exp
-      if (realSrc == $gameActors.actor(1)) {
-        CharUtils.playerGainIntExp(1);
-      }
-      let damage = window[this.skill.constructor.name].prop.effect[this.skill.lv - 1].baseDamage
-        + Math.floor(realSrc.param(4) / 5) - realTarget.param(9);
-      damage = BattleUtils.getFinalDamage(damage);
+      let atkValue = window[this.skill.constructor.name].prop.effect[this.skill.lv - 1].baseDamage
+        + realSrc.param(4) / 3;
+      let damage = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
+      damage = Math.round(damage * (1 - realTarget.status.resistance.cold));
       CharUtils.decreaseHp(realTarget, damage);
       if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
         TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 71));
@@ -10284,11 +11348,11 @@
     subType: "PROJECTILE",
     damageType: "MAGIC",
     effect: [
-      {lv: 1, baseDamage: 14, distance: 5, levelUp: 50},
-      {lv: 2, baseDamage: 16, distance: 5, levelUp: 150},
-      {lv: 3, baseDamage: 18, distance: 6, levelUp: 300},
-      {lv: 4, baseDamage: 20, distance: 6, levelUp: 450},
-      {lv: 5, baseDamage: 22, distance: 7, levelUp: -1}
+      {lv: 1, baseDamage: 10, distance: 5, levelUp: 50},
+      {lv: 2, baseDamage: 12, distance: 5, levelUp: 150},
+      {lv: 3, baseDamage: 14, distance: 6, levelUp: 300},
+      {lv: 4, baseDamage: 16, distance: 6, levelUp: 450},
+      {lv: 5, baseDamage: 18, distance: 7, levelUp: -1}
     ]
   }
 
@@ -10301,13 +11365,10 @@
     let hitCharFunc = function(vm, target) {
       let realSrc = BattleUtils.getRealTarget(vm.src);
       let realTarget = BattleUtils.getRealTarget(target);
-      // player get exp
-      if (realSrc == $gameActors.actor(1)) {
-        CharUtils.playerGainIntExp(1);
-      }
-      let damage = window[this.skill.constructor.name].prop.effect[this.skill.lv - 1].baseDamage
-        + Math.floor(realSrc.param(4) / 5) - realTarget.param(9);
-      damage = BattleUtils.getFinalDamage(damage);
+      let atkValue = window[this.skill.constructor.name].prop.effect[this.skill.lv - 1].baseDamage
+        + realSrc.param(4) / 3;
+      let damage = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
+      damage = Math.round(damage * (1 - realTarget.status.resistance.cold));
       CharUtils.decreaseHp(realTarget, damage);
       if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
         TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 71));
@@ -10375,9 +11436,9 @@
 
     if (target) {
       let realTarget = BattleUtils.getRealTarget(target);
-      let value = prop.effect[index].baseDamage + Math.floor(realSrc.param(4) / 3)
-        - realTarget.param(9);
-      value = BattleUtils.getFinalDamage(value);
+      let atkValue = prop.effect[index].baseDamage + realSrc.param(4) / 3;
+      let value = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
+      value = Math.round(value * (1 - realTarget.status.resistance.cold));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 4));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
       LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)
@@ -10835,7 +11896,7 @@
   Dog.mobInitData = {
     name: '小狗',
     params: [1, 1, 6, 6, 10, 10, 5, 5],
-    xparams: [0, 0, 0],
+    xparams: [0, 0, '1d3'],
     level: 1,
     moveType: 0,
     skills: [
@@ -10897,7 +11958,7 @@
   Bee.mobInitData = {
     name: '蜜蜂',
     params: [1, 1, 4, 3, 0, 0, 13, 5],
-    xparams: [0, 0, 0],
+    xparams: [0, 0, '1d2'],
     level: 2,
     moveType: 2,
     skills: [
@@ -10954,9 +12015,9 @@
   Rooster.prototype.constructor = Rooster;
 
   Rooster.mobInitData = {
-    name: '大雞',
+    name: '公雞',
     params: [1, 1, 10, 10, 1, 5, 9, 3],
-    xparams: [0, 0, 0],
+    xparams: [0, 0, '1d4'],
     level: 3,
     moveType: 0,
     skills: []
@@ -11036,24 +12097,20 @@
   }
 
   Rat.prototype.looting = function () {
-    // TODO: implement mouse looting
-    // var lootings = [];
-    // if (getRandomInt(10) < 3) {
-    //   lootings.push(new Chicken_Meat());
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Rooster_Tooth());
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Rooster_Claw());
-    // }
-    // if (getRandomInt(100) < 50) {
-    //   lootings.push(new Feather());
-    // }
+    var lootings = [];
+    if (getRandomInt(10) < 3) {
+      lootings.push(new Flesh(this.mob, 100, 100, 'FRESH'));
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Cheese());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Rat_Tail());
+    }
 
-    // for (var id in lootings) {
-    //   ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
-    // }
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
     if (getRandomInt(100) < 10) {
       this.dropSoul(Soul_EatRot);
     }
@@ -11074,7 +12131,7 @@
   Cat.mobInitData = {
     name: '貓',
     params: [1, 1, 6, 6, 30, 20, 15, 5],
-    xparams: [0, 0, 0],
+    xparams: [0, 0, '1d5'],
     level: 4,
     moveType: 0,
     skills: [
@@ -11124,6 +12181,9 @@
     if (getRandomInt(100) < 25) {
       lootings.push(new Cat_Skin());
     }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Cat_Bone());
+    }
 
     for (var id in lootings) {
       ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
@@ -11148,7 +12208,7 @@
   Boar.mobInitData = {
     name: '野豬',
     params: [1, 1, 12, 15, 0, 0, 8, 5],
-    xparams: [0, 0, 0],
+    xparams: [0, 0, '1d5'],
     level: 5,
     moveType: 0,
     skills: [
@@ -11207,7 +12267,7 @@
   Wolf.mobInitData = {
     name: '狼',
     params: [1, 1, 14, 10, 10, 10, 10, 3],
-    xparams: [0, 0, 0],
+    xparams: [0, 0, '1d6'],
     level: 6,
     moveType: 0,
     skills: [
@@ -11346,7 +12406,7 @@
   Bear.mobInitData = {
     name: '熊',
     params: [1, 1, 16, 20, 10, 10, 8, 5],
-    xparams: [0, 0, 0],
+    xparams: [0, 0, '2d3+2'],
     level: 6,
     moveType: 0,
     skills: [
@@ -11408,7 +12468,7 @@
   Lion.mobInitData = {
     name: '獅子',
     params: [1, 1, 20, 20, 10, 10, 18, 5],
-    xparams: [0, 0, 0],
+    xparams: [0, 0, '1d7'],
     level: 8,
     moveType: 0,
     skills: [
@@ -11466,7 +12526,7 @@
   Buffalo = function () {
     this.initialize.apply(this, arguments);
   }
-  Buffalo.baseDungeonLevel = 8;
+  Buffalo.baseDungeonLevel = 7;
 
   Buffalo.prototype = Object.create(Game_Mob.prototype);
   Buffalo.prototype.constructor = Buffalo;
@@ -11474,8 +12534,8 @@
   Buffalo.mobInitData = {
     name: '水牛',
     params: [1, 1, 15, 30, 20, 20, 15, 5],
-    xparams: [0, 0, 0],
-    level: 8,
+    xparams: [0, 0, '1d6'],
+    level: 7,
     moveType: 0,
     skills: [
       new SkillData(Skill_Tough, 1)
@@ -11532,15 +12592,15 @@
   Shark = function () {
     this.initialize.apply(this, arguments);
   }
-  Shark.baseDungeonLevel = 5;
+  Shark.baseDungeonLevel = 8;
 
   Shark.prototype = Object.create(Game_Mob.prototype);
   Shark.prototype.constructor = Shark;
 
   Shark.mobInitData = {
     name: '鯊魚',
-    params: [1, 1, 15, 15, 10, 10, 19, 5],
-    xparams: [0, 0, 0],
+    params: [1, 1, 18, 15, 10, 10, 19, 5],
+    xparams: [0, 0, '1d8'],
     level: 5,
     moveType: 1,
     skills: [
@@ -11567,16 +12627,12 @@
 
   Shark.prototype.looting = function () {
     var lootings = [];
-    // TODO: implements looting
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Buffalo_Horn());
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Buffalo_Bone());
-    // }
-    // if (getRandomInt(100) < 30) {
-    //   lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
-    // }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Shark_Tooth());
+    }
+    if (getRandomInt(100) < 30) {
+      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
+    }
 
     for (var id in lootings) {
       ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
@@ -11593,14 +12649,14 @@
   Slime = function () {
     this.initialize.apply(this, arguments);
   }
-  Slime.baseDungeonLevel = 6;
+  Slime.baseDungeonLevel = 5;
 
   Slime.prototype = Object.create(Game_Mob.prototype);
   Slime.prototype.constructor = Slime;
 
   Slime.mobInitData = {
     name: '史萊姆',
-    params: [1, 1, 10, 10, 30, 30, 10, 5],
+    params: [1, 1, 10, 10, 15, 15, 10, 5],
     xparams: [5, 0, 0],
     level: 6,
     moveType: 0,
@@ -11619,7 +12675,7 @@
   }
 
   Slime.prototype.meleeAction = function(target) {
-    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Acid
+    if (getRandomInt(100) < 20 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Acid
       return this.mob._skills[0].action(this, target);
     } else {
       return BattleUtils.meleeAttack(this, target);
@@ -11628,16 +12684,12 @@
 
   Slime.prototype.looting = function () {
     var lootings = [];
-    // TODO: implements looting
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Buffalo_Horn());
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Buffalo_Bone());
-    // }
-    // if (getRandomInt(100) < 30) {
-    //   lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
-    // }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Mucus());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Blue_Crystal());
+    }
 
     for (var id in lootings) {
       ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
@@ -11661,7 +12713,7 @@
 
   Jellyfish.mobInitData = {
     name: '水母',
-    params: [1, 1, 6, 10, 20, 30, 10, 5],
+    params: [1, 1, 6, 10, 30, 10, 10, 5],
     xparams: [0, 5, 0],
     level: 6,
     moveType: 1,
@@ -11680,7 +12732,7 @@
   }
 
   Jellyfish.prototype.meleeAction = function(target) {
-    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Acid
+    if (getRandomInt(100) < 20 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Acid
       return this.mob._skills[0].action(this, target);
     } else {
       return BattleUtils.meleeAttack(this, target);
@@ -11689,16 +12741,15 @@
 
   Jellyfish.prototype.looting = function () {
     var lootings = [];
-    // TODO: implements looting
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Buffalo_Horn());
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Buffalo_Bone());
-    // }
-    // if (getRandomInt(100) < 30) {
-    //   lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
-    // }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Glue());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Tentacle());
+    }
+    if (getRandomInt(100) < 30) {
+      lootings.push(new Flesh(this.mob, 200, 100, 'FRESH'));
+    }
 
     for (var id in lootings) {
       ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
@@ -11722,8 +12773,8 @@
 
   Ice_Spirit.mobInitData = {
     name: '冰精靈',
-    params: [1, 1, 10, 8, 30, 30, 20, 5],
-    xparams: [0, 0, 0],
+    params: [1, 1, 10, 8, 20, 20, 20, 5],
+    xparams: [4, 6, 0],
     level: 7,
     moveType: 2,
     skills: [
@@ -11759,21 +12810,22 @@
     return false;
   }
 
+  Ice_Spirit.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 40 && SkillUtils.canPerform(this.mob, this.mob._skills[1])) { // Skill_IceBolt
+      return this.mob._skills[1].action(this, target._x, target._y);
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
   Ice_Spirit.prototype.looting = function () {
     var lootings = [];
-    // TODO: implement looting
-    // if (getRandomInt(10) < 3) {
-    //   lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Cat_Tooth());
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Cat_Claw());
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Cat_Skin());
-    // }
+    if (getRandomInt(100) < 10) {
+      lootings.push(new Ice_Coat());
+    }
+    if (getRandomInt(100) < 5) {
+      lootings.push(new Ring_ColdResistance());
+    }
 
     for (var id in lootings) {
       ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
@@ -11797,8 +12849,8 @@
 
   Ice_Dragon.mobInitData = {
     name: '冰龍',
-    params: [1, 1, 25, 20, 25, 20, 20, 5],
-    xparams: [3, 3, 0],
+    params: [1, 1, 20, 20, 20, 20, 10, 5],
+    xparams: [8, 8, '1d9'],
     level: 10,
     moveType: 2,
     skills: [
@@ -11852,25 +12904,27 @@
 
   Ice_Dragon.prototype.looting = function () {
     var lootings = [];
-    // TODO: implement looting
-    // if (getRandomInt(10) < 3) {
-    //   lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Cat_Tooth());
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Cat_Claw());
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Cat_Skin());
-    // }
+    if (getRandomInt(10) < 3) {
+      lootings.push(new Flesh(this.mob, 500, 100, 'FRESH'));
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Dragon_Tooth());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Dragon_Claw());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Dragon_Skin());
+    }
+    if (getRandomInt(100) < 25) {
+      lootings.push(new Dragon_Bone());
+    }
 
     for (var id in lootings) {
       ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
     }
     if (getRandomInt(100) < 10) {
-      this.dropSoul(Soul_IceBolt);
+      this.dropSoul(Soul_IceBreath);
     }
   }
   CharUtils.mobTemplates[1].push(Ice_Dragon);
@@ -12219,7 +13273,7 @@
         if (paramId == 6) { // speed
           if (this.status.wetEffect.turns > 0 && this.moveType != 1
             && !SkillUtils.getSkillInstance(this, Skill_AdaptWater)) {
-            modifier *= 0.5;
+            modifier *= 0.66;
           }
         }
         if (this.status.bellyStatus == 'FAINT') {
@@ -12709,7 +13763,6 @@
           if (item.status == 'FRESH' || item.status == 'PERMANENT') {
             $gameActors.actor(1).nutrition += item.nutrition;
           } else {
-            // TODO: implement eat rotten food skill
             if ($gameParty.hasSoul(Soul_EatRot)) {
               msg += '\n' + Message.display('eatRottenUneffected');
               let skill = SkillUtils.getSkillInstance($gameActors.actor(1), Skill_EatRot);
@@ -13141,6 +14194,21 @@
     this.changePaintOpacity(true);
   };
 
+  Window_CraftRecipes.prototype.drawItemName = function(item, x, y, width) {
+    width = width || 312;
+    if (item) {
+        var iconBoxWidth = Window_Base._iconWidth + 4;
+        this.resetTextColor();
+        this.drawIcon(item.iconIndex, x + 2, y + 2);
+        let name = window[item.constructor.name].itemName;
+        if ($gameVariables[0].defaultProjectile
+          && ItemUtils.getItemDisplayName(item) == ItemUtils.getItemDisplayName($gameVariables[0].defaultProjectile)) {
+          name += ' {投擲}';
+        }
+        this.drawText(name, x + iconBoxWidth, y, width - iconBoxWidth);
+    }
+  };
+
   Window_CraftRecipes.prototype.isEnabled = function(item) {
     if (item) {
       let materials = CraftUtils.genMaterialArray(window[item.constructor.name]);
@@ -13570,17 +14638,20 @@
       return false;
     }
     if (item && !item.isIdentified) {
-      item.isIdentified = true;
+      ItemUtils.identifyObject(item);
       let array = $gameParty.allItems();
       for (let id in array) {
         if (ItemUtils.getItemFullName(array[id]) == ItemUtils.getItemFullName(item)) {
-          array[id].isIdentified = true;
+          ItemUtils.identifyObject(array[id]);
         }
       }
     }
     let msg = '';
     if (this.equips()[slotId]) {
       msg += String.format(Message.display('removeEquip'), this.equips()[slotId].name);
+      if (this.equips()[slotId].onRemove) {
+        this.equips()[slotId].onRemove(this);
+      }
     }
     if (this.tradeItemWithParty(item, this.equips()[slotId])
       && (!item || this.equipSlots()[slotId] === item.etypeId)) {
@@ -13589,6 +14660,9 @@
     }
     if (item) {
       msg += String.format(Message.display('wearEquip'), item.name);
+      if (item.onWear) {
+        item.onWear(this);
+      }
     }
     LogUtils.addLog(msg);
     return true;

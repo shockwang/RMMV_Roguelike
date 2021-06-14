@@ -110,7 +110,7 @@
         this.drawText(msg, x, y, length);
         x += length;
         this.resetTextColor();
-        msg = '' + ($gameMap.mapId() - 1);
+        msg = MapUtils.getDungeonLevelByMapId($gameMap.mapId());
         length = this.textWidth(msg);
         this.drawText(msg, x, y, length);
     }
