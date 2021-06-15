@@ -730,6 +730,9 @@
   }
 
   CharUtils.isCharInWater = function(target) {
+    if (target._x < 0 || target._y < 0) {
+      return false;
+    }
     let realTarget = BattleUtils.getRealTarget(target);
     if ($gameVariables[$gameMap.mapId()].mapData[target._x][target._y].originalTile == WATER
       && realTarget.moveType != 2) {
@@ -759,6 +762,9 @@
   }
 
   CharUtils.playerCanSeeItemPile = function(event) {
+    if (event._x < 0 || event._y < 0 || $gamePlayer._x < 0 || $gamePlayer._y < 0) {
+      return false;
+    }
     let mapData = $gameVariables[$gameMap.mapId()].mapData;
     if (mapData[event._x][event._y].originalTile == WATER
       && mapData[$gamePlayer._x][$gamePlayer._y].originalTile != WATER) {
@@ -785,15 +791,10 @@
   }
 
   CharUtils.updateHpMp = function(target) {
-    // get hpAddFactor & hpMultiplyFactor, mpAddFactor, mpMultiplyFactor
-    let hpAddFactor = (target.hpAddFactor) ? target.hpAddFactor : 0;
-    let hpMultiplyFactor = (target.hpMultiplyFactor) ? target.hpMultiplyFactor : 0;
-    let mpAddFactor = (target.mpAddFactor) ? target.mpAddFactor : 0;
-    let mpMultiplyFactor = (target.mpMultiplyFactor) ? target.mpMultiplyFactor : 0;
     // setup HP & MP
-    target._hp = Math.round(((CharUtils.baseHp + target.level * 3) * (1 + target.param(3) / 100) + hpAddFactor) * (1 + hpMultiplyFactor));
+    target._hp = Math.round(CharUtils.baseHp + 3 * target.level + (1 + target.param(3) / 2) * target.level / 2);
     target._paramPlus[0] = target._hp - target.param(0);
-    target._mp = Math.round((CharUtils.baseHp * (1 + target.param(5) / 100) + mpAddFactor) * (1 + mpMultiplyFactor));
+    target._mp = Math.round(CharUtils.baseHp + 2 * target.level + (1 + target.param(5) / 2) * target.level / 2);
     target._paramPlus[1] = target._mp - target.param(1);
   }
 
@@ -951,7 +952,7 @@
   }
 
   // for distance attack
-  CharUtils.checkTargetReachable = function(src, target) {
+  CharUtils.checkTargetReachable = function(src, target, penetrateFlag) {
     let realSrc = BattleUtils.getRealTarget(src);
 
     let inLine = false;
@@ -964,7 +965,7 @@
       }
     }
     if (inLine && MapUtils.checkVisible(src, realSrc.awareDistance, target._x, target._y
-      , $gameVariables[$gameMap._mapId].mapData, true)) {
+      , $gameVariables[$gameMap._mapId].mapData, !penetrateFlag, true)) {
       let directionX = src._x, directionY = src._y;
       if (src._x > target._x) {
         directionX--;
@@ -1202,10 +1203,6 @@
     $gameVariables[0].transferInfo = null;
     $gameVariables[0].directionalAction = null;
     $gameVariables[0].directionalFlag = false;
-    $gameVariables[0].directionalXy = {
-      x: 0,
-      y: 0
-    };
     $gameVariables[0].messageFlag = false;
     $gameVariables[0].projectileMoving = false;
     $gameVariables[0].logList = []; // only 18 lines can be displayed
@@ -1311,13 +1308,13 @@
     // }
 
     // $gameParty._items.push(new Soul_Bite());
-    // Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
-    // Soul_Obtained_Action.learnSkill(Skill_Barrier);
-    // Soul_Obtained_Action.learnSkill(Skill_IceBolt);
-    // Soul_Obtained_Action.learnSkill(Skill_IceBreath);
-    // Soul_Obtained_Action.learnSkill(Skill_Charge);
-    // Soul_Obtained_Action.learnSkill(Skill_IceBolder);
-    // Soul_Obtained_Action.learnSkill(Skill_Bash);
+    Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
+    Soul_Obtained_Action.learnSkill(Skill_Barrier);
+    Soul_Obtained_Action.learnSkill(Skill_IceBolt);
+    Soul_Obtained_Action.learnSkill(Skill_IceBreath);
+    Soul_Obtained_Action.learnSkill(Skill_Charge);
+    Soul_Obtained_Action.learnSkill(Skill_IceBolder);
+    Soul_Obtained_Action.learnSkill(Skill_Bash);
     Soul_Obtained_Action.learnSkill(Skill_Bite);
     Soul_Obtained_Action.learnSkill(Skill_Pierce);
 
@@ -1331,6 +1328,8 @@
     $gameParty.gainItem(new Bear_Claw(), 1);
     $gameParty.gainItem(new Cat_Gloves(), 1);
     $gameParty.gainItem(new Cat_Shoes(), 1);
+    $gameParty.gainItem(new Potion_Heal(), 1);
+    $gameParty.gainItem(new Potion_Heal(), 1);
     // $gameParty.gainItem(new Ring_Protection(), 1);
     // $gameParty.gainItem(new Ring_ColdResistance(), 1);
     $gameParty.gainItem(new Cheese(), 1);
@@ -1483,9 +1482,10 @@
       }
     },
     getCharName: function(target) {
+      let targetEvt = BattleUtils.getEventFromCharacter(target);
       if (target == $gameActors.actor(1)) {
         return Message.display('player');
-      } else if (!CharUtils.canSee($gameActors.actor(1), target)) {
+      } else if (!CharUtils.playerCanSeeChar(targetEvt)) {
         return Message.display('somebody');
       } else {
         return target.name();
@@ -1572,7 +1572,7 @@
   }
 
   // check if projectile can hit
-  MapUtils.checkVisible = function(src, distance, x, y, mapData, checkMobFlag) {
+  MapUtils.checkVisible = function(src, distance, x, y, mapData, checkMobFlag, noCheckBolderFlag) {
     var visible = false;
     // check if on water block
     let realSrc = BattleUtils.getRealTarget(src);
@@ -1621,7 +1621,8 @@
           // does not count the (x, y) point
           if (!(path[i].x == x && path[i].y == y) && !(path[i].x == src._x && path[i].y == src._y)) {
             if (!MapUtils.isTilePassable($gameMap._mapId, path[i].x, path[i].y
-              , mapData[path[i].x][path[i].y].originalTile) || MapUtils.isBolderOnTile(path[i].x, path[i].y)) {
+              , mapData[path[i].x][path[i].y].originalTile)
+              || (!noCheckBolderFlag && MapUtils.isBolderOnTile(path[i].x, path[i].y))) {
               visible = false;
               break;
             } else {
@@ -1646,7 +1647,7 @@
         // start to check if vision blocked
         for (var i = start + 1; i < end; i++) {
           if (!MapUtils.isTilePassable($gameMap._mapId, x, i, mapData[x][i].originalTile)
-          || MapUtils.isBolderOnTile(x, i)) {
+          || (!noCheckBolderFlag && MapUtils.isBolderOnTile(x, i))) {
             visible = false;
             break;
           } else {
@@ -1967,7 +1968,7 @@
   MapUtils.drawMob = function(mapData, event) {
     if (mapData[event._x][event._y].isVisible) {
       if (event.mob.status.invisibleEffect.turns > 0 || CharUtils.isCharInWater(event)) {
-        if (CharUtils.canSee($gameActors.actor(1), event.mob)) {
+        if (CharUtils.playerCanSeeChar(event)) {
           event.setOpacity(128);
         } else {
           event.setOpacity(0);
@@ -5621,7 +5622,7 @@
         BattleUtils.playerDied(msg);
       } else {
         target.looting();
-        if (realSrc) {
+        if (realSrc == $gameActors.actor(1)) {
           let exp = Math.round(Soul_Chick.expAfterAmplify(realTarget.exp()));
           realSrc.gainExpLvGap(realTarget, exp);
         }
@@ -9890,6 +9891,22 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Soul_IceBolder
+
+  Soul_IceBolder = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Soul_IceBolder.prototype = Object.create(ItemTemplate.prototype);
+  Soul_IceBolder.prototype.constructor = Soul_IceBolder;
+
+  Soul_IceBolder.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
+    this.name = '冰岩';
+    this.description = '你能夠凝結空氣中的水氣';
+  }
+
+  //-----------------------------------------------------------------------------------
   // SkillUtils
   //
   // Skill related methods
@@ -9934,8 +9951,6 @@
 
   // for directional skill
   SkillUtils.performDirectionalAction = function(src, x, y) {
-    $gameVariables[0].directionalXy.x = x;
-    $gameVariables[0].directionalXy.y = y;
     let target = MapUtils.getCharXy(x, y);
 
     if (src == $gamePlayer && target) {
@@ -9956,8 +9971,6 @@
 
   // for projectile skill
   SkillUtils.performProjectileAction = function(src, x, y) {
-    $gameVariables[0].directionalXy.x = x;
-    $gameVariables[0].directionalXy.y = y;
     let realSrc = BattleUtils.getRealTarget(src);
     realSrc.attacked = $gameVariables[0].fireProjectileInfo.skill.action(src, x, y);
     return realSrc.attacked;
@@ -11411,7 +11424,7 @@
 
   Skill_IceBolder.prop = {
     type: "SKILL",
-    subType: "DIRECTIONAL",
+    subType: "PROJECTILE",
     damageType: "MAGIC",
     effect: [
       {lv: 1, baseDamage: 20, sustainTime: 200, levelUp: 50},
@@ -11422,18 +11435,19 @@
     ]
   }
 
-  Skill_IceBolder.prototype.action = function(src, target) {
+  Skill_IceBolder.prototype.action = function(src, x, y) {
     let realSrc = BattleUtils.getRealTarget(src);
     CharUtils.decreaseMp(realSrc, this.mpCost);
     CharUtils.decreaseTp(realSrc, this.tpCost);
     LogUtils.addLog(String.format(Message.display('objectSummoned'), LogUtils.getCharName(realSrc), this.name));
-    let bolder = new IceBolder($gameVariables[0].directionalXy.x, $gameVariables[0].directionalXy.y);
+    let bolder = new IceBolder(x, y);
     AudioManager.playSe({name: "Earth3", pan: 0, pitch: 100, volume: 100});
     let prop = Skill_IceBolder.prop;
     let index = this.lv - 1;
     TimeUtils.eventScheduler.insertEvent(new ScheduleEvent(bolder
       , $gameVariables[0].gameTime + prop.effect[index].sustainTime));
 
+    let target = MapUtils.getCharXy(x, y);
     if (target) {
       let realTarget = BattleUtils.getRealTarget(target);
       let atkValue = prop.effect[index].baseDamage + realSrc.param(4) / 3;
@@ -11606,17 +11620,24 @@
             , $gameVariables[$gameMap._mapId].mapData) && this.targetInSightAction($gamePlayer)) {
             // alreay done action
           } else {
+            // check projectile action
             let data = CharUtils.checkTargetReachable(this, $gamePlayer);
             if (data && this.projectileAction(data.directionX, data.directionY, data.distance)) {
               // already done action
             } else {
-              // find route to player
-              let path = MapUtils.findShortestRoute(this._x, this._y
-                , $gamePlayer._x, $gamePlayer._y, mobTraceRouteMaxDistance, this);
-              if (path) {
-                this.moveTowardPosition(path[0].mapBlock.x, path[0].mapBlock.y);
+              // check penetrate action
+              let data = CharUtils.checkTargetReachable(this, $gamePlayer, true);
+              if (data && this.penetrateAction(data.directionX, data.directionY, data.distance)) {
+                // already done action
               } else {
-                this.moveTowardCharacter($gamePlayer);
+                // find route to player
+                let path = MapUtils.findShortestRoute(this._x, this._y
+                  , $gamePlayer._x, $gamePlayer._y, mobTraceRouteMaxDistance, this);
+                if (path) {
+                  this.moveTowardPosition(path[0].mapBlock.x, path[0].mapBlock.y);
+                } else {
+                  this.moveTowardCharacter($gamePlayer);
+                }
               }
             }
           }
@@ -11656,8 +11677,13 @@
     return BattleUtils.meleeAttack(this, target);
   }
 
-  // define projectile action (target in line)
+  // define projectile action (target in line & direct reachable)
   Game_Mob.prototype.projectileAction = function(x, y, distance) {
+    return false;
+  }
+
+  // define penetrate action (target in line)
+  Game_Mob.prototype.penetrateAction = function(x, y, distance) {
     return false;
   }
 
@@ -12878,13 +12904,19 @@
 
   Ice_Dragon.prototype.projectileAction = function(x, y, distance) {
     if (getRandomInt(100) < 80) {
-      let skill = this.mob._skills[3]; // Skill_IceBreath
+      skill = this.mob._skills[2]; // Skill_IceBolt
       if (distance <= window[skill.constructor.name].prop.effect[skill.lv - 1].distance
         && SkillUtils.canPerform(this.mob, skill)) {
         skill.action(this, x, y);
         return true;
       }
-      skill = this.mob._skills[2]; // Skill_IceBolt
+    }
+    return false;
+  }
+
+  Ice_Dragon.prototype.penetrateAction = function(x, y, distance) {
+    if (getRandomInt(100) < 80) {
+      let skill = this.mob._skills[3]; // Skill_IceBreath
       if (distance <= window[skill.constructor.name].prop.effect[skill.lv - 1].distance
         && SkillUtils.canPerform(this.mob, skill)) {
         skill.action(this, x, y);
@@ -12928,6 +12960,116 @@
     }
   }
   CharUtils.mobTemplates[1].push(Ice_Dragon);
+
+  //-----------------------------------------------------------------------------------
+  // Selina
+  // 
+  // Ice dungeon boss
+
+  Selina = function () {
+    this.initialize.apply(this, arguments);
+  }
+  Selina.baseDungeonLevel = 12;
+
+  Selina.prototype = Object.create(Game_Mob.prototype);
+  Selina.prototype.constructor = Selina;
+
+  Selina.mobInitData = {
+    name: '瑟蓮娜',
+    params: [1, 1, 15, 20, 20, 20, 20, 5],
+    xparams: [10, 10, '1d5'],
+    level: 12,
+    moveType: 0,
+    skills: [
+      new SkillData(Skill_Barrier, 2),
+      new SkillData(Skill_IceBolt, 2),
+      new SkillData(Skill_IceBreath, 2),
+      new SkillData(Skill_IceBolder, 2),
+      new SkillData(Skill_AdaptWater, 3)
+    ]
+  }
+
+  Selina.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Selina.mobInitData);
+    this.setImage('Jelly_Maid', 0);
+    if (!fromData) {
+      this.mob.mobClass = 'Selina';
+    }
+  }
+
+  Selina.prototype.targetInSightAction = function(target) {
+    if (getRandomInt(100) < 60) { // Skill_Barrier
+      return this.performBuffIfNotPresent(this.mob._skills[0]);
+    }
+    return false;
+  }
+
+  Selina.prototype.projectileAction = function(x, y, distance) {
+    if (this.mob._hp < this.mob.mhp / 2 && getRandomInt(100) < 50 && distance <= 3) {
+      if (SkillUtils.canPerform(this.mob, this.mob._skills[3])) { // Skill_IceBolder
+        return this.mob._skills[3].action(this, x, y);
+      }
+    }
+    if (getRandomInt(100) < 80) {
+      let skill = this.mob._skills[1]; // Skill_IceBolt
+      if (distance <= window[skill.constructor.name].prop.effect[skill.lv - 1].distance
+        && SkillUtils.canPerform(this.mob, skill)) {
+        skill.action(this, x, y);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Selina.prototype.penetrateAction = function(x, y, distance) {
+    if (getRandomInt(100) < 80) {
+      let skill = this.mob._skills[2]; // Skill_IceBreath
+      if (distance <= window[skill.constructor.name].prop.effect[skill.lv - 1].distance
+        && SkillUtils.canPerform(this.mob, skill)) {
+        skill.action(this, x, y);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Selina.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 40 && SkillUtils.canPerform(this.mob, this.mob._skills[3])) { // Skill_IceBolder
+      return this.mob._skills[3].action(this, target._x, target._y);
+    }
+    if (getRandomInt(100) < 40 && SkillUtils.canPerform(this.mob, this.mob._skills[1])) { // Skill_IceBolt
+      return this.mob._skills[1].action(this, target._x, target._y);
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  Selina.prototype.looting = function () {
+    var lootings = [];
+    // TODO: implements looting
+    // if (getRandomInt(10) < 3) {
+    //   lootings.push(new Flesh(this.mob, 500, 100, 'FRESH'));
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Dragon_Tooth());
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Dragon_Claw());
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Dragon_Skin());
+    // }
+    // if (getRandomInt(100) < 25) {
+    //   lootings.push(new Dragon_Bone());
+    // }
+
+    for (var id in lootings) {
+      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
+    }
+    if (getRandomInt(100) < 100) {
+      this.dropSoul(Soul_IceBolder);
+    }
+  }
 
   //-----------------------------------------------------------------------------------
   // Soul_Obtained_Action
