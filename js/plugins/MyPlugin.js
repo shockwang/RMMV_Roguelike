@@ -181,7 +181,7 @@
   var mobSpawnPercentage = 0.02;
   var mobRespawnPercentage = 0.3;
   var trapSpawnPercentage = 0.02;
-  var itemSpawnPercentage = 0.02;
+  var itemSpawnPercentage = 0.04;
 
   // game parameters
   var throwItemTpCost = 3;
@@ -1308,7 +1308,8 @@
     //   $gameParty.gainItem(new Potion_Invisible(), 1);
     // }
 
-    // $gameParty._items.push(new Soul_Bite());
+    $gameParty._items.push(new Soul_Bite());
+    Soul_Obtained_Action.learnSkill(Skill_Bite);
     // Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
     // Soul_Obtained_Action.learnSkill(Skill_Barrier);
     // Soul_Obtained_Action.learnSkill(Skill_IceBolt);
@@ -1316,7 +1317,6 @@
     // Soul_Obtained_Action.learnSkill(Skill_Charge);
     // Soul_Obtained_Action.learnSkill(Skill_IceBolder);
     // Soul_Obtained_Action.learnSkill(Skill_Bash);
-    // Soul_Obtained_Action.learnSkill(Skill_Bite);
     // Soul_Obtained_Action.learnSkill(Skill_Pierce);
 
     // modify actor status
@@ -1441,6 +1441,72 @@
         }
       }
     }
+  }
+
+  // add for statistics test
+  MapUtils.calcItemSpawnPercentage = function() {
+    let pool = [];
+    let loopCount = 0;
+    let mapBlocks = MapUtils.getMapBlocks($gameVariables[$gameMap.mapId()].mapData);
+    let floors = mapBlocks.floor.concat(mapBlocks.water);
+    let mobNumPerMap = Math.round(floors.length * mobSpawnPercentage);
+    let itemNumPerMap = Math.round(floors.length * itemSpawnPercentage);
+    while (loopCount < 1000) {
+      for (let i = 1; i <= 8; i++) {
+        for (let j = 0; j < mobNumPerMap; j++) {
+          let mobClassPool = CharUtils.getMobPools(i);
+          let mob = new mobClassPool[getRandomInt(mobClassPool.length)](1, 1);
+          mob.looting();
+          mob.setPosition(-10, -10);
+          $gameMap._events[mob._eventId] = null;
+          $dataMap.events[mob._eventId] = null;
+        }
+        let itemPile = ItemUtils.findMapItemPileEvent(1, 1).itemPile;
+        for (let id in itemPile.objectStack) {
+          let className = itemPile.objectStack[id].constructor.name;
+          let index = -1;
+          for (let k = 0; k < pool.length; k++) {
+            if (pool[k].name == className) {
+              index = k;
+              break;
+            }
+          }
+          if (index == -1) {
+            pool.push({name: className, count: 1});
+          } else {
+            pool[index].count++;
+          }
+        }
+        // clear itemPile
+        for (let id in itemPile.objectStack) {
+          ItemUtils.removeItemFromItemPile(1, 1, itemPile.objectStack[id]);
+        }
+        for (let j = 0; j < itemNumPerMap; j++) {
+          let item = ItemUtils.spawnItem(i);
+          let className = item.constructor.name;
+          let index = -1;
+          for (let k = 0; k < pool.length; k++) {
+            if (pool[k].name == className) {
+              index = k;
+              break;
+            }
+          }
+          if (index == -1) {
+            pool.push({name: className, count: 1});
+          } else {
+            pool[index].count++;
+          }
+        }
+      }
+      loopCount++;
+    }
+    for (let id in pool) {
+      pool[id].count /= 1000;
+    }
+    pool.sort(function(a, b) {
+      return b.count - a.count;
+    })
+    return pool;
   }
 
   // message window defined here, because it can't be assigned to $gameVariables, will cause save/load crash
