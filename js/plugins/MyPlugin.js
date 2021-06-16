@@ -192,6 +192,7 @@
   var mobTraceRouteMaxDistance = 15;
   var regenTurnCount = 20;
   var genLocalDungeonObjectPercentage = 0.7;
+  var mobFleeHpPercentage = 0.3;
 
   // word attached
   var groundWord = '(地上)';
@@ -1181,7 +1182,7 @@
     // $gameVariables[2].mapType = 'ICE';
     // $gameVariables[2].dungeonLevel = 6;
 
-    let iceEntranceLevel = 2; // getRandomIntRange(4, dungeonDepth);
+    let iceEntranceLevel = getRandomIntRange(4, dungeonDepth);
     $gameVariables[iceEntranceLevel].stairDownNum++;
     $gameVariables[iceEntranceLevel].stairToList.push(11);
     $gameVariables[11].stairToList.push(iceEntranceLevel);
@@ -1308,39 +1309,37 @@
     // }
 
     // $gameParty._items.push(new Soul_Bite());
-    Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
-    Soul_Obtained_Action.learnSkill(Skill_Barrier);
-    Soul_Obtained_Action.learnSkill(Skill_IceBolt);
-    Soul_Obtained_Action.learnSkill(Skill_IceBreath);
-    Soul_Obtained_Action.learnSkill(Skill_Charge);
-    Soul_Obtained_Action.learnSkill(Skill_IceBolder);
-    Soul_Obtained_Action.learnSkill(Skill_Bash);
-    Soul_Obtained_Action.learnSkill(Skill_Bite);
-    Soul_Obtained_Action.learnSkill(Skill_Pierce);
+    // Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
+    // Soul_Obtained_Action.learnSkill(Skill_Barrier);
+    // Soul_Obtained_Action.learnSkill(Skill_IceBolt);
+    // Soul_Obtained_Action.learnSkill(Skill_IceBreath);
+    // Soul_Obtained_Action.learnSkill(Skill_Charge);
+    // Soul_Obtained_Action.learnSkill(Skill_IceBolder);
+    // Soul_Obtained_Action.learnSkill(Skill_Bash);
+    // Soul_Obtained_Action.learnSkill(Skill_Bite);
+    // Soul_Obtained_Action.learnSkill(Skill_Pierce);
 
     // modify actor status
-    let player = $gameActors.actor(1);
-    player._paramPlus[2] = 9;
-    player._paramPlus[3] = 9;
-    player._paramPlus[6] = 9;
-    $gameParty.gainItem(new Lion_Shield(), 1);
-    $gameParty.gainItem(new Bear_Skin(), 1);
-    $gameParty.gainItem(new Bear_Claw(), 1);
-    $gameParty.gainItem(new Cat_Gloves(), 1);
-    $gameParty.gainItem(new Cat_Shoes(), 1);
-    $gameParty.gainItem(new Potion_Heal(), 1);
-    $gameParty.gainItem(new Potion_Heal(), 1);
+    // let player = $gameActors.actor(1);
+    // player._paramPlus[2] = 9;
+    // player._paramPlus[3] = 9;
+    // player._paramPlus[6] = 9;
+    // $gameParty.gainItem(new Lion_Shield(), 1);
+    // $gameParty.gainItem(new Bear_Skin(), 1);
+    // $gameParty.gainItem(new Bear_Claw(), 1);
+    // $gameParty.gainItem(new Cat_Gloves(), 1);
+    // $gameParty.gainItem(new Cat_Shoes(), 1);
+    // $gameParty.gainItem(new Potion_Heal(), 1);
+    // $gameParty.gainItem(new Potion_Heal(), 1);
     // $gameParty.gainItem(new Ring_Protection(), 1);
     // $gameParty.gainItem(new Ring_ColdResistance(), 1);
     $gameParty.gainItem(new Cheese(), 1);
-    for (let i = 0; i < 6; i++) {
-      // $gameParty.gainItem(new Dart_Lv2_T1(), 1);
-      // $gameParty.gainItem(new Potion_Acid(), 1);
-      // $gameParty.gainItem(new Scroll_CreateMonster(), 1);
-      player.levelUp();
-    }
-    player._hp = 120;
-    player._mp = 80;
+    $gameParty.gainItem(new Cheese(), 1);
+    // for (let i = 0; i < 6; i++) {
+    //   player.levelUp();
+    // }
+    // player._hp = 120;
+    // player._mp = 80;
     // setTimeout(MapUtils.goDownLevels, 500, 7);
   }
 
@@ -6279,7 +6278,7 @@
         return probs[id].itemClass;
       }
     }
-    return list[getRandomInt(list.length)];
+    return null;
   }
 
   ItemUtils.spawnItem = function(mapId) {
@@ -11546,6 +11545,7 @@
       this.mob._name = mobInitData.name;
       this.mob.level = mobInitData.level;
       this.mob.moveType = mobInitData.moveType;
+      this.mob.fleeAtLowHp = mobInitData.fleeAtLowHp;
       this.mob._tp = 100;
       this.mob.awareDistance = 10;
       this.mob.status = CharUtils.initStatus();
@@ -11601,6 +11601,9 @@
       } else {
         if (this.mob.status.afraidEffect.turns > 0) {
           this.moveAwayFromCharacter($gamePlayer);
+        } else if (this.mob.fleeAtLowHp && (this.mob.hp / this.mob.mhp < mobFleeHpPercentage)
+          && getRandomInt(100) < 60 && this.moveAwayFromCharacter($gamePlayer)) {
+          // successfully flee
         } else if (!CharUtils.canSee(this.mob, $gameActors.actor(1))) {
           // TODO: mob can attack when blind and try to walk into a character
           this.moveRandom();
@@ -12980,6 +12983,7 @@
     xparams: [10, 10, '1d5'],
     level: 12,
     moveType: 0,
+    fleeAtLowHp: true,
     skills: [
       new SkillData(Skill_Barrier, 2),
       new SkillData(Skill_IceBolt, 2),
