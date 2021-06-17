@@ -57,6 +57,7 @@
     this.stairToList = []; // indicates which layer this stair leads to
     this.secretBlocks = {}; // indicates secret doors
     this.preDefinedTraps = []; // traps at indicated places
+    this.preDefinedMobs = []; // predefined mob class
     this.mapType = mapType; // EARTH, ICE, FIRE, AIR, FOREST, BAT
   }
 
@@ -129,10 +130,11 @@
     this.lv = lv;
   }
 
-  var TrapData = function(trapClass, x, y) {
+  var TrapData = function(trapClass, x, y, relatedEventClass) {
     this.trapClass = trapClass;
     this.x = x;
     this.y = y;
+    this.relatedEventClass = relatedEventClass;
   }
 
   var FLOOR = '□';
@@ -190,7 +192,7 @@
   var mobSpawnPercentage = 0.02;
   var mobRespawnPercentage = 0.3;
   var trapSpawnPercentage = 0.02;
-  var itemSpawnPercentage = 0.04;
+  var itemSpawnPercentage = 0.03;
 
   // game parameters
   var throwItemTpCost = 3;
@@ -502,6 +504,7 @@
       iceMelt: '{0}融化了.',
       iceHitLava: '{0}冷卻了岩漿, 形成可行走的陸地.',
       objectSummoned: '{0}召喚了{1}!',
+      pressFloorTriggered: '你聽到機關被觸動的聲音...',
       helpMsg: '移動角色:\n'
         + '數字小鍵盤(2468: 下左右上, 1379: 左下、右下、左上、右上, 5:原地等待一回合)\n\n'
         + '戰鬥操作:\n'
@@ -888,44 +891,45 @@
     return pool;
   }
 
-  CharUtils.spawnMob = function(mapId, mapBlocks, outOfSight) {
+  CharUtils.spawnMob = function(mapId, mapBlocks, outOfSight, mobClassInput) {
     let pool = CharUtils.getMobPools(mapId);
-    let mobClass = pool[getRandomInt(pool.length)];
-    let locations = [];
-    switch (mobClass.mobInitData.moveType) {
-      case 0:
-        locations = mapBlocks.floor;
-        break;
-      case 1:
-        locations = mapBlocks.water;
-        break;
-      case 2:
-        locations = mapBlocks.floor.concat(mapBlocks.hollow);
-        break;
-    }
-    if (locations.length > 0) {
-      let maxTry = 20;
-      let location, temp;
-      for (let i = 0; i < maxTry; i++) {
-        temp = locations[getRandomInt(locations.length)];
-        if (!MapUtils.isTileAvailableForMob(mapId, temp.x, temp.y)) {
-          continue;
-        } else if (outOfSight && temp.isVisible) {
-          continue;
-        } else {
-          location = temp;
+    while (true) {
+      let mobClass = (mobClassInput) ? mobClassInput : pool[getRandomInt(pool.length)];
+      let locations = [];
+      switch (mobClass.mobInitData.moveType) {
+        case 0:
+          locations = mapBlocks.floor;
           break;
+        case 1:
+          locations = mapBlocks.water;
+          break;
+        case 2:
+          locations = mapBlocks.floor.concat(mapBlocks.hollow);
+          break;
+      }
+      if (locations.length > 0) {
+        let maxTry = 20;
+        let location, temp;
+        for (let i = 0; i < maxTry; i++) {
+          temp = locations[getRandomInt(locations.length)];
+          if (!MapUtils.isTileAvailableForMob(mapId, temp.x, temp.y)) {
+            continue;
+          } else if (outOfSight && temp.isVisible) {
+            continue;
+          } else {
+            location = temp;
+            break;
+          }
         }
-      }
-      if (location) {
-        return new mobClass(location.x, location.y);
+        if (location) {
+          return new mobClass(location.x, location.y);
+        } else {
+          console.log('can not find location out of sight!');
+        }
       } else {
-        console.log('can not find location out of sight!');
+        console.log('no place to spawn mob: ' + mobClass.name);
       }
-    } else {
-      console.log('no place to spawn mob: ' + mobClass.name);
     }
-    return null;
   }
 
   CharUtils.spawnMobXy = function(mapId, x, y) {
@@ -975,7 +979,7 @@
       }
     }
     if (inLine && MapUtils.checkVisible(src, realSrc.awareDistance, target._x, target._y
-      , $gameVariables[$gameMap._mapId].mapData, !penetrateFlag, true)) {
+      , $gameVariables[$gameMap.mapId()].mapData, !penetrateFlag, true)) {
       let directionX = src._x, directionY = src._y;
       if (src._x > target._x) {
         directionX--;
@@ -1187,10 +1191,6 @@
     $gameVariables[dungeonDepth].stairToList.push(dungeonDepth - 1);
     $gameVariables[dungeonDepth].stairDownNum = 0;
 
-    // add for test
-    // $gameVariables[2].mapType = 'ICE';
-    // $gameVariables[2].dungeonLevel = 6;
-
     let iceEntranceLevel = getRandomIntRange(4, dungeonDepth);
     $gameVariables[iceEntranceLevel].stairDownNum++;
     $gameVariables[iceEntranceLevel].stairToList.push(11);
@@ -1204,6 +1204,7 @@
     $gameVariables[11].stairToList.splice(1, 1);
     $gameVariables[15].stairToList.pop();
     $gameVariables[15].stairDownNum = 0;
+    $gameVariables[15].preDefinedMobs.push(Selina);
 
     // game system setup
     $dataSystem.terms.params.push("武器威力"); // this one should be param(10)
@@ -1254,8 +1255,17 @@
       trap: $dataMap.events[7],
       goHome: $dataMap.events[1],
       bolder: $dataMap.events[8],
-      visitIceDungeon: $dataMap.events[9]
+      visitIceDungeon: $dataMap.events[9],
+      discoverPressFloor: $dataMap.events[10],
+      selinaEncountered: $dataMap.events[11],
+      selinaDefeated: $dataMap.events[12]
     }
+    // define event related states
+    $gameVariables[0].eventState = {
+      pressFloorDiscovered: false,
+      selinaEncountered: false
+    }
+
     // define data images mapping
     $gameVariables[0].itemImageData = generateImageData();
 
@@ -1319,36 +1329,36 @@
 
     $gameParty._items.push(new Soul_Bite());
     Soul_Obtained_Action.learnSkill(Skill_Bite);
-    Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
-    Soul_Obtained_Action.learnSkill(Skill_Barrier);
-    Soul_Obtained_Action.learnSkill(Skill_IceBolt);
-    Soul_Obtained_Action.learnSkill(Skill_IceBreath);
-    Soul_Obtained_Action.learnSkill(Skill_Charge);
-    Soul_Obtained_Action.learnSkill(Skill_IceBolder);
-    Soul_Obtained_Action.learnSkill(Skill_Bash);
-    Soul_Obtained_Action.learnSkill(Skill_Pierce);
+    // Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
+    // Soul_Obtained_Action.learnSkill(Skill_Barrier);
+    // Soul_Obtained_Action.learnSkill(Skill_IceBolt);
+    // Soul_Obtained_Action.learnSkill(Skill_IceBreath);
+    // Soul_Obtained_Action.learnSkill(Skill_Charge);
+    // Soul_Obtained_Action.learnSkill(Skill_IceBolder);
+    // Soul_Obtained_Action.learnSkill(Skill_Bash);
+    // Soul_Obtained_Action.learnSkill(Skill_Pierce);
 
     // modify actor status
-    let player = $gameActors.actor(1);
-    player._paramPlus[2] = 9;
-    player._paramPlus[3] = 9;
-    player._paramPlus[6] = 9;
-    $gameParty.gainItem(new Lion_Shield(), 1);
-    $gameParty.gainItem(new Bear_Skin(), 1);
-    $gameParty.gainItem(new Bear_Claw(), 1);
-    $gameParty.gainItem(new Cat_Gloves(), 1);
-    $gameParty.gainItem(new Cat_Shoes(), 1);
-    $gameParty.gainItem(new Potion_Heal(), 1);
-    $gameParty.gainItem(new Potion_Heal(), 1);
-    $gameParty.gainItem(new Ring_Protection(), 1);
-    $gameParty.gainItem(new Ring_ColdResistance(), 1);
+    // let player = $gameActors.actor(1);
+    // player._paramPlus[2] = 9;
+    // player._paramPlus[3] = 9;
+    // player._paramPlus[6] = 9;
+    // $gameParty.gainItem(new Lion_Shield(), 1);
+    // $gameParty.gainItem(new Bear_Skin(), 1);
+    // $gameParty.gainItem(new Bear_Claw(), 1);
+    // $gameParty.gainItem(new Cat_Gloves(), 1);
+    // $gameParty.gainItem(new Cat_Shoes(), 1);
+    // $gameParty.gainItem(new Potion_Heal(), 1);
+    // $gameParty.gainItem(new Potion_Heal(), 1);
+    // $gameParty.gainItem(new Ring_Protection(), 1);
+    // $gameParty.gainItem(new Ring_ColdResistance(), 1);
     $gameParty.gainItem(new Cheese(), 1);
     $gameParty.gainItem(new Cheese(), 1);
-    for (let i = 0; i < 6; i++) {
-      player.levelUp();
-    }
-    player._hp = 120;
-    player._mp = 80;
+    // for (let i = 0; i < 6; i++) {
+    //   player.levelUp();
+    // }
+    // player._hp = 120;
+    // player._mp = 80;
     // setTimeout(MapUtils.goDownLevels, 500, 7);
   }
 
@@ -1760,6 +1770,9 @@
   }
 
   function refineMapTile(mapId, rawData, x, y, centerTile, tileType) {
+    if (tileType == WALL || tileType == PRESS) {
+      return centerTile;
+    }
     if (!rawData) {
       // create rawData
       let mapData = $gameVariables[mapId].mapData;
@@ -2143,7 +2156,7 @@
         let stairs = $gameVariables[$gameMap.mapId()].stairList;
         let stairDown;
         for (let id in stairs) {
-          if (stairs[id].type == 1) {
+          if (stairs[id].type == 1 && stairs[id].toMapId <= 10) {
             stairDown = stairs[id];
           }
         }
@@ -2852,7 +2865,7 @@
       }
     }
     // add for press floor test
-    if (mapId == 2) {
+    if (mapId == dungeonDepth) {
       let mapTemplate = [
         [FLOOR, FLOOR, FLOOR, FLOOR, FLOOR],
         [FLOOR, WALL, FLOOR, WALL, FLOOR],
@@ -2871,7 +2884,7 @@
             $gameVariables[mapId].preDefinedTraps.push(new TrapData(Trap_GoHome, i, j));
           } else if (x == 3 && y == 3) {
             // go_home
-            $gameVariables[mapId].preDefinedTraps.push(new TrapData(Trap_PressFloor, i, j));
+            $gameVariables[mapId].preDefinedTraps.push(new TrapData(Trap_PressFloor, i, j, Trap_GoHome));
           }
         }
       }
@@ -3070,6 +3083,9 @@
 
   MapUtils.generateNewMapMobs = function (mapId, mapBlocks) {
     let totalBlocksLength = mapBlocks.floor.length + mapBlocks.water.length + mapBlocks.hollow.length;
+    for (let id in $gameVariables[mapId].preDefinedMobs) {
+      CharUtils.spawnMob(mapId, mapBlocks, false, $gameVariables[mapId].preDefinedMobs[id]);
+    }
     let mobCounts = Math.floor(totalBlocksLength * mobSpawnPercentage);
     for (let i = 0; i < mobCounts; i++) {
       CharUtils.spawnMob(mapId, mapBlocks);
@@ -4460,7 +4476,10 @@
     // generate pre-defined traps
     for (let id in $gameVariables[mapId].preDefinedTraps) {
       let trapData = $gameVariables[mapId].preDefinedTraps[id];
-      new trapData.trapClass(trapData.x, trapData.y);
+      let trap = new trapData.trapClass(trapData.x, trapData.y);
+      if (trap instanceof Trap_PressFloor) {
+        trap.trap.relatedEventClass = trapData.relatedEventClass;
+      }
     }
     // generate upsatir/downstair
     for (let id in $gameVariables[mapId].stairList) {
@@ -4480,17 +4499,6 @@
           && TrapUtils.canPlaceTrap(mapId, floor.x, floor.y)) {
           let trapType = TrapUtils.trapTemplates[Math.randomInt(TrapUtils.trapTemplates.length)];
           new trapType(floor.x, floor.y);
-          break;
-        }
-      }
-    }
-    // for test play only
-    if (mapId == dungeonDepth) {
-      while (true) {
-        let floor = floors[Math.randomInt(floors.length)];
-        if (MapUtils.isTileAvailableForMob(mapId, floor.x, floor.y)
-          && TrapUtils.canPlaceTrap(mapId, floor.x, floor.y)) {
-          new Trap_GoHome(floor.x, floor.y);
           break;
         }
       }
@@ -4866,26 +4874,34 @@
     Game_Trap.prototype.initStatus.call(this, event);
     this.trap.trapClass = 'Trap_PressFloor';
     this.trap.imageData = new ImageData('!Door1', 0, 0, 8);
+    this.trap.relatedEventClass = null;
     this.trap.relatedEvent = null;
     this.trap.name = '壓力板';
     this.trap.isRevealed = true;
   }
 
   Trap_PressFloor.prototype.triggered = function(target) {
-    // do nothing
-  }
-
-  Trap_PressFloor.prototype.setRelatedEvent = function(evt) {
-    this.trap.relatedEvent = evt;
+    if (target == $gamePlayer && !$gameVariables[0].eventState.pressFloorDiscovered) {
+      $gameVariables[0].eventState.pressFloorDiscovered = true;
+      MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.discoverPressFloor);
+    }
   }
 
   Trap_PressFloor.prototype.enable = function() {
-    console.log('press floor enabled!');
+    AudioManager.playSe({name: 'Switch1', pan: 0, pitch: 100, volume: 100});
+    LogUtils.addLog(Message.display('pressFloorTriggered'));
+    if (!this.trap.relatedEvent) {
+      let eventClass = this.trap.relatedEventClass;
+      this.trap.relatedEvent = $gameMap.events().filter(function(evt) {
+        return evt instanceof eventClass;
+      })[0];
+    }
     this.trap.relatedEvent.enable();
   }
 
   Trap_PressFloor.prototype.disable = function() {
-    console.log('press floor disabled!');
+    AudioManager.playSe({name: 'Switch1', pan: 0, pitch: 100, volume: 100});
+    LogUtils.addLog(Message.display('pressFloorTriggered'));
     this.trap.relatedEvent.disable();
   }
 
@@ -11784,7 +11800,9 @@
           // do nothing
         } else if (distance < 2) {
           this.turnTowardCharacter($gamePlayer);
-          if (this.meleeAction($gamePlayer)) {
+          if (this.targetInSightAction($gamePlayer)) {
+            // alreay done action
+          } else if (this.meleeAction($gamePlayer)) {
             this.mob.attacked = true;
           } else if (CharUtils.playerCanSeeChar(this)) {
             LogUtils.addLog(String.format(Message.display('attackOutOfEnergy'), LogUtils.getCharName(this.mob)));
@@ -11792,7 +11810,7 @@
         } else if (distance < this.mob.awareDistance) {
           // check remote attack
           if (MapUtils.checkVisible(this, this.mob.awareDistance, $gamePlayer._x, $gamePlayer._y
-            , $gameVariables[$gameMap._mapId].mapData) && this.targetInSightAction($gamePlayer)) {
+            , $gameVariables[$gameMap.mapId()].mapData) && this.targetInSightAction($gamePlayer)) {
             // alreay done action
           } else {
             // check projectile action
@@ -13174,6 +13192,12 @@
   }
 
   Selina.prototype.targetInSightAction = function(target) {
+    if (!$gameVariables[0].eventState.selinaEncountered) {
+      $gameVariables[0].eventState.selinaEncountered = true;
+      MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.selinaEncountered);
+    } else if (AudioManager._currentBgm.name != 'Battle2') {
+      AudioManager.playBgm({name: 'Battle2', pan: 0, pitch: 100, volume: 100});
+    }
     if (getRandomInt(100) < 60) { // Skill_Barrier
       return this.performBuffIfNotPresent(this.mob._skills[0]);
     }
@@ -13245,6 +13269,7 @@
     if (getRandomInt(100) < 100) {
       this.dropSoul(Soul_IceBolder);
     }
+    MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.selinaDefeated);
   }
 
   //-----------------------------------------------------------------------------------
