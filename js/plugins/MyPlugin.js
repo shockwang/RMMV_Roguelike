@@ -55,7 +55,8 @@
     this.stairUpNum = 1;
     this.stairList = [];
     this.stairToList = []; // indicates which layer this stair leads to
-    this.secretBlocks = {};
+    this.secretBlocks = {}; // indicates secret doors
+    this.preDefinedTraps = []; // traps at indicated places
     this.mapType = mapType; // EARTH, ICE, FIRE, AIR, FOREST, BAT
   }
 
@@ -128,6 +129,12 @@
     this.lv = lv;
   }
 
+  var TrapData = function(trapClass, x, y) {
+    this.trapClass = trapClass;
+    this.x = x;
+    this.y = y;
+  }
+
   var FLOOR = '□';
   var WALL = '■';
   var DOOR = 'Ｄ';
@@ -136,6 +143,7 @@
   var HOLLOW = 'Ｈ';
   var UPSTAIR = '＜';
   var DOWNSTAIR = '＞';
+  var PRESS = 'Ｐ';
 
   // ----------map constants----------
   var DungeonTiles = {
@@ -165,6 +173,7 @@
     }
   }
   var warFogCenter = 15;
+  var pressFloor = 1654;
 
   var dungeonDepth = 9;
 
@@ -1310,36 +1319,36 @@
 
     $gameParty._items.push(new Soul_Bite());
     Soul_Obtained_Action.learnSkill(Skill_Bite);
-    // Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
-    // Soul_Obtained_Action.learnSkill(Skill_Barrier);
-    // Soul_Obtained_Action.learnSkill(Skill_IceBolt);
-    // Soul_Obtained_Action.learnSkill(Skill_IceBreath);
-    // Soul_Obtained_Action.learnSkill(Skill_Charge);
-    // Soul_Obtained_Action.learnSkill(Skill_IceBolder);
-    // Soul_Obtained_Action.learnSkill(Skill_Bash);
-    // Soul_Obtained_Action.learnSkill(Skill_Pierce);
+    Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
+    Soul_Obtained_Action.learnSkill(Skill_Barrier);
+    Soul_Obtained_Action.learnSkill(Skill_IceBolt);
+    Soul_Obtained_Action.learnSkill(Skill_IceBreath);
+    Soul_Obtained_Action.learnSkill(Skill_Charge);
+    Soul_Obtained_Action.learnSkill(Skill_IceBolder);
+    Soul_Obtained_Action.learnSkill(Skill_Bash);
+    Soul_Obtained_Action.learnSkill(Skill_Pierce);
 
     // modify actor status
-    // let player = $gameActors.actor(1);
-    // player._paramPlus[2] = 9;
-    // player._paramPlus[3] = 9;
-    // player._paramPlus[6] = 9;
-    // $gameParty.gainItem(new Lion_Shield(), 1);
-    // $gameParty.gainItem(new Bear_Skin(), 1);
-    // $gameParty.gainItem(new Bear_Claw(), 1);
-    // $gameParty.gainItem(new Cat_Gloves(), 1);
-    // $gameParty.gainItem(new Cat_Shoes(), 1);
-    // $gameParty.gainItem(new Potion_Heal(), 1);
-    // $gameParty.gainItem(new Potion_Heal(), 1);
-    // $gameParty.gainItem(new Ring_Protection(), 1);
-    // $gameParty.gainItem(new Ring_ColdResistance(), 1);
+    let player = $gameActors.actor(1);
+    player._paramPlus[2] = 9;
+    player._paramPlus[3] = 9;
+    player._paramPlus[6] = 9;
+    $gameParty.gainItem(new Lion_Shield(), 1);
+    $gameParty.gainItem(new Bear_Skin(), 1);
+    $gameParty.gainItem(new Bear_Claw(), 1);
+    $gameParty.gainItem(new Cat_Gloves(), 1);
+    $gameParty.gainItem(new Cat_Shoes(), 1);
+    $gameParty.gainItem(new Potion_Heal(), 1);
+    $gameParty.gainItem(new Potion_Heal(), 1);
+    $gameParty.gainItem(new Ring_Protection(), 1);
+    $gameParty.gainItem(new Ring_ColdResistance(), 1);
     $gameParty.gainItem(new Cheese(), 1);
     $gameParty.gainItem(new Cheese(), 1);
-    // for (let i = 0; i < 6; i++) {
-    //   player.levelUp();
-    // }
-    // player._hp = 120;
-    // player._mp = 80;
+    for (let i = 0; i < 6; i++) {
+      player.levelUp();
+    }
+    player._hp = 120;
+    player._mp = 80;
     // setTimeout(MapUtils.goDownLevels, 500, 7);
   }
 
@@ -1950,6 +1959,9 @@
           case WATER: case LAVA:
             mapData[i][j].base = refineMapTile(mapId, rawData, i, j
               , $gameVariables[0].currentDungeonTiles.waterCenter, rawData[i][j]);
+            break;
+          case PRESS:
+            mapData[i][j].base = pressFloor;
             break;
         }
       }
@@ -2836,6 +2848,31 @@
       for (let j = x - 1; j < x + 2; j++) {
         for (let k = y - 1; k < y + 2; k++) {
           mapPixel[j][k] = WATER;
+        }
+      }
+    }
+    // add for press floor test
+    if (mapId == 2) {
+      let mapTemplate = [
+        [FLOOR, FLOOR, FLOOR, FLOOR, FLOOR],
+        [FLOOR, WALL, FLOOR, WALL, FLOOR],
+        [FLOOR, FLOOR, FLOOR, FLOOR, FLOOR],
+        [FLOOR, WALL, FLOOR, PRESS, FLOOR],
+        [FLOOR, FLOOR, FLOOR, FLOOR, FLOOR]
+      ]
+      let xStart = getRandomIntRange(2, xBound - 5);
+      let yStart = getRandomIntRange(2, yBound - 5);
+      for (let i = xStart - 1; i < xStart + 4; i++) {
+        for (let j = yStart - 1; j < yStart + 4; j++) {
+          let x = i - xStart + 1, y = j - yStart + 1;
+          mapPixel[i][j] = mapTemplate[x][y];
+          if (x == 2 && y == 2) {
+            // press
+            $gameVariables[mapId].preDefinedTraps.push(new TrapData(Trap_GoHome, i, j));
+          } else if (x == 3 && y == 3) {
+            // go_home
+            $gameVariables[mapId].preDefinedTraps.push(new TrapData(Trap_PressFloor, i, j));
+          }
         }
       }
     }
@@ -4420,6 +4457,11 @@
   TrapUtils.trapTemplates = [];
 
   TrapUtils.generateTraps = function(mapId, floors) {
+    // generate pre-defined traps
+    for (let id in $gameVariables[mapId].preDefinedTraps) {
+      let trapData = $gameVariables[mapId].preDefinedTraps[id];
+      new trapData.trapClass(trapData.x, trapData.y);
+    }
     // generate upsatir/downstair
     for (let id in $gameVariables[mapId].stairList) {
       let stairData = $gameVariables[mapId].stairList[id];
@@ -4489,8 +4531,18 @@
     for (let id in mapEvts) {
       let mapEvt = mapEvts[id];
       if (mapEvt.type == 'TRAP') {
-        let target = MapUtils.getCharXy(mapEvt._x, mapEvt._y);
-        mapEvt.trap.lastTriggered = target;
+        if (mapEvt instanceof Trap_PressFloor) {
+          if (MapUtils.isBolderOnTile(mapEvt._x, mapEvt._y) && !mapEvt.trap.lastTriggered) {
+            mapEvt.trap.lastTriggered = true;
+            mapEvt.enable();
+          } else if (!MapUtils.isBolderOnTile(mapEvt._x, mapEvt._y) && mapEvt.trap.lastTriggered) {
+            mapEvt.trap.lastTriggered = false;
+            mapEvt.disable();
+          }
+        } else {
+          let target = MapUtils.getCharXy(mapEvt._x, mapEvt._y);
+          mapEvt.trap.lastTriggered = target;
+        }
       }
     }
   }
@@ -4772,15 +4824,69 @@
   Trap_GoHome.prototype.initStatus = function (event) {
     Game_Trap.prototype.initStatus.call(this, event);
     this.trap.trapClass = 'Trap_GoHome';
-    this.trap.imageData = new ImageData('!Door2', 0, 1, 8);
+    this.trap.imagePool = {
+      disabled: new ImageData('!Door1', 0, 0, 8),
+      enabled: new ImageData('!Door2', 0, 1, 8)
+    }
+    this.trap.imageData = this.trap.imagePool.disabled;
+    this.trap.isEnabled = false;
     this.trap.name = '傳送門';
     this.trap.isRevealed = true;
   }
 
   Trap_GoHome.prototype.triggered = function(target) {
-    if (target == $gamePlayer) {
+    if (target == $gamePlayer && this.trap.isEnabled) {
       MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.goHome);
     }
+  }
+
+  Trap_GoHome.prototype.enable = function() {
+    this.trap.isEnabled = true;
+    this.trap.imageData = this.trap.imagePool.enabled;
+  }
+
+  Trap_GoHome.prototype.disable = function() {
+    this.trap.isEnabled = false;
+    this.trap.imageData = this.trap.imagePool.disabled;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Trap_PressFloor
+  //
+  // class for test event: Howard go home
+
+  Trap_PressFloor = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Trap_PressFloor.prototype = Object.create(Game_Trap.prototype);
+  Trap_PressFloor.prototype.constructor = Trap_PressFloor;
+
+  Trap_PressFloor.prototype.initStatus = function (event) {
+    Game_Trap.prototype.initStatus.call(this, event);
+    this.trap.trapClass = 'Trap_PressFloor';
+    this.trap.imageData = new ImageData('!Door1', 0, 0, 8);
+    this.trap.relatedEvent = null;
+    this.trap.name = '壓力板';
+    this.trap.isRevealed = true;
+  }
+
+  Trap_PressFloor.prototype.triggered = function(target) {
+    // do nothing
+  }
+
+  Trap_PressFloor.prototype.setRelatedEvent = function(evt) {
+    this.trap.relatedEvent = evt;
+  }
+
+  Trap_PressFloor.prototype.enable = function() {
+    console.log('press floor enabled!');
+    this.trap.relatedEvent.enable();
+  }
+
+  Trap_PressFloor.prototype.disable = function() {
+    console.log('press floor disabled!');
+    this.trap.relatedEvent.disable();
   }
 
   //-----------------------------------------------------------------------------------
