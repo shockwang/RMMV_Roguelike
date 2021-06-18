@@ -441,6 +441,7 @@
       player: '你',
       hotkeyUndefined: '未定義的熱鍵.',
       spikeTrapTriggered: '{0}一腳踩上尖刺陷阱, 受到{1}點傷害!',
+      spikeTrapFloattedBy: '{0}漂浮經過尖刺陷阱, 並未受到傷害.',
       teleportTrapTriggered: '{0}一腳踩入了傳送陷阱.',
       seeTeleportAway: '{0}突然從你眼前消失了!',
       seeTeleportAppear: '{0}突然出現在你面前!',
@@ -892,8 +893,8 @@
   }
 
   CharUtils.spawnMob = function(mapId, mapBlocks, outOfSight, mobClassInput) {
-    let pool = CharUtils.getMobPools(mapId);
     while (true) {
+      let pool = CharUtils.getMobPools(mapId);
       let mobClass = (mobClassInput) ? mobClassInput : pool[getRandomInt(pool.length)];
       let locations = [];
       switch (mobClass.mobInitData.moveType) {
@@ -1204,7 +1205,7 @@
     $gameVariables[11].stairToList.splice(1, 1);
     $gameVariables[15].stairToList.pop();
     $gameVariables[15].stairDownNum = 0;
-    $gameVariables[15].preDefinedMobs.push(Selina);
+    $gameVariables[15].preDefinedMobs.push('Selina');
 
     // game system setup
     $dataSystem.terms.params.push("武器威力"); // this one should be param(10)
@@ -1375,7 +1376,7 @@
 
   MapUtils.dataToMap = function(dungeonName) {
     let str = MapUtils.loadFile('data/MapData.txt');
-    let all = str.split('\r\n');
+    let all = str.split('\n');
     let index = 0;
     for (; index < all.length; index++) {
       if (all[index].contains(dungeonName)) {
@@ -1942,7 +1943,6 @@
   }
 
   MapUtils.translateMap = function (rawData, mapId) {
-    $gameVariables[0].currentDungeonTiles = MapUtils.getMapTileSet($gameVariables[mapId].mapType);
     var mapData = new Array(rawData.length);
     for (var i = 0; i < mapData.length; i++) {
       mapData[i] = new Array(rawData[0].length);
@@ -2124,6 +2124,8 @@
       // wait until map is fully loaded
       var checkMapReady = function () {
         if (SceneManager.isCurrentSceneStarted()) {
+          // setup current dungeon tiles
+          $gameVariables[0].currentDungeonTiles = MapUtils.getMapTileSet($gameVariables[$gameMap.mapId()].mapType);
           // update mobs time at target layer
           // TODO: implement mobs recovery mechanism
 
@@ -3084,7 +3086,8 @@
   MapUtils.generateNewMapMobs = function (mapId, mapBlocks) {
     let totalBlocksLength = mapBlocks.floor.length + mapBlocks.water.length + mapBlocks.hollow.length;
     for (let id in $gameVariables[mapId].preDefinedMobs) {
-      CharUtils.spawnMob(mapId, mapBlocks, false, $gameVariables[mapId].preDefinedMobs[id]);
+      let mobClass = window[$gameVariables[mapId].preDefinedMobs[id]];
+      CharUtils.spawnMob(mapId, mapBlocks, false, mobClass);
     }
     let mobCounts = Math.floor(totalBlocksLength * mobSpawnPercentage);
     for (let i = 0; i < mobCounts; i++) {
@@ -4663,6 +4666,13 @@
   Trap_Spike.prototype.triggered = function(target) {
     let damage = dice(2, 6);
     let realTarget = BattleUtils.getRealTarget(target);
+    if (realTarget.moveType == 2) {
+      if (CharUtils.playerCanSeeChar(target)) {
+        LogUtils.addLog(String.format(Message.display('spikeTrapFloattedBy')
+          , LogUtils.getCharName(realTarget)));
+      }
+      return;
+    }
     CharUtils.decreaseHp(realTarget, damage);
     if (CharUtils.playerCanSeeChar(target)) {
       TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 11));
@@ -7744,6 +7754,33 @@
   }
   ItemUtils.recipes.push(Dart_Lv1_T2);
   ItemUtils.lootingTemplates[0].material.push(Dart_Lv1_T2);
+
+  //-----------------------------------------------------------------------------------
+  // Dart_Lv1_T3
+  //
+  // type: DART
+
+  Dart_Lv1_T3 = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dart_Lv1_T3.spawnLevel = 1;
+
+  Dart_Lv1_T3.itemName = '飛鏢Lv1';
+  Dart_Lv1_T3.itemDescription = '射向敵人造成傷害';
+  Dart_Lv1_T3.material = [{itemClass: Feather, amount: 1}, {itemClass: Bee_Sting, amount: 1}];
+
+  Dart_Lv1_T3.prototype = Object.create(ItemTemplate.prototype);
+  Dart_Lv1_T3.prototype.constructor = Dart_Lv1_T3;
+
+  Dart_Lv1_T3.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[13]);
+    this.damage = '1d8';
+    this.name = Dart_Lv1_T3.itemName;
+    this.description = Dart_Lv1_T3.itemDescription + '\n投擲傷害' + this.damage;
+    this.templateName = this.name;
+  }
+  ItemUtils.recipes.push(Dart_Lv1_T3);
+  ItemUtils.lootingTemplates[0].material.push(Dart_Lv1_T3);
 
   //-----------------------------------------------------------------------------------
   // Dart_Lv2_T1
@@ -13731,7 +13768,7 @@
       let identified = true;
       for (let id in this._tempActor._equips) {
         let item = this._tempActor._equips[id]._item;
-        if (item && !item.isIdentified) {
+        if (item && !ItemUtils.checkItemIdentified(item)) {
           identified = false;
           break;
         }
@@ -13859,7 +13896,7 @@
       var num = 0;
       for (var i in container) {
         if ((ItemUtils.getItemFullName(item) == ItemUtils.getItemFullName(container[i]))
-          && (item.isIdentified == container[i].isIdentified)) {
+          && (ItemUtils.checkItemIdentified(item) == ItemUtils.checkItemIdentified(container[i]))) {
           num++;
         }
       }
@@ -13993,7 +14030,7 @@
       var added = false;
       for (var j in this._data) {
         if ((ItemUtils.getItemFullName(this._data[j]) == ItemUtils.getItemFullName(objList[i]))
-          && (this._data[j].isIdentified == objList[i].isIdentified)) {
+          && (ItemUtils.checkItemIdentified(this._data[j]) == ItemUtils.checkItemIdentified(objList[i]))) {
           added = true;
           break;
         }
@@ -14980,7 +15017,7 @@
       }, 100, this.equips()[slotId]);
       return false;
     }
-    if (item && !item.isIdentified) {
+    if (item && !ItemUtils.checkItemIdentified(item)) {
       ItemUtils.identifyObject(item);
       let array = $gameParty.allItems();
       for (let id in array) {
