@@ -10,9 +10,11 @@ window.onload = function() {
         if (SceneManager.isCurrentSceneStarted()) {
             // once initialized before every game
             MapUtils.initMsgWindow();
+            // game system setup
+            $dataSystem.terms.params.push("武器威力"); // this one should be param(10)
             return;
         }
-        setTimeout(f, 50);
+        setTimeout(f, 1);
     }
     f();
 };

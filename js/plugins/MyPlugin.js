@@ -130,11 +130,11 @@
     this.lv = lv;
   }
 
-  var TrapData = function(trapClass, x, y, relatedEventClass) {
-    this.trapClass = trapClass;
+  var TrapData = function(trapClassName, x, y, relatedEventClassName) {
+    this.trapClassName = trapClassName;
     this.x = x;
     this.y = y;
-    this.relatedEventClass = relatedEventClass;
+    this.relatedEventClassName = relatedEventClassName;
   }
 
   var FLOOR = '□';
@@ -583,7 +583,7 @@
       poisonEffect: new StatusEffect(),
       speedUpEffect: new StatusEffect(),
       invisibleEffect: new StatusEffect(),
-      seeinvisibleEffect: new StatusEffect(),
+      seeInvisibleEffect: new StatusEffect(),
       afraidEffect: new StatusEffect(),
       bleedingEffect: new StatusEffect(),
       faintEffect: new StatusEffect(),
@@ -679,7 +679,7 @@
                 $gamePlayer.setOpacity(255);
               }
               break;
-            case 'seeinvisibleEffect':
+            case 'seeInvisibleEffect':
               LogUtils.addLog(String.format(Message.display('seeInvisibleEnd')
                 , LogUtils.getCharName(target)));
               break;
@@ -761,7 +761,7 @@
 
     if (src.status.blindEffect.turns > 0) {
       return false;
-    } else if (target.status.invisibleEffect.turns > 0 && src.status.seeinvisibleEffect.turns == 0) {
+    } else if (target.status.invisibleEffect.turns > 0 && src.status.seeInvisibleEffect.turns == 0) {
       return false;
     } else if (srcEvt == $gamePlayer 
       && CharUtils.isCharInWater(targetEvt)) {
@@ -943,16 +943,16 @@
         let toCheck = pool[id];
         let moveType = toCheck.mobInitData.moveType;
         switch (tileType) {
-          case FLOOR:
-            if (moveType != 1) {
-              candidates.push(toCheck);
-            }
-            break;
           case WATER:
             candidates.push(toCheck);
             break;
           case HOLLOW: case LAVA:
             if (moveType == 2) {
+              candidates.push(toCheck);
+            }
+            break;
+          default:
+            if (moveType != 1) {
               candidates.push(toCheck);
             }
             break;
@@ -1207,9 +1207,6 @@
     $gameVariables[15].stairDownNum = 0;
     $gameVariables[15].preDefinedMobs.push('Selina');
 
-    // game system setup
-    $dataSystem.terms.params.push("武器威力"); // this one should be param(10)
-
     // initialize $gameVariables[0] for multiple usage
     $gameVariables[0] = {};
     $gameVariables[0].transferInfo = null;
@@ -1266,6 +1263,8 @@
       pressFloorDiscovered: false,
       selinaEncountered: false
     }
+    // define last savefileId
+    $gameVariables[0].lastSavefileId = 0;
 
     // define data images mapping
     $gameVariables[0].itemImageData = generateImageData();
@@ -1331,13 +1330,18 @@
     $gameParty._items.push(new Soul_Bite());
     Soul_Obtained_Action.learnSkill(Skill_Bite);
     // Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
-    // Soul_Obtained_Action.learnSkill(Skill_Barrier);
     // Soul_Obtained_Action.learnSkill(Skill_IceBolt);
     // Soul_Obtained_Action.learnSkill(Skill_IceBreath);
     // Soul_Obtained_Action.learnSkill(Skill_Charge);
     // Soul_Obtained_Action.learnSkill(Skill_IceBolder);
     // Soul_Obtained_Action.learnSkill(Skill_Bash);
     // Soul_Obtained_Action.learnSkill(Skill_Pierce);
+    // Soul_Obtained_Action.learnSkill(Skill_Barrier);
+    // Soul_Obtained_Action.learnSkill(Skill_Shield);
+    // Soul_Obtained_Action.learnSkill(Skill_Clever);
+    // Soul_Obtained_Action.learnSkill(Skill_Scud);
+    // Soul_Obtained_Action.learnSkill(Skill_Roar);
+    // Soul_Obtained_Action.learnSkill(Skill_Tough);
 
     // modify actor status
     // let player = $gameActors.actor(1);
@@ -1943,6 +1947,7 @@
   }
 
   MapUtils.translateMap = function (rawData, mapId) {
+    $gameVariables[0].currentDungeonTiles = MapUtils.getMapTileSet($gameVariables[mapId].mapType);
     var mapData = new Array(rawData.length);
     for (var i = 0; i < mapData.length; i++) {
       mapData[i] = new Array(rawData[0].length);
@@ -2883,10 +2888,10 @@
           mapPixel[i][j] = mapTemplate[x][y];
           if (x == 2 && y == 2) {
             // press
-            $gameVariables[mapId].preDefinedTraps.push(new TrapData(Trap_GoHome, i, j));
+            $gameVariables[mapId].preDefinedTraps.push(new TrapData('Trap_GoHome', i, j));
           } else if (x == 3 && y == 3) {
             // go_home
-            $gameVariables[mapId].preDefinedTraps.push(new TrapData(Trap_PressFloor, i, j, Trap_GoHome));
+            $gameVariables[mapId].preDefinedTraps.push(new TrapData('Trap_PressFloor', i, j, 'Trap_GoHome'));
           }
         }
       }
@@ -3657,6 +3662,15 @@
       return new Game_CommonEvent(commonEvent.id);
     });
     this.refreshTileEvents();
+  };
+
+  // modify those functions because somehow it can crash when $dataMap is null (don't know when)
+  Game_Map.prototype.isLoopHorizontal = function() {
+    return false;
+  };
+
+  Game_Map.prototype.isLoopVertical = function() {
+    return false;
   };
 
   function cloneObject(obj) {
@@ -4479,9 +4493,10 @@
     // generate pre-defined traps
     for (let id in $gameVariables[mapId].preDefinedTraps) {
       let trapData = $gameVariables[mapId].preDefinedTraps[id];
-      let trap = new trapData.trapClass(trapData.x, trapData.y);
+      let trapClass = window[trapData.trapClassName];
+      let trap = new trapClass(trapData.x, trapData.y);
       if (trap instanceof Trap_PressFloor) {
-        trap.trap.relatedEventClass = trapData.relatedEventClass;
+        trap.trap.relatedEventClassName = trapData.relatedEventClassName;
       }
     }
     // generate upsatir/downstair
@@ -4884,7 +4899,7 @@
     Game_Trap.prototype.initStatus.call(this, event);
     this.trap.trapClass = 'Trap_PressFloor';
     this.trap.imageData = new ImageData('!Door1', 0, 0, 8);
-    this.trap.relatedEventClass = null;
+    this.trap.relatedEventClassName = null;
     this.trap.relatedEvent = null;
     this.trap.name = '壓力板';
     this.trap.isRevealed = true;
@@ -4901,9 +4916,9 @@
     AudioManager.playSe({name: 'Switch1', pan: 0, pitch: 100, volume: 100});
     LogUtils.addLog(Message.display('pressFloorTriggered'));
     if (!this.trap.relatedEvent) {
-      let eventClass = this.trap.relatedEventClass;
+      let eventClassName = this.trap.relatedEventClassName;
       this.trap.relatedEvent = $gameMap.events().filter(function(evt) {
-        return evt instanceof eventClass;
+        return evt instanceof window[eventClassName];
       })[0];
     }
     this.trap.relatedEvent.enable();
@@ -5534,7 +5549,7 @@
 
   TimeUtils.playAnime = function() {
     let func = TimeUtils.playAnime, waiting = 1;
-    if (!$gameVariables[0].projectileMoving) {
+    if (!$gameVariables[0].projectileMoving && SceneManager.isCurrentSceneStarted()) {
       if (TimeUtils.animeIndicator < TimeUtils.animeQueue.length) {
         let anime = TimeUtils.animeQueue[TimeUtils.animeIndicator];
         switch (anime.type) {
@@ -6025,14 +6040,12 @@
   }
 
   BattleUtils.playerDied = function (msg) {
-    // TODO: implement statistics data/log
     $gameMessage.add(msg);
-    LogUtils.addLog(msg);
     var waitFunction = function () {
       if ($gameMessage.isBusy()) {
         setTimeout(waitFunction, 100);
       } else {
-        SceneManager.goto(Scene_Gameover);
+        SceneManager.push(Scene_Statistics);
       }
     }
     waitFunction();
@@ -9313,8 +9326,8 @@
 
   Potion_SeeInvisible.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
-    realUser.status.seeinvisibleEffect.turns = 40;
-    TimeUtils.eventScheduler.addStatusEffect(user, 'seeinvisibleEffect');
+    realUser.status.seeInvisibleEffect.turns = 40;
+    TimeUtils.eventScheduler.addStatusEffect(user, 'seeInvisibleEffect');
     if (CharUtils.playerCanSeeChar(user)) {
       AudioManager.playSe({name: "Ice4", pan: 0, pitch: 100, volume: 100});
       TimeUtils.animeQueue.push(new AnimeObject(user, 'POP_UP', '偵測隱形'));
@@ -10988,13 +11001,7 @@
     let index = this.lv - 1;
     let buffAmount = Math.round(10 + 5 * index + realSrc.param(4) * 0.1);
     realSrc._buffs[4] += buffAmount;
-    let newEffect = {
-      skill: this,
-      effectCount: prop.effect[index].turns,
-      effectEnd: function() {
-        realSrc._buffs[4] -= buffAmount;
-      }
-    };
+    let newEffect = new SkillEffect_Clever(realSrc, this, prop.effect[index].turns, buffAmount);
     realSrc.status.skillEffect.push(newEffect);
     TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
     return true;
@@ -11056,13 +11063,7 @@
     let index = this.lv - 1;
     let buffAmount = Math.round(10 + 5 * index + realSrc.param(6) * prop.effect[index].buffPercentage);
     realSrc._buffs[6] += buffAmount;
-    let newEffect = {
-      skill: this,
-      effectCount: prop.effect[index].turns,
-      effectEnd: function() {
-        realSrc._buffs[6] -= buffAmount;
-      }
-    };
+    let newEffect = new SkillEffect_Scud(realSrc, this, prop.effect[index].turns, buffAmount);
     realSrc.status.skillEffect.push(newEffect);
     TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
     return true;
@@ -11123,14 +11124,7 @@
     }
     let index = this.lv - 1;
     let buffAmount = Math.round(5 + 2 * index + realSrc.param(4) * prop.effect[index].buffPercentage);
-    let newEffect = {
-      skill: this,
-      effectCount: prop.effect[index].turns,
-      amount: buffAmount,
-      effectEnd: function() {
-        // do nothing
-      }
-    };
+    let newEffect = new SkillEffect_Shield(realSrc, this, prop.effect[index].turns, buffAmount);
     realSrc.status.skillEffect.push(newEffect);
     TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
     return true;
@@ -11191,14 +11185,7 @@
     }
     let index = this.lv - 1;
     let buffAmount = Math.round(5 + 2 * index + realSrc.param(4) * prop.effect[index].buffPercentage);
-    let newEffect = {
-      skill: this,
-      effectCount: prop.effect[index].turns,
-      amount: buffAmount,
-      effectEnd: function() {
-        // do nothing
-      }
-    };
+    let newEffect = new SkillEffect_Barrier(realSrc, this, prop.effect[index].turns, buffAmount);
     realSrc.status.skillEffect.push(newEffect);
     TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
     return true;
@@ -11261,13 +11248,7 @@
     let index = this.lv - 1;
     let buffAmount = Math.round(5 + 5 * index + realSrc.param(2) * 0.1);
     realSrc._buffs[2] += buffAmount;
-    let newEffect = {
-      skill: this,
-      effectCount: prop.effect[index].turns,
-      effectEnd: function() {
-        realSrc._buffs[2] -= buffAmount;
-      }
-    };
+    let newEffect = new SkillEffect_Roar(realSrc, this, prop.effect[index].turns, buffAmount);
     realSrc.status.skillEffect.push(newEffect);
     TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
     return true;
@@ -11330,13 +11311,7 @@
     let index = this.lv - 1;
     let buffAmount = Math.round(5 + 5 * index + realSrc.param(3) * 0.1);
     realSrc._buffs[3] += buffAmount;
-    let newEffect = {
-      skill: this,
-      effectCount: prop.effect[index].turns,
-      effectEnd: function() {
-        realSrc._buffs[3] -= buffAmount;
-      }
-    };
+    let newEffect = new SkillEffect_Tough(realSrc, this, prop.effect[index].turns, buffAmount);
     realSrc.status.skillEffect.push(newEffect);
     TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
     return true;
@@ -11688,6 +11663,141 @@
     // deal with tile/trap change
     bolder.checkTerrainEffect();
     return true;
+  }
+
+  //-----------------------------------------------------------------------------
+  // Game_SkillEffect
+  //
+  // The game object class for skill effect
+
+  Game_SkillEffect = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Game_SkillEffect.prototype = Object.create(Object.prototype);
+  Game_SkillEffect.prototype.constructor = Game_SkillEffect;
+
+  Game_SkillEffect.prototype.initialize = function(realSrc, skill, effectCount, amount) {
+    this.realSrc = realSrc;
+    this.skill = skill;
+    this.effectCount = effectCount;
+    this.amount = amount;
+  }
+
+  Game_SkillEffect.prototype.effectEnd = function() {
+    // defined by each skill effect
+  }
+
+  //-----------------------------------------------------------------------------
+  // SkillEffect_Barrier
+  //
+  // The game object class for skill: Barrier
+
+  SkillEffect_Barrier = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  SkillEffect_Barrier.prototype = Object.create(Game_SkillEffect.prototype);
+  SkillEffect_Barrier.prototype.constructor = SkillEffect_Barrier;
+
+  SkillEffect_Barrier.prototype.initialize = function(realSrc, skill, effectCount, amount) {
+    Game_SkillEffect.prototype.initialize.call(this, realSrc, skill, effectCount, amount);
+  }
+
+  //-----------------------------------------------------------------------------
+  // SkillEffect_Shield
+  //
+  // The game object class for skill: Shield
+
+  SkillEffect_Shield = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  SkillEffect_Shield.prototype = Object.create(Game_SkillEffect.prototype);
+  SkillEffect_Shield.prototype.constructor = SkillEffect_Shield;
+
+  SkillEffect_Shield.prototype.initialize = function(realSrc, skill, effectCount, amount) {
+    Game_SkillEffect.prototype.initialize.call(this, realSrc, skill, effectCount, amount);
+  }
+
+  //-----------------------------------------------------------------------------
+  // SkillEffect_Clever
+  //
+  // The game object class for skill: Clever
+
+  SkillEffect_Clever = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  SkillEffect_Clever.prototype = Object.create(Game_SkillEffect.prototype);
+  SkillEffect_Clever.prototype.constructor = SkillEffect_Clever;
+
+  SkillEffect_Clever.prototype.initialize = function(realSrc, skill, effectCount, amount) {
+    Game_SkillEffect.prototype.initialize.call(this, realSrc, skill, effectCount, amount);
+  }
+
+  SkillEffect_Clever.prototype.effectEnd = function() {
+    this.realSrc._buffs[4] -= this.amount;
+  }
+
+  //-----------------------------------------------------------------------------
+  // SkillEffect_Scud
+  //
+  // The game object class for skill: Scud
+
+  SkillEffect_Scud = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  SkillEffect_Scud.prototype = Object.create(Game_SkillEffect.prototype);
+  SkillEffect_Scud.prototype.constructor = SkillEffect_Scud;
+
+  SkillEffect_Scud.prototype.initialize = function(realSrc, skill, effectCount, amount) {
+    Game_SkillEffect.prototype.initialize.call(this, realSrc, skill, effectCount, amount);
+  }
+
+  SkillEffect_Scud.prototype.effectEnd = function() {
+    this.realSrc._buffs[6] -= this.amount;
+  }
+
+  //-----------------------------------------------------------------------------
+  // SkillEffect_Roar
+  //
+  // The game object class for skill: Roar
+
+  SkillEffect_Roar = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  SkillEffect_Roar.prototype = Object.create(Game_SkillEffect.prototype);
+  SkillEffect_Roar.prototype.constructor = SkillEffect_Roar;
+
+  SkillEffect_Roar.prototype.initialize = function(realSrc, skill, effectCount, amount) {
+    Game_SkillEffect.prototype.initialize.call(this, realSrc, skill, effectCount, amount);
+  }
+
+  SkillEffect_Roar.prototype.effectEnd = function() {
+    this.realSrc._buffs[2] -= this.amount;
+  }
+
+  //-----------------------------------------------------------------------------
+  // SkillEffect_Tough
+  //
+  // The game object class for skill: Tough
+
+  SkillEffect_Tough = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  SkillEffect_Tough.prototype = Object.create(Game_SkillEffect.prototype);
+  SkillEffect_Tough.prototype.constructor = SkillEffect_Tough;
+
+  SkillEffect_Tough.prototype.initialize = function(realSrc, skill, effectCount, amount) {
+    Game_SkillEffect.prototype.initialize.call(this, realSrc, skill, effectCount, amount);
+  }
+
+  SkillEffect_Tough.prototype.effectEnd = function() {
+    this.realSrc._buffs[3] -= this.amount;
   }
 
   //-----------------------------------------------------------------------------
@@ -15142,5 +15252,116 @@
       this.exit();
     }
     setTimeout(showObjsOnMap, 100);
+  };
+
+  //-----------------------------------------------------------------------------
+  // Scene_Base
+  // 
+  // Check whether the game should be triggering a gameover.
+
+  // modify this so we can implement behavior after game over
+  Scene_Base.prototype.checkGameover = function() {
+    if ($gameParty.isAllDead()) {
+      SceneManager.push(Scene_Statistics);
+    }
+  };
+
+  //-----------------------------------------------------------------------------
+  // Scene_Statistics
+  //
+  // appear when player died, show statistics data
+  Scene_Statistics = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Scene_Statistics.prototype = Object.create(Scene_MenuBase.prototype);
+  Scene_Statistics.prototype.constructor = Scene_Statistics;
+
+  Scene_Statistics.prototype.initialize = function () {
+    Scene_MenuBase.prototype.initialize.call(this);
+  }
+
+  Scene_Statistics.prototype.create = function() {
+    Scene_MenuBase.prototype.create.call(this);
+    this.createLogWindow();
+  };
+
+  Scene_Statistics.prototype.stop = function() {
+      Scene_MenuBase.prototype.stop.call(this);
+      this._commandWindow.close();
+  };
+
+  Scene_Statistics.prototype.createBackground = function() {
+    Scene_MenuBase.prototype.createBackground.call(this);
+    this.setBackgroundOpacity(128);
+  };
+
+  Scene_Statistics.prototype.createLogWindow = function() {
+    this._commandWindow = new Window_Statistics();
+    let result = '';
+    for (var id in $gameVariables[0].logList) {
+      result += $gameVariables[0].logList[id] + '\n';
+    }
+    this._commandWindow.contents.clear();
+    this._commandWindow.drawTextEx(result, 0, 0);
+    this._commandWindow.setHandler('ok', this.gameOver.bind(this));
+    this._commandWindow.setHandler('cancel', this.gameOver.bind(this));
+    this._commandWindow.activate();
+    this.addWindow(this._commandWindow);
+  }
+
+  Scene_Statistics.prototype.gameOver = function() {
+    // if ($gameVariables[0].lastSavefileId != 0) {
+    //   StorageManager.remove($gameVariables[0].lastSavefileId);
+    // }
+    SceneManager.goto(Scene_Gameover);
+  }
+
+  //-----------------------------------------------------------------------------
+  // Window_Statistics
+  //
+  // window to show statistics info
+  function Window_Statistics() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_Statistics.prototype = Object.create(Window_Selectable.prototype);
+  Window_Statistics.prototype.constructor = Window_Statistics;
+
+  Window_Statistics.prototype.initialize = function() {
+    Window_Selectable.prototype.initialize(0, 0, Graphics.boxWidth, Graphics.boxHeight);
+  }
+
+  //-----------------------------------------------------------------------------
+  // Scene_Save
+  //
+  // The scene class of the save screen.
+
+  // modify this to recognize player's last savefileId
+  Scene_Save.prototype.onSavefileOk = function() {
+    Scene_File.prototype.onSavefileOk.call(this);
+    $gameSystem.onBeforeSave();
+    if (DataManager.saveGame(this.savefileId())) {
+      $gameVariables[0].lastSavefileId = this.savefileId();
+      this.onSaveSuccess();
+    } else {
+      this.onSaveFailure();
+    }
+  }
+
+  //-----------------------------------------------------------------------------
+  // Scene_Load
+  //
+  // The scene class of the load screen.
+
+  // modify this to recognize player's last savefileId
+  Scene_Load.prototype.onSavefileOk = function() {
+    Scene_File.prototype.onSavefileOk.call(this);
+    if (DataManager.loadGame(this.savefileId())) {
+      $gameVariables[0].lastSavefileId = this.savefileId();
+      this.onLoadSuccess();
+    } else {
+      this.onLoadFailure();
+    }
   };
 })();
