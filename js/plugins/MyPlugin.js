@@ -369,6 +369,7 @@
       quaffPotionMana: '{0}恢復了{1}點魔力!',
       readScroll: '你閱讀了{0}.',
       scrollIdentifyRead: '你將{0}鑑定為{1}.',
+      identifyPrompt: '請選擇要鑑定的物品',
       scrollEnchantArmorRead: '你身上的{0}發出一陣銀光!',
       scrollEnchantArmorReadDanger: '你身上的{0}發出刺眼的紅光, 並且劇烈震動起來!',
       scrollEnchantArmorReadEvaporate: '你身上的{0}劇烈震動, 然後汽化了!',
@@ -440,8 +441,8 @@
       self: '自己',
       player: '你',
       hotkeyUndefined: '未定義的熱鍵.',
+      trapFloated: '{0}漂浮經過{1}, 並未受到傷害.',
       spikeTrapTriggered: '{0}一腳踩上尖刺陷阱, 受到{1}點傷害!',
-      spikeTrapFloattedBy: '{0}漂浮經過尖刺陷阱, 並未受到傷害.',
       teleportTrapTriggered: '{0}一腳踩入了傳送陷阱.',
       seeTeleportAway: '{0}突然從你眼前消失了!',
       seeTeleportAppear: '{0}突然出現在你面前!',
@@ -4683,8 +4684,8 @@
     let realTarget = BattleUtils.getRealTarget(target);
     if (realTarget.moveType == 2) {
       if (CharUtils.playerCanSeeChar(target)) {
-        LogUtils.addLog(String.format(Message.display('spikeTrapFloattedBy')
-          , LogUtils.getCharName(realTarget)));
+        LogUtils.addLog(String.format(Message.display('trapFloated')
+          , LogUtils.getCharName(realTarget), this.trap.name));
       }
       return;
     }
@@ -4749,13 +4750,18 @@
   Trap_GroundHole.prototype.triggered = function(target) {
     let damage = dice(1, 5);
     let realTarget = BattleUtils.getRealTarget(target);
-    CharUtils.decreaseHp(realTarget, damage);
-    realTarget.status.groundHoleTrapped = true;
-    if (CharUtils.playerCanSeeChar(target)) {
-      AudioManager.playSe({name: 'Damage3', pan: 0, pitch: 100, volume: 100});
-      TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
-      LogUtils.addLog(String.format(Message.display('groundHoleTrapTriggered')
-        , LogUtils.getCharName(realTarget), damage));
+    if (realTarget.moveType != 2) {
+      CharUtils.decreaseHp(realTarget, damage);
+      realTarget.status.groundHoleTrapped = true;
+      if (CharUtils.playerCanSeeChar(target)) {
+        AudioManager.playSe({name: 'Damage3', pan: 0, pitch: 100, volume: 100});
+        TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
+        LogUtils.addLog(String.format(Message.display('groundHoleTrapTriggered')
+          , LogUtils.getCharName(realTarget), damage));
+      }
+    } else if (CharUtils.playerCanSeeChar(target)) {
+      LogUtils.addLog(String.format(Message.display('trapFloated')
+      , LogUtils.getCharName(realTarget), this.trap.name));
     }
   }
 
@@ -9457,17 +9463,14 @@
       });
       let msg;
       if (items.length > 0) {
-        let toIdentify = items[getRandomInt(items.length)];
-        let unknownName = ItemUtils.getItemDisplayName(toIdentify);
-        ItemUtils.identifyObject(toIdentify);
+        SceneManager.push(Scene_Identify);
         if (identifyObject) {
           ItemUtils.identifyObject(this);
         }
-        msg = String.format(Message.display('scrollIdentifyRead'), unknownName, toIdentify.name);
       } else {
         msg = Message.display('scrollReadNoEffect');
+        MapUtils.addBothLog(msg);
       }
-      MapUtils.addBothLog(msg);
     }
   }
 
@@ -14157,7 +14160,7 @@
   //-----------------------------------------------------------------------------------
   // Window_FoodList
   //
-  // class for items on the map, inherit from Window_ItemList
+  // window for items on the map, inherit from Window_ItemList
   function Window_FoodList() {
     this.initialize.apply(this, arguments);
   }
@@ -14315,7 +14318,7 @@
   //-----------------------------------------------------------------------------------
   // Window_PotionList
   //
-  // class for potions, inherit from Window_ItemList
+  // window for potions, inherit from Window_ItemList
   function Window_PotionList() {
     this.initialize.apply(this, arguments);
   }
@@ -14402,7 +14405,8 @@
   //-----------------------------------------------------------------------------------
   // Window_ScrollList
   //
-  // class for scrolls, inherit from Window_ItemList
+  // window for scrolls, inherit from Window_ItemList
+
   function Window_ScrollList() {
     this.initialize.apply(this, arguments);
   }
@@ -14432,6 +14436,7 @@
   // Scene_ReadScroll
   //
   // handle the action when reading a scroll
+
   Scene_ReadScroll = function () {
     this.initialize.apply(this, arguments);
   }
@@ -14483,6 +14488,111 @@
       }
     }
     setTimeout(func, 100, this.item());
+    this._itemWindow.refresh();
+    this._itemWindow.activate();
+  };
+
+  //-----------------------------------------------------------------------------
+  // Window_IdentifyHelp
+  //
+  // The window for showing identify prompt
+
+  function Window_IdentifyHelp() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_IdentifyHelp.prototype = Object.create(Window_Help.prototype);
+  Window_IdentifyHelp.prototype.constructor = Window_IdentifyHelp;
+
+  Window_IdentifyHelp.prototype.setItem = function(item) {
+    this.setText(Message.display('identifyPrompt'));
+  };
+
+  //-----------------------------------------------------------------------------------
+  // Window_IdentifyList
+  //
+  // window for unidentified objects, inherit from Window_ItemList
+  function Window_IdentifyList() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_IdentifyList.prototype = Object.create(Window_ItemList.prototype);
+  Window_IdentifyList.prototype.constructor = Window_IdentifyList;
+
+  Window_IdentifyList.prototype.initialize = function (x, y, width, height) {
+    Window_ItemList.prototype.initialize.call(this, x, y, width, height);
+  };
+
+  Window_IdentifyList.prototype.includes = function (item) {
+    try {
+      return item && !ItemUtils.checkItemIdentified(item);
+    } catch (e) {
+      // do nothing
+    }
+    return false;
+  }
+
+  Window_IdentifyList.prototype.isEnabled = function(item) {
+    return item;
+  };
+
+  //-----------------------------------------------------------------------------------
+  // Scene_Identify
+  //
+  // handle the action when reading Scroll_Identify
+  Scene_Identify = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Scene_Identify.prototype = Object.create(Scene_Item.prototype);
+  Scene_Identify.prototype.constructor = Scene_Identify;
+
+  Scene_Identify.prototype.initialize = function () {
+    Scene_Item.prototype.initialize.call(this);
+  };
+
+  Scene_Identify.prototype.create = function() {
+    Scene_ItemBase.prototype.create.call(this);
+    this.createHelpWindow();
+    this.createItemWindow();
+    this.createActorWindow();
+  };
+
+  Scene_Identify.prototype.createHelpWindow = function() {
+    this._helpWindow = new Window_IdentifyHelp();
+    this.addWindow(this._helpWindow);
+  }
+
+  Scene_Identify.prototype.createItemWindow = function () {
+    var wy = this._helpWindow.y + this._helpWindow.height;
+    var wh = Graphics.boxHeight - wy;
+    this._itemWindow = new Window_IdentifyList(0, wy, Graphics.boxWidth, wh);
+    this._itemWindow.setHelpWindow(this._helpWindow);
+    this._itemWindow.setHandler('ok', this.onItemOk.bind(this));
+    this._itemWindow.setHandler('cancel', this.popScene.bind(this));
+    this.addWindow(this._itemWindow);
+    this.activateItemWindow();
+    this._itemWindow.selectLast();
+  };
+
+  Scene_Identify.prototype.onItemOk = function () {
+    if (this.item()) {
+      this.popScene();
+      var func = function (item) {
+        let unknownName = ItemUtils.getItemDisplayName(item);
+        ItemUtils.identifyObject(item);
+        MapUtils.addBothLog(String.format(Message.display('scrollIdentifyRead'), unknownName, item.name));
+        var func2 = function() {
+          if (!$gameVariables[0].messageFlag) {
+            TimeUtils.afterPlayerMoved();
+            return;
+          }
+          setTimeout(func2, 10);
+        }
+        func2();
+      }
+      setTimeout(func, 100, this.item());
+    }
     this._itemWindow.refresh();
     this._itemWindow.activate();
   };
