@@ -470,6 +470,16 @@
       nutritionDownToWeak: '你餓到身體開始虛弱了...',
       nutritionDownToFaint: '你餓到意識不清, 再不吃點東西的話就死定了!',
       dieFromStarve: '{0}餓死了...',
+      carryDownToNormal: '你的速度不再因為重量而受限了.',
+      carryUpToBurdened: '你的動作因為身上的重量稍微變慢.',
+      carryDownToBurdened: '你的動作僅僅因為重量變慢了一點.',
+      carryUpToStressed: '你的動作因為身上的重量而大幅變慢.',
+      carryDownToStressed: '你身上的重量稍微輕了一點, 然而動作仍然十分緩慢.',
+      carryUpToStrained: '你因身上的重壓而顫抖著, 移動一步都感覺艱辛!',
+      carryDownToStrained: '你稍微可以移動身體了, 但是移動仍然十分艱辛.',
+      carryUpToOverloaded: '你被徹底壓垮, 一步也動不了了!',
+      damageFromCarryTooMuch: '你的筋骨因為重壓而滋嘎作響, 受到{0}點傷害.',
+      damageFallFromStair: '你從樓梯上摔下來, 受到{0}點傷害.',
       craftSceneHelpMessage: '你要進行什麼工作?',
       craftItemDone: '你製造了{0}.',
       notDirection: '這不是一個方向.',
@@ -815,6 +825,10 @@
 
   CharUtils.regenerate = function(target) {
     let realTarget = BattleUtils.getRealTarget(target);
+    if (realTarget.carryStatus > 2) {
+      // carry too much, not gonna regenerate
+      return;
+    }
     // regenerate HP
     var regenValue = Math.round(1 + realTarget.param(3) / 3);
     regenValue = getRandomIntRange(1, regenValue);
@@ -845,6 +859,18 @@
         tpRecover = Math.round(tpRecover / 2);
       }
     }
+    switch (realTarget.carryStatus) {
+      case 1:
+        tpRecover -= 1;
+        break;
+      case 2:
+        tpRecover -= 2;
+        break;
+      case 3: case 4:
+        tpRecover -= 3;
+        break;
+    }
+    tpRecover = (tpRecover < 0) ? 0: tpRecover;
     realTarget.gainTp(tpRecover);
   }
 
@@ -1005,6 +1031,14 @@
     let realTarget = BattleUtils.getRealTarget(target);
     let isPlayer = (realTarget == $gameActors.actor(1)) ? true : false;
     realTarget.nutrition--;
+    switch (realTarget.carryStatus) {
+      case 2:
+        realTarget.nutrition -= 0.5;
+        break;
+      case 3: case 4:
+        realTarget.nutrition -= 1;
+        break;
+    }
     if (realTarget.nutrition >= $gameVariables[0].satiety.full) {
       if (isPlayer) {
         switch (realTarget.status.bellyStatus) {
@@ -1165,6 +1199,101 @@
     return exp;
   }
 
+  CharUtils.calcCapacity = function(realTarget) {
+    return 10 * (realTarget.param(2) + realTarget.param(3)) + 50;
+  }
+
+  CharUtils.getPlayerCarryWeight = function() {
+    let inventory = $gameParty.allItems();
+    let result = 0;
+    for (let id in inventory) {
+      result += inventory[id].weight;
+    }
+    for (let id in $gameActors.actor(1)._equips) {
+      let item = $gameActors.actor(1)._equips[id]._item;
+      if (item) {
+        result += item.weight;
+      }
+    }
+    return result;
+  }
+
+  CharUtils.calcPlayerCarryStatus = function() {
+    let capacity = CharUtils.calcCapacity($gameActors.actor(1));
+    let weight = CharUtils.getPlayerCarryWeight();
+    if (weight <= capacity) { // normal
+      switch ($gameActors.actor(1).carryStatus) {
+        case 1: case 2: case 3: case 4:
+          LogUtils.addLog(Message.display('carryDownToNormal'));
+          break;
+      }
+      $gameActors.actor(1).carryStatus = 0;
+    } else if (capacity < weight && weight <= capacity * 1.5) { // burdened
+      switch ($gameActors.actor(1).carryStatus) {
+        case 0:
+          LogUtils.addLog(Message.display('carryUpToBurdened'));
+          break;
+        case 2: case 3: case 4:
+          LogUtils.addLog(Message.display('carryDownToBurdened'));
+          break;
+      }
+      $gameActors.actor(1).carryStatus = 1;
+    } else if (capacity * 1.5 < weight && weight <= capacity * 2) { // strained
+      switch ($gameActors.actor(1).carryStatus) {
+        case 0: case 1:
+          LogUtils.addLog(Message.display('carryUpToStressed'));
+          break;
+        case 3: case 4:
+          LogUtils.addLog(Message.display('carryDownToStressed'));
+          break;
+      }
+      $gameActors.actor(1).carryStatus = 2;
+    } else if (capacity * 2 < weight && weight <= capacity * 3) { // overloaded
+      switch ($gameActors.actor(1).carryStatus) {
+        case 0: case 1: case 2:
+          LogUtils.addLog(Message.display('carryUpToStrained'));
+          break;
+        case 4:
+          LogUtils.addLog(Message.display('carryDownToStrained'));
+          break;
+      }
+      $gameActors.actor(1).carryStatus = 3;
+    } else {
+      switch ($gameActors.actor(1).carryStatus) {
+        case 0: case 1: case 2: case 3:
+          LogUtils.addLog(Message.display('carryUpToOverloaded'));
+          break;
+      }
+      $gameActors.actor(1).carryStatus = 4;
+    }
+    // check carryStatus effect
+    let damage;
+    switch ($gameActors.actor(1).carryStatus) {
+      case 2:
+        if (getRandomInt(10) < 2) {
+          damage = dice(1, 5);
+        }
+        break;
+      case 3:
+        if (getRandomInt(10) < 4) {
+          damage = dice(1, 5);
+        }
+        break;
+      case 4:
+        if (getRandomInt(10) < 8) {
+          damage = dice(1, 5);
+        }
+        break;
+    }
+    if (damage) {
+      AudioManager.playSe({name: 'Knock', pan: 0, pitch: 100, volume: 100});
+      TimeUtils.animeQueue.push(new AnimeObject($gamePlayer, 'POP_UP', -1 * damage));
+      LogUtils.addLog(String.format(Message.display('damageFromCarryTooMuch'), damage));
+      CharUtils.decreaseHp($gameActors.actor(1), damage);
+      BattleUtils.checkTargetAlive(null, $gameActors.actor(1), $gamePlayer);
+    }
+  }
+
   //-----------------------------------------------------------------------------------
   // MapUtils
   //
@@ -1245,6 +1374,7 @@
     $gameActors.actor(1).attacked = false;
     $gameActors.actor(1).moveType = 0;
     $gameActors.actor(1).turnCount = 0;
+    $gameActors.actor(1).carryStatus = 0; // 0: normal, 1: burdened, 2: stressed, 3: strained, 4: overloaded
     // initialize template events
     $gameVariables[0].templateEvents = {
       monster: $dataMap.events[3],
@@ -2132,6 +2262,16 @@
         if (SceneManager.isCurrentSceneStarted()) {
           // setup current dungeon tiles
           $gameVariables[0].currentDungeonTiles = MapUtils.getMapTileSet($gameVariables[$gameMap.mapId()].mapType);
+          // check carry status
+          if (stair.type == 1 && $gameActors.actor(1).carryStatus > 1) {
+            let damage = dice(2, 3);
+            AudioManager.playSe({name: 'Damage3', pan: 0, pitch: 100, volume: 100});
+            TimeUtils.animeQueue.push(new AnimeObject($gamePlayer, 'POP_UP', damage * -1));
+            LogUtils.addLog(String.format(Message.display('damageFallFromStair'), damage));
+            CharUtils.decreaseHp($gameActors.actor(1), damage);
+            BattleUtils.checkTargetAlive(null, $gameActors.actor(1), $gamePlayer);
+          }
+          
           // update mobs time at target layer
           // TODO: implement mobs recovery mechanism
 
@@ -5646,6 +5786,7 @@
           return;
         }
         CharUtils.decreaseNutrition($gamePlayer);
+        CharUtils.calcPlayerCarryStatus();
         if (!timeSpent) {
           timeSpent = CharUtils.getActionTime(BattleUtils.getRealTarget($gamePlayer));
         }
@@ -5885,6 +6026,17 @@
   BattleUtils.calcPhysicalDamage = function(realSrc, realTarget, atkValue) {
     if (realSrc == $gameActors.actor(1)) {
       CharUtils.playerGainStrExp(1);
+    }
+    switch (realSrc.carryStatus) {
+      case 1:
+        atkValue -= 1;
+        break;
+      case 2:
+        atkValue -= 3;
+        break;
+      case 3: case 4:
+        atkValue -= 5;
+        break;
     }
     // calculate attack damage
     let attrDamage = (realSrc.level + realSrc.param(2)) * 2 / 3;
@@ -6645,6 +6797,7 @@
       this[id] = clone[id];
     }
     this.bucState = 0; // 0: uncursed, -1: cursed, 1: blessed
+    this.weight = 0;
   };
 
   //-----------------------------------------------------------------------------------
@@ -6684,6 +6837,7 @@
 
   Feather.prototype.initialize = function () {
     ItemTemplate.prototype.initialize.call(this, $dataItems[12]);
+    this.weight = 1;
   }
   ItemUtils.lootingTemplates[0].material.push(Feather);
 
@@ -6704,6 +6858,7 @@
     ItemTemplate.prototype.initialize.call(this, $dataItems[15]);
     this.name = '鼠尾巴';
     this.description = '細長的尾巴, 可以用來做什麼呢?';
+    this.weight = 2;
   }
   ItemUtils.lootingTemplates[0].material.push(Rat_Tail);
 
@@ -6724,6 +6879,7 @@
     ItemTemplate.prototype.initialize.call(this, $dataItems[16]);
     this.name = '牛角';
     this.description = '堅硬的牛角(麵包?)';
+    this.weight = 5;
   }
   ItemUtils.lootingTemplates[0].material.push(Buffalo_Horn);
 
@@ -6744,6 +6900,7 @@
     ItemTemplate.prototype.initialize.call(this, $dataItems[17]);
     this.name = '黏液';
     this.description = '具有包覆作用';
+    this.weight = 10;
   }
   ItemUtils.lootingTemplates[1].material.push(Mucus);
 
@@ -6764,6 +6921,7 @@
     ItemTemplate.prototype.initialize.call(this, $dataItems[18]);
     this.name = '藍色結晶';
     this.description = '史萊姆體內產生的堅硬物質';
+    this.weight = 5;
   }
   ItemUtils.lootingTemplates[1].material.push(Blue_Crystal);
 
@@ -6784,6 +6942,7 @@
     ItemTemplate.prototype.initialize.call(this, $dataItems[17]);
     this.name = '膠質';
     this.description = '具有絕緣作用';
+    this.weight = 10;
   }
   ItemUtils.lootingTemplates[1].material.push(Glue);
 
@@ -6804,6 +6963,7 @@
     ItemTemplate.prototype.initialize.call(this, $dataItems[19]);
     this.name = '觸手';
     this.description = '帶電的觸手';
+    this.weight = 5;
   }
   ItemUtils.lootingTemplates[1].material.push(Tentacle);
 
@@ -6828,6 +6988,7 @@
     this.duration = duration;
     this.status = status; // FRESH, ROTTEN
     this.producedTime = $gameVariables[0].gameTime;
+    this.weight = 50;
   }
 
   //-----------------------------------------------------------------------------------
@@ -6851,6 +7012,7 @@
     this.nutrition = 300;
     this.status = 'PERMANENT'; // never rots
     this.producedTime = $gameVariables[0].gameTime;
+    this.weight = 10;
   }
   ItemUtils.lootingTemplates[0].material.push(Honey);
 
@@ -6875,6 +7037,7 @@
     this.nutrition = 300;
     this.status = 'PERMANENT'; // never rots
     this.producedTime = $gameVariables[0].gameTime;
+    this.weight = 10;
   }
   ItemUtils.lootingTemplates[0].material.push(Cheese);
 
@@ -6896,6 +7059,7 @@
     this.name = '蜂刺';
     this.description = '細長的蜜蜂尾刺';
     this.templateName = this.name;
+    this.weight = 2;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     let modifier = getRandomIntRange(0, 2);
@@ -6928,6 +7092,7 @@
     this.name = '犬牙';
     this.description = '剛長出來不久的牙齒';
     this.templateName = this.name;
+    this.weight = 3;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     let modifier = getRandomIntRange(0, 3);
@@ -6960,6 +7125,7 @@
     this.name = '雞喙';
     this.description = '被啄到會很痛';
     this.templateName = this.name;
+    this.weight = 3;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     let modifier = getRandomIntRange(0, 3);
@@ -6992,6 +7158,7 @@
     this.name = '貓牙';
     this.description = '尖銳的牙齒';
     this.templateName = this.name;
+    this.weight = 3;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     let modifier = getRandomIntRange(0, 3);
@@ -7024,6 +7191,7 @@
     this.name = '野豬牙';
     this.description = '彎曲的牙齒';
     this.templateName = this.name;
+    this.weight = 3;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     let modifier = getRandomIntRange(1, 4);
@@ -7056,6 +7224,7 @@
     this.name = '狼牙';
     this.description = '堅韌的牙齒';
     this.templateName = this.name;
+    this.weight = 3;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     let modifier = getRandomIntRange(0, 3);
@@ -7088,6 +7257,7 @@
     this.name = '獅牙';
     this.description = '野獸之王的牙齒';
     this.templateName = this.name;
+    this.weight = 3;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     let modifier = getRandomIntRange(0, 3);
@@ -7120,6 +7290,7 @@
     this.name = '鯊魚牙';
     this.description = '尖銳且鋒利的牙齒';
     this.templateName = this.name;
+    this.weight = 3;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     let modifier = getRandomIntRange(0, 3);
@@ -7152,6 +7323,7 @@
     this.name = '龍牙';
     this.description = '神秘且充滿力量的牙齒';
     this.templateName = this.name;
+    this.weight = 4;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     let modifier = getRandomIntRange(0, 3);
@@ -7184,6 +7356,7 @@
     this.name = '犬骨';
     this.description = '棒狀的骨頭';
     this.templateName = this.name;
+    this.weight = 3;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     this.traits[2].value = '1';
@@ -7210,6 +7383,7 @@
     this.name = '貓骨';
     this.description = '輕巧的骨頭';
     this.templateName = this.name;
+    this.weight = 3;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     this.traits[2].value = '1d2';
@@ -7236,6 +7410,7 @@
     this.name = '狼骨';
     this.description = '又輕又堅韌的骨頭';
     this.templateName = this.name;
+    this.weight = 4;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     this.traits[2].value = '1d2';
@@ -7262,6 +7437,7 @@
     this.name = '熊骨';
     this.description = '厚實堅韌的骨頭';
     this.templateName = this.name;
+    this.weight = 4;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     this.traits[2].value = '1d3';
@@ -7288,6 +7464,7 @@
     this.name = '牛骨';
     this.description = '通常用來熬高湯?';
     this.templateName = this.name;
+    this.weight = 5;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     this.traits[2].value = '1d3';
@@ -7314,6 +7491,7 @@
     this.name = '獅骨';
     this.description = '百獸之王的骨頭';
     this.templateName = this.name;
+    this.weight = 5;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     this.traits[2].value = '1d4';
@@ -7340,6 +7518,7 @@
     this.name = '龍骨';
     this.description = '充滿古老的魔法力量';
     this.templateName = this.name;
+    this.weight = 5;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     this.traits[2].value = '1d4';
@@ -7366,6 +7545,7 @@
     this.name = '雞爪';
     this.description = '調理後會很好吃?';
     this.templateName = this.name;
+    this.weight = 3;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     let modifier = getRandomIntRange(0, 3);
@@ -7398,6 +7578,7 @@
     this.name = '貓爪';
     this.description = '可以輕易撕開皮膚';
     this.templateName = this.name;
+    this.weight = 4;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     let modifier = getRandomIntRange(1, 4);
@@ -7430,6 +7611,7 @@
     this.name = '狼爪';
     this.description = '粗長又銳利的爪';
     this.templateName = this.name;
+    this.weight = 4;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     let modifier = getRandomIntRange(0, 3);
@@ -7462,6 +7644,7 @@
     this.name = '熊爪';
     this.description = '厚實堅韌的爪';
     this.templateName = this.name;
+    this.weight = 4;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     let modifier = getRandomIntRange(2, 5);
@@ -7494,6 +7677,7 @@
     this.name = '獅爪';
     this.description = '萬獸之王的爪';
     this.templateName = this.name;
+    this.weight = 4;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     let modifier = getRandomIntRange(1, 4);
@@ -7526,6 +7710,7 @@
     this.name = '龍爪';
     this.description = '古老又神秘的爪';
     this.templateName = this.name;
+    this.weight = 5;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     let modifier = getRandomIntRange(1, 4);
@@ -7558,6 +7743,7 @@
     this.name = '犬皮';
     this.description = '髒兮兮的薄皮';
     this.templateName = this.name;
+    this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
@@ -7583,6 +7769,7 @@
     this.name = '貓皮';
     this.description = '泛著光澤的皮';
     this.templateName = this.name;
+    this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 1);
@@ -7609,6 +7796,7 @@
     this.name = '狼皮';
     this.description = '堅韌的毛皮';
     this.templateName = this.name;
+    this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 3 + this.bucState);
@@ -7635,6 +7823,7 @@
     this.name = '熊皮';
     this.description = '厚實的毛皮';
     this.templateName = this.name;
+    this.weight = 15;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
@@ -7660,6 +7849,7 @@
     this.name = '獅皮';
     this.description = '百獸之王的毛皮';
     this.templateName = this.name;
+    this.weight = 15;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 3);
@@ -7686,6 +7876,7 @@
     this.name = '龍皮';
     this.description = '古老又神秘的毛皮';
     this.templateName = this.name;
+    this.weight = 15;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
@@ -7712,6 +7903,7 @@
     this.name = '龜殼';
     this.description = '堅硬的殼';
     this.templateName = this.name;
+    this.weight = 20;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
@@ -7743,6 +7935,7 @@
     this.name = Dart_Lv1_T1.itemName;
     this.description = Dart_Lv1_T1.itemDescription + '\n投擲傷害' + this.damage;
     this.templateName = this.name;
+    this.weight = 3;
   }
   ItemUtils.recipes.push(Dart_Lv1_T1);
   ItemUtils.lootingTemplates[0].material.push(Dart_Lv1_T1);
@@ -7770,6 +7963,7 @@
     this.name = Dart_Lv1_T2.itemName;
     this.description = Dart_Lv1_T2.itemDescription + '\n投擲傷害' + this.damage;
     this.templateName = this.name;
+    this.weight = 3;
   }
   ItemUtils.recipes.push(Dart_Lv1_T2);
   ItemUtils.lootingTemplates[0].material.push(Dart_Lv1_T2);
@@ -7797,6 +7991,7 @@
     this.name = Dart_Lv1_T3.itemName;
     this.description = Dart_Lv1_T3.itemDescription + '\n投擲傷害' + this.damage;
     this.templateName = this.name;
+    this.weight = 3;
   }
   ItemUtils.recipes.push(Dart_Lv1_T3);
   ItemUtils.lootingTemplates[0].material.push(Dart_Lv1_T3);
@@ -7824,6 +8019,7 @@
     this.name = Dart_Lv2_T1.itemName;
     this.description = Dart_Lv2_T1.itemDescription + '\n投擲傷害' + this.damage;
     this.templateName = this.name;
+    this.weight = 3;
   }
   ItemUtils.recipes.push(Dart_Lv2_T1);
   ItemUtils.lootingTemplates[0].material.push(Dart_Lv2_T1);
@@ -7851,6 +8047,7 @@
     this.name = Dart_Lv2_T2.itemName;
     this.description = Dart_Lv2_T2.itemDescription + '\n投擲傷害' + this.damage;
     this.templateName = this.name;
+    this.weight = 3;
   }
   ItemUtils.recipes.push(Dart_Lv2_T2);
   ItemUtils.lootingTemplates[0].material.push(Dart_Lv2_T2);
@@ -7877,6 +8074,7 @@
     this.name = Dog_Gloves.itemName;
     this.description = Dog_Gloves.itemDescription;
     this.templateName = this.name;
+    this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
@@ -7907,6 +8105,7 @@
     this.name = Dog_Shoes.itemName;
     this.description = Dog_Shoes.itemDescription;
     this.templateName = this.name;
+    this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
@@ -7937,6 +8136,7 @@
     this.name = Dog_Shield.itemName;
     this.description = Dog_Shield.itemDescription;
     this.templateName = this.name;
+    this.weight = 30;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 3 + this.bucState);
@@ -7968,6 +8168,7 @@
     this.name = Dog_Helmet.itemName;
     this.description = Dog_Helmet.itemDescription;
     this.templateName = this.name;
+    this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
@@ -7998,6 +8199,7 @@
     this.name = Dog_Coat.itemName;
     this.description = Dog_Coat.itemDescription;
     this.templateName = this.name;
+    this.weight = 80;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
@@ -8028,6 +8230,7 @@
     this.name = Cat_Gloves.itemName;
     this.description = Cat_Gloves.itemDescription;
     this.templateName = this.name;
+    this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 1);
@@ -8059,6 +8262,7 @@
     this.name = Cat_Shoes.itemName;
     this.description = Cat_Shoes.itemDescription;
     this.templateName = this.name;
+    this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 1);
@@ -8090,6 +8294,7 @@
     this.name = Cat_Helmet.itemName;
     this.description = Cat_Helmet.itemDescription;
     this.templateName = this.name;
+    this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 1);
@@ -8121,6 +8326,7 @@
     this.name = Cat_Coat.itemName;
     this.description = Cat_Coat.itemDescription;
     this.templateName = this.name;
+    this.weight = 80;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 2);
@@ -8152,6 +8358,7 @@
     this.name = Cat_Shield.itemName;
     this.description = Cat_Shield.itemDescription;
     this.templateName = this.name;
+    this.weight = 30;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 2);
@@ -8183,6 +8390,7 @@
     this.name = Wolf_Gloves.itemName;
     this.description = Wolf_Gloves.itemDescription;
     this.templateName = this.name;
+    this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 3 + this.bucState);
@@ -8214,6 +8422,7 @@
     this.name = Wolf_Shoes.itemName;
     this.description = Wolf_Shoes.itemDescription;
     this.templateName = this.name;
+    this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 3 + this.bucState);
@@ -8245,6 +8454,7 @@
     this.name = Wolf_Shield.itemName;
     this.description = Wolf_Shield.itemDescription;
     this.templateName = this.name;
+    this.weight = 40;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
@@ -8276,6 +8486,7 @@
     this.name = Wolf_Helmet.itemName;
     this.description = Wolf_Helmet.itemDescription;
     this.templateName = this.name;
+    this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 3 + this.bucState);
@@ -8307,6 +8518,7 @@
     this.name = Wolf_Coat.itemName;
     this.description = Wolf_Coat.itemDescription;
     this.templateName = this.name;
+    this.weight = 80;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 6 + this.bucState);
@@ -8338,6 +8550,7 @@
     this.name = Bear_Gloves.itemName;
     this.description = Bear_Gloves.itemDescription;
     this.templateName = this.name;
+    this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
@@ -8368,6 +8581,7 @@
     this.name = Bear_Shoes.itemName;
     this.description = Bear_Shoes.itemDescription;
     this.templateName = this.name;
+    this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
@@ -8398,6 +8612,7 @@
     this.name = Bear_Shield.itemName;
     this.description = Bear_Shield.itemDescription;
     this.templateName = this.name;
+    this.weight = 40;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 5 + this.bucState);
@@ -8429,6 +8644,7 @@
     this.name = Bear_Helmet.itemName;
     this.description = Bear_Helmet.itemDescription;
     this.templateName = this.name;
+    this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
@@ -8459,6 +8675,7 @@
     this.name = Bear_Coat.itemName;
     this.description = Bear_Coat.itemDescription;
     this.templateName = this.name;
+    this.weight = 100;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
@@ -8489,6 +8706,7 @@
     this.name = Lion_Gloves.itemName;
     this.description = Lion_Gloves.itemDescription;
     this.templateName = this.name;
+    this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 2);
@@ -8520,6 +8738,7 @@
     this.name = Lion_Shoes.itemName;
     this.description = Lion_Shoes.itemDescription;
     this.templateName = this.name;
+    this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 2);
@@ -8551,6 +8770,7 @@
     this.name = Lion_Shield.itemName;
     this.description = Lion_Shield.itemDescription;
     this.templateName = this.name;
+    this.weight = 50;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 3);
@@ -8582,6 +8802,7 @@
     this.name = Lion_Helmet.itemName;
     this.description = Lion_Helmet.itemDescription;
     this.templateName = this.name;
+    this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 2);
@@ -8613,6 +8834,7 @@
     this.name = Lion_Coat.itemName;
     this.description = Lion_Coat.itemDescription;
     this.templateName = this.name;
+    this.weight = 100;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 4);
@@ -8644,6 +8866,7 @@
     this.name = Dragon_Gloves.itemName;
     this.description = Dragon_Gloves.itemDescription;
     this.templateName = this.name;
+    this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
@@ -8675,6 +8898,7 @@
     this.name = Dragon_Shoes.itemName;
     this.description = Dragon_Shoes.itemDescription;
     this.templateName = this.name;
+    this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
@@ -8706,6 +8930,7 @@
     this.name = Dragon_Shield.itemName;
     this.description = Dragon_Shield.itemDescription;
     this.templateName = this.name;
+    this.weight = 50;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 5 + this.bucState);
@@ -8737,6 +8962,7 @@
     this.name = Dragon_Helmet.itemName;
     this.description = Dragon_Helmet.itemDescription;
     this.templateName = this.name;
+    this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
@@ -8768,6 +8994,7 @@
     this.name = Dragon_Coat.itemName;
     this.description = Dragon_Coat.itemDescription;
     this.templateName = this.name;
+    this.weight = 120;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
@@ -8798,6 +9025,7 @@
     this.name = Ice_Coat.itemName;
     this.description = Ice_Coat.itemDescription;
     this.templateName = this.name;
+    this.weight = 40;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 4);
@@ -8830,6 +9058,7 @@
     this.name = Ring_Protection.itemName;
     this.description = Ring_Protection.itemDescription;
     this.templateName = this.name;
+    this.weight = 2;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 4);
@@ -8861,6 +9090,7 @@
     this.name = Ring_MagicResistance.itemName;
     this.description = Ring_MagicResistance.itemDescription;
     this.templateName = this.name;
+    this.weight = 2;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[1], 4);
@@ -8892,6 +9122,7 @@
     this.name = Ring_ParalyzeResistance.itemName;
     this.description = Ring_ParalyzeResistance.itemDescription;
     this.templateName = this.name;
+    this.weight = 2;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.updateEquipDescription(this);
@@ -8930,6 +9161,7 @@
     this.name = Ring_AcidResistance.itemName;
     this.description = Ring_AcidResistance.itemDescription;
     this.templateName = this.name;
+    this.weight = 2;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.updateEquipDescription(this);
@@ -8967,6 +9199,7 @@
     this.name = Ring_ColdResistance.itemName;
     this.description = Ring_ColdResistance.itemDescription;
     this.templateName = this.name;
+    this.weight = 2;
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.updateEquipDescription(this);
@@ -8997,6 +9230,7 @@
     this.id = 0;
     this.name = '治療藥水';
     this.description = '回復些許生命力';
+    this.weight = 15;
   }
 
   Potion_Heal.prototype.onQuaff = function(user, identifyObject) {
@@ -9032,6 +9266,7 @@
     this.id = 1;
     this.name = '魔力藥水';
     this.description = '回復些許魔力';
+    this.weight = 15;
   }
 
   Potion_Mana.prototype.onQuaff = function(user, identifyObject) {
@@ -9067,6 +9302,7 @@
     this.id = 2;
     this.name = '失明藥水';
     this.description = '暫時喪失視力';
+    this.weight = 15;
   }
 
   Potion_Blind.prototype.onQuaff = function(user, identifyObject) {
@@ -9104,6 +9340,7 @@
     this.id = 3;
     this.name = '麻痺藥水';
     this.description = '暫時麻痺無法行動';
+    this.weight = 15;
   }
 
   Potion_Paralyze.prototype.onQuaff = function(user, identifyObject) {
@@ -9149,6 +9386,7 @@
     this.id = 4;
     this.name = '催眠藥水';
     this.description = '陷入沉睡';
+    this.weight = 15;
   }
 
   Potion_Sleep.prototype.onQuaff = function(user, identifyObject) {
@@ -9183,6 +9421,7 @@
     this.id = 5;
     this.name = '加速藥水';
     this.description = '暫時提升行動速度';
+    this.weight = 15;
   }
 
   Potion_Speed.prototype.onQuaff = function(user, identifyObject) {
@@ -9217,6 +9456,7 @@
     this.id = 6;
     this.name = '成長藥水';
     this.description = '能力值增長';
+    this.weight = 15;
   }
 
   Potion_Growth.prototype.onQuaff = function(user, identifyObject) {
@@ -9252,6 +9492,7 @@
     this.id = 7;
     this.name = '升級藥水';
     this.description = '提升等級';
+    this.weight = 15;
   }
 
   Potion_LevelUp.prototype.onQuaff = function(user, identifyObject) {
@@ -9291,6 +9532,7 @@
     this.id = 8;
     this.name = '隱形藥水';
     this.description = '暫時隱形';
+    this.weight = 15;
   }
 
   Potion_Invisible.prototype.onQuaff = function(user, identifyObject) {
@@ -9328,6 +9570,7 @@
     this.id = 9;
     this.name = '偵測隱形藥水';
     this.description = '暫時可看見隱形的生物';
+    this.weight = 15;
   }
 
   Potion_SeeInvisible.prototype.onQuaff = function(user, identifyObject) {
@@ -9362,6 +9605,7 @@
     this.id = 10;
     this.name = '酸蝕藥水';
     this.description = '造成酸蝕傷害';
+    this.weight = 15;
   }
 
   Potion_Acid.prototype.onQuaff = function(user, identifyObject) {
@@ -9404,6 +9648,7 @@
     this.id = 11;
     this.name = '毒藥水';
     this.description = '中毒';
+    this.weight = 15;
   }
 
   Potion_Poison.prototype.onQuaff = function(user, identifyObject) {
@@ -9454,6 +9699,7 @@
     this.id = 0;
     this.name = '鑑定卷軸';
     this.description = '鑑定身上的一件物品';
+    this.weight = 1;
   }
 
   Scroll_Identify.prototype.onRead = function(user, identifyObject) {
@@ -9491,6 +9737,7 @@
     this.id = 1;
     this.name = '防具強化卷軸';
     this.description = '強化一件裝備中的防具';
+    this.weight = 1;
   }
 
   Scroll_EnchantArmor.prototype.onRead = function(user, identifyObject) {
@@ -9550,6 +9797,7 @@
     this.id = 2;
     this.name = '武器強化卷軸';
     this.description = '強化裝備中的武器';
+    this.weight = 1;
   }
 
   Scroll_EnchantWeapon.prototype.onRead = function(user, identifyObject) {
@@ -9609,6 +9857,7 @@
     this.id = 3;
     this.name = '解除詛咒卷軸';
     this.description = '解除一件裝備中的詛咒';
+    this.weight = 1;
   }
 
   Scroll_RemoveCurse.prototype.onRead = function(user, identifyObject) {
@@ -9652,6 +9901,7 @@
     this.id = 4;
     this.name = '傳送卷軸';
     this.description = '傳送至地圖的某處';
+    this.weight = 1;
   }
 
   Scroll_Teleport.prototype.onRead = function(user, identifyObject) {
@@ -9706,6 +9956,7 @@
     this.id = 5;
     this.name = '摧毀防具卷軸';
     this.description = '摧毀一件裝備中的防具';
+    this.weight = 1;
   }
 
   Scroll_DestroyArmor.prototype.onRead = function(user, identifyObject) {
@@ -9754,6 +10005,7 @@
     this.id = 6;
     this.name = '召喚生物卷軸';
     this.description = '在身邊召喚怪物';
+    this.weight = 1;
   }
 
   Scroll_CreateMonster.prototype.onRead = function(user, identifyObject) {
@@ -9801,6 +10053,7 @@
     this.id = 7;
     this.name = '威嚇卷軸';
     this.description = '一段時間內嚇退敵人';
+    this.weight = 1;
   }
 
   Scroll_ScareMonster.prototype.onRead = function(user, identifyObject) {
@@ -13768,6 +14021,17 @@
             && !SkillUtils.getSkillInstance(this, Skill_AdaptWater)) {
             modifier *= 0.66;
           }
+          switch (this.carryStatus) {
+            case 1:
+              modifier *= 0.75;
+              break;
+            case 2:
+              modifier *= 0.5;
+              break;
+            case 3: case 4:
+              modifier *= 0.25;
+              break;
+          }
         }
         if (this.status.bellyStatus == 'FAINT') {
           modifier *= 0.5;
@@ -14288,6 +14552,7 @@
             }
           }
           CharUtils.decreaseNutrition($gamePlayer);
+          CharUtils.calcPlayerCarryStatus();
           MapUtils.addBothLog(msg);
         }
         setTimeout(func.bind(null, this.item()), 100);

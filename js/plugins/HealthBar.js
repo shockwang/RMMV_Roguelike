@@ -129,6 +129,29 @@
         }
         let player = $gameActors.actor(1);
         var status = '';
+        // deal with carry status
+        switch (player.carryStatus) {
+            case 1:
+                this.changeTextColor('#FFFF00'); // yellow
+                status = '負重 ';
+                break;
+            case 2:
+                this.changeTextColor('#FF8C00'); // dark orange
+                status = '過重 ';
+                break;
+            case 3:
+                this.changeTextColor('#FF4600'); // light orange
+                status = '重壓 ';
+                break;
+            case 4:
+                this.changeTextColor('#FF0000'); // red
+                status = '壓垮 ';
+                break;
+        }
+        var width = this.textWidth(status);
+        this.drawText(status, x, y, width);
+        x += width;
+        status = '';
         // deal with nutrition system
         if (player.status.bellyStatus == 'FULL') {
             this.changeTextColor('#4169E1'); // royal blue
@@ -143,7 +166,7 @@
             this.changeTextColor('#FF0000'); // red
             status = '昏厥 ';
         }
-        var width = this.textWidth(status);
+        width = this.textWidth(status);
         this.drawText(status, x, y, width);
         x += width;
         // draw buff/debuff
