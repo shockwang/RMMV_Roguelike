@@ -204,6 +204,7 @@
   var regenTurnCount = 20;
   var genLocalDungeonObjectPercentage = 0.7;
   var mobFleeHpPercentage = 0.3;
+  var carryObjectMaxNum = 52;
 
   // word attached
   var groundWord = '(地上)';
@@ -450,6 +451,7 @@
       groundHoleTrapTriggered: '{0}失足掉入地洞陷阱, 受到{1}點傷害!',
       climbOutFailed: '{0}嘗試爬出地洞, 但是失敗了.',
       climbOutSuccess: '{0}爬出了地洞.',
+      moveFailedInGroundHole: '你還在地洞中呢.',
       magicTrapTriggered: '{0}觸動了魔法陷阱!',
       eatWhenFull: '你吃的太飽了.',
       eatingDone: '你吃完了{0}.',
@@ -480,6 +482,8 @@
       carryUpToOverloaded: '你被徹底壓垮, 一步也動不了了!',
       damageFromCarryTooMuch: '你的筋骨因為重壓而滋嘎作響, 受到{0}點傷害.',
       damageFallFromStair: '你從樓梯上摔下來, 受到{0}點傷害.',
+      actionBlockedOverloaded: '你身上的重量壓得你無法動作!',
+      getItemFailedMaxNum: '你無法再撿起更多東西了!',
       craftSceneHelpMessage: '你要進行什麼工作?',
       craftItemDone: '你製造了{0}.',
       notDirection: '這不是一個方向.',
@@ -5187,10 +5191,10 @@
         let coordinate = Input.getNextCoordinate($gamePlayer, event.code);
         let x = coordinate.x, y = coordinate.y;
         if (!(x == -1 && y == -1)) {
-          $gameActors.actor(1).moved = $gameVariables[0].directionalAction($gamePlayer, x, y);
+          player.moved = $gameVariables[0].directionalAction($gamePlayer, x, y);
         }
         // check if player moved
-        if ($gameActors.actor(1).moved) {
+        if (player.moved) {
           // use async strategy, because $gameSelfSwitches needs time to update to event
           setTimeout('TimeUtils.afterPlayerMoved();', 100);
           $gameVariables[0].messageFlag = false;
@@ -5206,235 +5210,284 @@
         SceneManager._scene.removeChild(logWindow);
         return;
       }
-      // classify by code
-      switch (event.code) {
-        case 'Numpad8': case 'ArrowUp':
-          $gamePlayer.moveStraight(8);
-          break;
-        case 'Numpad2': case 'ArrowDown':
-          $gamePlayer.moveStraight(2);
-          break;
-        case 'Numpad4': case 'ArrowLeft':
-          $gamePlayer.moveStraight(4);
-          break;
-        case 'Numpad6': case 'ArrowRight':
-          $gamePlayer.moveStraight(6);
-          break;
-        case 'Numpad7': case 'Home':
-          $gamePlayer.moveDiagonally(4, 8);
-          break;
-        case 'Numpad9': case 'PageUp':
-          $gamePlayer.moveDiagonally(6, 8);
-          break;
-        case 'Numpad1': case 'End':
-          $gamePlayer.moveDiagonally(4, 2);
-          break;
-        case 'Numpad3': case 'PageDown':
-          $gamePlayer.moveDiagonally(6, 2);
-          break;
-        case 'Numpad5': case 'Period': // wait action
-          TimeUtils.afterPlayerMoved();
-          break;
-      }
-      // check hotkeys
-      let prefix = 'Digit';
-      for (let i = 0; i < 10; i++) {
-        if (event.code == prefix + i) {
-          if ($gameVariables[0].hotkeys[i]) {
-            SkillUtils.performSkill($gameVariables[0].hotkeys[i]);
-          } else {
-            MapUtils.displayMessage(Message.display('hotkeyUndefined'));
+      // check carry status
+      let moveStatus = 0; // 0: normal, 1: overloaded, 2: groundHoleTrapped
+      if (player.carryStatus == 4) {
+        switch (event.code) {
+          case 'Numpad8': case 'ArrowUp': case 'Numpad2': case 'ArrowDown': case 'Numpad4': case 'ArrowLeft':
+          case 'Numpad6': case 'ArrowRight': case 'Numpad7': case 'Home': case 'Numpad9': case 'PageUp':
+          case 'Numpad1': case 'End': case 'Numpad3': case 'PageDown':
+            moveStatus = 1;
+            break;
+        }
+        // check hotkeys
+        let prefix = 'Digit';
+        for (let i = 0; i < 10; i++) {
+          if (event.code == prefix + i) {
+            moveStatus = 1;
+            break;
           }
-          break;
+        }
+        switch (event.key) {
+          case 'Enter': case '>': case '<': case 'g': case 'o': case 'c': case 'w': case 'e': case 'f':
+          case 'q': case 'r': case 's': case 'W': case 'C': case 'M': case 'z': case 'Z': case ' ':
+            moveStatus = 1;
+            break;
+        }
+      } else if (player.status.groundHoleTrapped) {
+        // check hotkeys
+        let prefix = 'Digit';
+        for (let i = 0; i < 10; i++) {
+          if (event.code == prefix + i) {
+            moveStatus = 2;
+            break;
+          }
+        }
+        switch (event.key) {
+          case 'o': case 'c': case 'f': case 's': case 'W': case 'C': case 'z': case 'Z': case ' ': case 'Enter':
+            moveStatus = 2;
+            break;
         }
       }
-      // classify by key
-      switch (event.key) {
-        case 'Enter': // quick action
-          // check stairs
-          var stair = null;
-          for (var i in $gameVariables[$gameMap.mapId()].stairList) {
-            var candidate = $gameVariables[$gameMap.mapId()].stairList[i];
-            if ($gamePlayer.pos(candidate.x, candidate.y)) {
-              stair = candidate;
-              break;
-            }
-          }
-          if (stair) {
-            MapUtils.transferCharacter($gamePlayer);
-            if (1 == stair.type) {
-              LogUtils.addLog(Message.display('goDownstair'));
-            } else {
-              LogUtils.addLog(Message.display('goUpstair'));
-            }
-            $gameActors.actor(1).moved = true;
-          }
-          break;
-        case '>': // go down
-          var stair = null;
-          for (var i in $gameVariables[$gameMap.mapId()].stairList) {
-            var candidate = $gameVariables[$gameMap.mapId()].stairList[i];
-            if ($gamePlayer.pos(candidate.x, candidate.y) && candidate.type == 1) {
-              stair = candidate;
-              break;
-            }
-          }
-          if (stair) {
-            MapUtils.transferCharacter($gamePlayer);
-            LogUtils.addLog(Message.display('goDownstair'));
-            $gameActors.actor(1).moved = true;
-          } else {
-            MapUtils.displayMessage(Message.display('noStairDown'));
-          }
-          break;
-        case '<': // go up
-          var stair = null;
-          for (var i in $gameVariables[$gameMap.mapId()].stairList) {
-            var candidate = $gameVariables[$gameMap.mapId()].stairList[i];
-            if ($gamePlayer.pos(candidate.x, candidate.y) && candidate.type == 0) {
-              stair = candidate;
-              break;
-            }
-          }
-          if (stair) {
-            MapUtils.transferCharacter($gamePlayer);
-            LogUtils.addLog(Message.display('goUpstair'));
-            $gameActors.actor(1).moved = true;
-          } else {
-            MapUtils.displayMessage(Message.display('noStairUp'));
-          }
-          break;
-        case 'g': // pick things up from the ground
-          let itemPile = ItemUtils.findMapItemPileEvent($gamePlayer._x, $gamePlayer._y);
-          if (itemPile) {
-            if (itemPile.itemPile.objectStack.length == 1) {
-              let obj = itemPile.itemPile.objectStack[0];
-              ItemUtils.removeItemFromItemPile($gamePlayer._x, $gamePlayer._y, obj);
-              $gameParty.gainItem(obj, 1);
-              LogUtils.addLog(String.format(Message.display('getItems'), ItemUtils.getItemDisplayName(obj)));
-              TimeUtils.afterPlayerMoved();
-            } else {
-              SceneManager.push(Scene_GetItem);
-            }
-          } else {
-            MapUtils.displayMessage(Message.display('noItemGround'));
-          }
-          break;
-        case 'd': // drop things from player inventory
-          let items = $gameParty.allItemsExceptSouls();
-          if (items.length == 0) {
-            MapUtils.displayMessage(Message.display('noItemInventory'));
-          } else if (items.length == 1) {
-            let obj = items[0];
-            $gameParty.loseItem(obj, 1);
-            // setup item to itemPile on the ground
-            ItemUtils.addItemToItemPile($gamePlayer._x, $gamePlayer._y, obj);
-            LogUtils.addLog(String.format(Message.display('dropItems'), ItemUtils.getItemDisplayName(obj)));
+      if (moveStatus == 0) {
+        // classify by code
+        switch (event.code) {
+          case 'Numpad8': case 'ArrowUp':
+            $gamePlayer.moveStraight(8);
+            break;
+          case 'Numpad2': case 'ArrowDown':
+            $gamePlayer.moveStraight(2);
+            break;
+          case 'Numpad4': case 'ArrowLeft':
+            $gamePlayer.moveStraight(4);
+            break;
+          case 'Numpad6': case 'ArrowRight':
+            $gamePlayer.moveStraight(6);
+            break;
+          case 'Numpad7': case 'Home':
+            $gamePlayer.moveDiagonally(4, 8);
+            break;
+          case 'Numpad9': case 'PageUp':
+            $gamePlayer.moveDiagonally(6, 8);
+            break;
+          case 'Numpad1': case 'End':
+            $gamePlayer.moveDiagonally(4, 2);
+            break;
+          case 'Numpad3': case 'PageDown':
+            $gamePlayer.moveDiagonally(6, 2);
+            break;
+          case 'Numpad5': case 'Period': // wait action
             TimeUtils.afterPlayerMoved();
-          } else {
-            SceneManager.push(Scene_DropItem);
+            break;
+        }
+        // check hotkeys
+        let prefix = 'Digit';
+        for (let i = 0; i < 10; i++) {
+          if (event.code == prefix + i) {
+            if ($gameVariables[0].hotkeys[i]) {
+              SkillUtils.performSkill($gameVariables[0].hotkeys[i]);
+            } else {
+              MapUtils.displayMessage(Message.display('hotkeyUndefined'));
+            }
+            break;
           }
-          break;
-        case 'o': // open a door
-          $gameVariables[0].directionalAction = Game_Door.prototype.openDoor;
-          $gameVariables[0].directionalFlag = true;
-          MapUtils.displayMessage(Message.display('askDirection'));
-          break;
-        case 'c': // close a door
-          $gameVariables[0].directionalAction = Game_Door.prototype.closeDoor;
-          $gameVariables[0].directionalFlag = true;
-          MapUtils.displayMessage(Message.display('askDirection'));
-          break;
-        case 'i': // open inventory
-          if ($gameParty.allItemsExceptSouls().length == 0) {
-            MapUtils.displayMessage(Message.display('noItemInventory'));
-          } else {
-            SceneManager.push(Scene_Item);
-          }
-          break;
-        case 'w': // open equipment window
-          SceneManager.push(Scene_Equip);
-          break;
-        case 'e': // eat food
-          SceneManager.push(Scene_EatFood);
-          break;
-        case '/': // display log
-          LogUtils.displayLogWindow();
-          break;
-        case 'f': // fire projectile
-          if ($gameActors.actor(1)._tp < throwItemTpCost) {
-            MapUtils.displayMessage(Message.display('noEnergy'));
-          } else if ($gameVariables[0].defaultProjectile) {
-            let item;
-            let allItems = $gameParty.allItemsExceptSouls();
-            for (let id in allItems) {
-              if (allItems[id].name == $gameVariables[0].defaultProjectile.name) {
-                item = allItems[id];
+        }
+        // classify by key
+        switch (event.key) {
+          case 'Enter': // quick action
+            // check stairs
+            var stair = null;
+            for (var i in $gameVariables[$gameMap.mapId()].stairList) {
+              var candidate = $gameVariables[$gameMap.mapId()].stairList[i];
+              if ($gamePlayer.pos(candidate.x, candidate.y)) {
+                stair = candidate;
                 break;
               }
             }
-            if (item) {
-              $gameVariables[0].fireProjectileInfo.item = item;
-              Scene_FireProjectile.prototype.askProjectileDirection();
-            } else {
-              MapUtils.displayMessage('你身上並沒有' + $gameVariables[0].defaultProjectile.name + '.');
+            if (stair) {
+              MapUtils.transferCharacter($gamePlayer);
+              if (1 == stair.type) {
+                LogUtils.addLog(Message.display('goDownstair'));
+              } else {
+                LogUtils.addLog(Message.display('goUpstair'));
+              }
+              $gameActors.actor(1).moved = true;
             }
-          } else  {
-            SceneManager.push(Scene_FireProjectile);
-          }
-          break;
-        case 'q': // quaff potion
-          SceneManager.push(Scene_QuaffPotion);
-          break;
-        case 'r': // read scroll
-          SceneManager.push(Scene_ReadScroll);
-          break;
-        case 's': // search environment
-          for (let i = 0; i < 8; i++) {
-            let coordinate = MapUtils.getNearbyCoordinate($gamePlayer._x, $gamePlayer._y, i);
-            // search for secret door
-            if ($gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(coordinate.x, coordinate.y)]
-              && !$gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(coordinate.x, coordinate.y)].isRevealed) {
-              // TODO: implement search success probability
-              if (Math.random() < 0.2) {
-                $gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(coordinate.x, coordinate.y)].isRevealed = true;
-                if ($gameVariables[$gameMap._mapId].mapData[coordinate.x][coordinate.y].originalTile == DOOR) {
-                  MapUtils.updateAdjacentTiles(coordinate.x, coordinate.y);
-                  new Game_Door(coordinate.x, coordinate.y);
-                  LogUtils.addLog(Message.display('secretDoorDiscovered'));
+            break;
+          case '>': // go down
+            var stair = null;
+            for (var i in $gameVariables[$gameMap.mapId()].stairList) {
+              var candidate = $gameVariables[$gameMap.mapId()].stairList[i];
+              if ($gamePlayer.pos(candidate.x, candidate.y) && candidate.type == 1) {
+                stair = candidate;
+                break;
+              }
+            }
+            if (stair) {
+              MapUtils.transferCharacter($gamePlayer);
+              LogUtils.addLog(Message.display('goDownstair'));
+              $gameActors.actor(1).moved = true;
+            } else {
+              MapUtils.displayMessage(Message.display('noStairDown'));
+            }
+            break;
+          case '<': // go up
+            var stair = null;
+            for (var i in $gameVariables[$gameMap.mapId()].stairList) {
+              var candidate = $gameVariables[$gameMap.mapId()].stairList[i];
+              if ($gamePlayer.pos(candidate.x, candidate.y) && candidate.type == 0) {
+                stair = candidate;
+                break;
+              }
+            }
+            if (stair) {
+              MapUtils.transferCharacter($gamePlayer);
+              LogUtils.addLog(Message.display('goUpstair'));
+              player.moved = true;
+            } else {
+              MapUtils.displayMessage(Message.display('noStairUp'));
+            }
+            break;
+          case 'g': // pick things up from the ground
+            let itemPile = ItemUtils.findMapItemPileEvent($gamePlayer._x, $gamePlayer._y);
+            if (itemPile) {
+              if (ItemUtils.getPlayerInventoryStackNum() >= carryObjectMaxNum) {
+                MapUtils.addBothLog(Message.display('getItemFailedMaxNum'));
+              } else {
+                if (itemPile.itemPile.objectStack.length == 1) {
+                  let obj = itemPile.itemPile.objectStack[0];
+                  ItemUtils.removeItemFromItemPile($gamePlayer._x, $gamePlayer._y, obj);
+                  $gameParty.gainItem(obj, 1);
+                  LogUtils.addLog(String.format(Message.display('getItems'), ItemUtils.getItemDisplayName(obj)));
+                  TimeUtils.afterPlayerMoved();
+                } else {
+                  SceneManager.push(Scene_GetItem);
+                }
+              }
+            } else {
+              MapUtils.displayMessage(Message.display('noItemGround'));
+            }
+            break;
+          case 'd': // drop things from player inventory
+            let items = $gameParty.allItemsExceptSouls();
+            if (items.length == 0) {
+              MapUtils.displayMessage(Message.display('noItemInventory'));
+            } else if (items.length == 1) {
+              let obj = items[0];
+              $gameParty.loseItem(obj, 1);
+              // setup item to itemPile on the ground
+              ItemUtils.addItemToItemPile($gamePlayer._x, $gamePlayer._y, obj);
+              LogUtils.addLog(String.format(Message.display('dropItems'), ItemUtils.getItemDisplayName(obj)));
+              TimeUtils.afterPlayerMoved();
+            } else {
+              SceneManager.push(Scene_DropItem);
+            }
+            break;
+          case 'o': // open a door
+            $gameVariables[0].directionalAction = Game_Door.prototype.openDoor;
+            $gameVariables[0].directionalFlag = true;
+            MapUtils.displayMessage(Message.display('askDirection'));
+            break;
+          case 'c': // close a door
+            $gameVariables[0].directionalAction = Game_Door.prototype.closeDoor;
+            $gameVariables[0].directionalFlag = true;
+            MapUtils.displayMessage(Message.display('askDirection'));
+            break;
+          case 'i': // open inventory
+            if ($gameParty.allItemsExceptSouls().length == 0) {
+              MapUtils.displayMessage(Message.display('noItemInventory'));
+            } else {
+              SceneManager.push(Scene_Item);
+            }
+            break;
+          case 'w': // open equipment window
+            SceneManager.push(Scene_Equip);
+            break;
+          case 'e': // eat food
+            SceneManager.push(Scene_EatFood);
+            break;
+          case '/': // display log
+            LogUtils.displayLogWindow();
+            break;
+          case 'f': // fire projectile
+            if ($gameActors.actor(1)._tp < throwItemTpCost) {
+              MapUtils.displayMessage(Message.display('noEnergy'));
+            } else if ($gameVariables[0].defaultProjectile) {
+              let item;
+              let allItems = $gameParty.allItemsExceptSouls();
+              for (let id in allItems) {
+                if (allItems[id].name == $gameVariables[0].defaultProjectile.name) {
+                  item = allItems[id];
+                  break;
+                }
+              }
+              if (item) {
+                $gameVariables[0].fireProjectileInfo.item = item;
+                Scene_FireProjectile.prototype.askProjectileDirection();
+              } else {
+                MapUtils.displayMessage('你身上並沒有' + $gameVariables[0].defaultProjectile.name + '.');
+              }
+            } else  {
+              SceneManager.push(Scene_FireProjectile);
+            }
+            break;
+          case 'q': // quaff potion
+            SceneManager.push(Scene_QuaffPotion);
+            break;
+          case 'r': // read scroll
+            SceneManager.push(Scene_ReadScroll);
+            break;
+          case 's': // search environment
+            for (let i = 0; i < 8; i++) {
+              let coordinate = MapUtils.getNearbyCoordinate($gamePlayer._x, $gamePlayer._y, i);
+              // search for secret door
+              if ($gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(coordinate.x, coordinate.y)]
+                && !$gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(coordinate.x, coordinate.y)].isRevealed) {
+                // TODO: implement search success probability
+                if (Math.random() < 0.2) {
+                  $gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(coordinate.x, coordinate.y)].isRevealed = true;
+                  if ($gameVariables[$gameMap._mapId].mapData[coordinate.x][coordinate.y].originalTile == DOOR) {
+                    MapUtils.updateAdjacentTiles(coordinate.x, coordinate.y);
+                    new Game_Door(coordinate.x, coordinate.y);
+                    LogUtils.addLog(Message.display('secretDoorDiscovered'));
+                  }
+                }
+              }
+              // search for traps
+              let evts = $gameMap.eventsXy(coordinate.x, coordinate.y);
+              for (let id in evts) {
+                let evt = evts[id];
+                if (evt.type == 'TRAP' && !evt.trap.isRevealed && Math.random() < 0.2) {
+                  evt.trap.isRevealed = true;
+                  LogUtils.addLog(String.format(Message.display('secretTrapDiscovered'), evt.trap.name));
                 }
               }
             }
-            // search for traps
-            let evts = $gameMap.eventsXy(coordinate.x, coordinate.y);
-            for (let id in evts) {
-              let evt = evts[id];
-              if (evt.type == 'TRAP' && !evt.trap.isRevealed && Math.random() < 0.2) {
-                evt.trap.isRevealed = true;
-                LogUtils.addLog(String.format(Message.display('secretTrapDiscovered'), evt.trap.name));
-              }
-            }
-          }
-          TimeUtils.afterPlayerMoved();
-          break;
-        case 'W': // war skill
-          SceneManager.push(Scene_WarSkill);
-          break;
-        case 'C': // cast magic
-          SceneManager.push(Scene_CastMagic);
-          break;
-        case 'S': // call save/load menu
-          SceneManager.push(Scene_Save);
-          break;
-        case 'M': // call crafting screen (mix)
-          SceneManager.push(Scene_Craft);
-          break;
-        case 'Q': // setup default projectile
-          SceneManager.push(Scene_SetupProjectile);
-          break;
-        case 'h': case '?': // help page
-          LogUtils.displayHelpWindow();
-          break;
+            TimeUtils.afterPlayerMoved();
+            break;
+          case 'W': // war skill
+            SceneManager.push(Scene_WarSkill);
+            break;
+          case 'C': // cast magic
+            SceneManager.push(Scene_CastMagic);
+            break;
+          case 'S': // call save/load menu
+            SceneManager.push(Scene_Save);
+            break;
+          case 'M': // call crafting screen (mix)
+            SceneManager.push(Scene_Craft);
+            break;
+          case 'Q': // setup default projectile
+            SceneManager.push(Scene_SetupProjectile);
+            break;
+          case 'h': case '?': // help page
+            LogUtils.displayHelpWindow();
+            break;
+        }
+      } else if (moveStatus == 1) {
+        MapUtils.displayMessage(Message.display('actionBlockedOverloaded'));
+      } else if (moveStatus == 2) {
+        MapUtils.displayMessage(Message.display('moveFailedInGroundHole'));
       }
     }
     if (this._shouldPreventDefault(event.keyCode)) {
@@ -6293,6 +6346,23 @@
     } else if (DataManager.isArmor(toAdd)) {
       armorSet.push(toAdd);
     }
+  }
+
+  ItemUtils.getSetStackNum = function(itemSet, weaponSet, armorSet) {
+    let result = 0;
+    result += Window_ItemList.getClassifiedList(itemSet).filter(function(item) {
+      return !item.constructor.name.contains('Soul');
+    }).length;
+    result += Window_ItemList.getClassifiedList(weaponSet).length;
+    result += Window_ItemList.getClassifiedList(armorSet).length;
+    return result;
+  }
+
+  ItemUtils.getPlayerInventoryStackNum = function() {
+    let objList = $gameParty.allItems().filter(function (item) {
+      return item && !item.constructor.name.contains('Soul');
+    });
+    return Window_ItemList.getClassifiedList(objList).length;
   }
 
   ItemUtils.addItemToItemPile = function (x, y, item) {
@@ -9924,6 +9994,7 @@
     }
 
     user.setPosition(floor.x, floor.y);
+    realUser.status.groundHoleTrapped = false;
     if (user == $gamePlayer) {
       $gamePlayer.center(floor.x, floor.y);
       LogUtils.addLog(Message.display('scrollTeleportRead'));
@@ -13803,6 +13874,13 @@
       // pop scene if itemPile is empty
       if (itemPile.objectStack.length == 0) {
         this.popSceneAndRestoreItems();
+      } else if (ItemUtils.getSetStackNum(this.tempItems, this.tempWeapons, this.tempArmors) >= carryObjectMaxNum) {
+        // exceed maximum object carry number
+        this.popSceneAndRestoreItems();
+        let func = function() {
+          MapUtils.addBothLog(Message.display('getItemFailedMaxNum'));
+        }
+        setTimeout(func, 200);
       }
     }
     this._itemWindow.refresh();
@@ -14398,24 +14476,29 @@
   // Window_ItemList
   //
   // override this to show item instances
-  Window_ItemList.prototype.makeItemList = function () {
-    var objList = $gameParty.allItems().filter(function (item) {
-      return this.includes(item);
-    }, this);
-    this._data = [];
-    for (var i in objList) {
-      var added = false;
-      for (var j in this._data) {
-        if ((ItemUtils.getItemFullName(this._data[j]) == ItemUtils.getItemFullName(objList[i]))
-          && (ItemUtils.checkItemIdentified(this._data[j]) == ItemUtils.checkItemIdentified(objList[i]))) {
+  Window_ItemList.getClassifiedList = function(objList) {
+    let result = [];
+    for (let i in objList) {
+      let added = false;
+      for (let j in result) {
+        if ((ItemUtils.getItemFullName(result[j]) == ItemUtils.getItemFullName(objList[i]))
+          && (ItemUtils.checkItemIdentified(result[j]) == ItemUtils.checkItemIdentified(objList[i]))) {
           added = true;
           break;
         }
       }
       if (!added) {
-        this._data.push(objList[i]);
+        result.push(objList[i]);
       }
     }
+    return result;
+  }
+
+  Window_ItemList.prototype.makeItemList = function () {
+    var objList = $gameParty.allItems().filter(function (item) {
+      return this.includes(item);
+    }, this);
+    this._data = Window_ItemList.getClassifiedList(objList);
     if (this.includes(null)) {
       this._data.push(null);
     }
@@ -15497,8 +15580,7 @@
       AudioManager.playSe({name: "Buzzer1", pan: 0, pitch: 100, volume: 100});
       setTimeout(function(item) {
         let msg = String.format(Message.display('changeEquipCursed'), item.name);
-        LogUtils.addLog(msg);
-        MapUtils.displayMessage(msg);
+        MapUtils.addBothLog(msg);
       }, 100, this.equips()[slotId]);
       return false;
     }
@@ -15739,4 +15821,44 @@
       this.onLoadFailure();
     }
   };
+
+  //-----------------------------------------------------------------------------
+  // Window_MenuCommand
+  //
+  // The window for selecting a command on the menu screen.
+  // Modify this to show our desired menu
+
+  Window_MenuCommand.prototype.makeCommandList = function() {
+    this.addFormationCommand();
+    this.addMainCommands();
+    this.addOriginalCommands();
+    this.addOptionsCommand();
+    this.addSaveCommand();
+    this.addGameEndCommand();
+  };
+
+  Window_MenuCommand.prototype.addFormationCommand = function() {
+    if (this.needsCommand('formation')) {
+      this.addCommand('操作指令', 'formation', true);
+    }
+  };
+  //-----------------------------------------------------------------------------
+  // Scene_Menu
+  //
+  // The scene class of the menu screen.
+  // Modify this to show our desired menu
+
+  Scene_Menu.prototype.createCommandWindow = function() {
+  this._commandWindow = new Window_MenuCommand(0, 0);
+  this._commandWindow.setHandler('formation', this.commandFormation.bind(this));
+  this._commandWindow.setHandler('item',      this.commandItem.bind(this));
+  this._commandWindow.setHandler('skill',     this.commandPersonal.bind(this));
+  this._commandWindow.setHandler('equip',     this.commandPersonal.bind(this));
+  this._commandWindow.setHandler('status',    this.commandPersonal.bind(this));
+  this._commandWindow.setHandler('options',   this.commandOptions.bind(this));
+  this._commandWindow.setHandler('save',      this.commandSave.bind(this));
+  this._commandWindow.setHandler('gameEnd',   this.commandGameEnd.bind(this));
+  this._commandWindow.setHandler('cancel',    this.popScene.bind(this));
+  this.addWindow(this._commandWindow);
+};
 })();
