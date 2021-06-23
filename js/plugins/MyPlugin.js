@@ -205,6 +205,7 @@
   var genLocalDungeonObjectPercentage = 0.7;
   var mobFleeHpPercentage = 0.3;
   var carryObjectMaxNum = 52;
+  var controlCommandDelay = 50;
 
   // word attached
   var groundWord = '(地上)';
@@ -6324,7 +6325,22 @@
       }
       msg += ', ';
     }
-    return msg.substring(0, msg.length - 2);
+    msg = msg.substring(0, msg.length - 2);
+    let resultArray = [], index = 0;
+    for (let i = 0; i < msg.length; i++) {
+      if (!resultArray[index]) {
+        resultArray[index] = '';
+      }
+      resultArray[index] += msg.charAt(i);
+      if (messageWindow.textWidth(resultArray[index]) > Graphics.width - 200) {
+        index++;
+      }
+    }
+    let result = '';
+    for (let id in resultArray) {
+      result += resultArray[id] + '\n';
+    }
+    return result.substring(0, result.length - 1);
   }
 
   ItemUtils.findMapItemPileEvent = function (x, y) {
@@ -6338,13 +6354,23 @@
     return null;
   }
 
+  ItemUtils.addItemToListSorted = function(item, list) {
+    for (let i = 0; i < list.length; i++) {
+      if (ItemUtils.getItemFullName(list[i]) == ItemUtils.getItemFullName(item)) {
+        list.splice(i, 0, item);
+        return;
+      }
+    }
+    list.push(item);
+  }
+
   ItemUtils.addItemToSet = function (toAdd, itemSet, weaponSet, armorSet) {
     if (DataManager.isItem(toAdd)) {
-      itemSet.push(toAdd);
+      ItemUtils.addItemToListSorted(toAdd, itemSet);
     } else if (DataManager.isWeapon(toAdd)) {
-      weaponSet.push(toAdd)
+      ItemUtils.addItemToListSorted(toAdd, weaponSet);
     } else if (DataManager.isArmor(toAdd)) {
-      armorSet.push(toAdd);
+      ItemUtils.addItemToListSorted(toAdd, armorSet);
     }
   }
 
@@ -15842,23 +15868,303 @@
       this.addCommand('操作指令', 'formation', true);
     }
   };
+
+  //-----------------------------------------------------------------------------
+  // Window_ControlCommand
+  //
+  // The window for selecting a control of player character
+
+  function Window_ControlCommand() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_ControlCommand.prototype = Object.create(Window_Command.prototype);
+  Window_ControlCommand.prototype.constructor = Window_ControlCommand;
+
+  Window_ControlCommand.prototype.initialize = function(x, y) {
+      Window_Command.prototype.initialize.call(this, x, y);
+  };
+
+  Window_ControlCommand.prototype.makeCommandList = function() {
+    this.addCommand('戰技', 'war', true);
+    this.addCommand('魔法', 'magic', true);
+    this.addCommand('投射物品', 'fire', true);
+    this.addCommand('預設投射物', 'setFire', true);
+    this.addCommand('向下走一層', 'walkDown', true);
+    this.addCommand('向上走一層', 'walkUp', true);
+    this.addCommand('查看物品欄', 'inventory', true);
+    this.addCommand('撿起物品', 'get', true);
+    this.addCommand('丟下物品', 'drop', true);
+    this.addCommand('開門', 'open', true);
+    this.addCommand('關門', 'close', true);
+    this.addCommand('穿脫裝備', 'wear', true);
+    this.addCommand('吃東西', 'eat', true);
+    this.addCommand('查看紀錄', 'log', true);
+    this.addCommand('閱讀卷軸', 'read', true);
+    this.addCommand('飲用藥水', 'quaff', true);
+    this.addCommand('合成物品', 'mix', true);
+    this.addCommand('搜尋隱藏機關', 'search', true);
+    this.addCommand('儲存檔案', 'save', true);
+    this.addCommand('開啟說明頁面', 'help', true);
+  }
+
+  Window_ControlCommand.prototype.windowWidth = function() {
+    return 240;
+  };
+
+  Window_ControlCommand.prototype.numVisibleRows = function() {
+    return this.maxItems();
+  };
+
   //-----------------------------------------------------------------------------
   // Scene_Menu
   //
   // The scene class of the menu screen.
   // Modify this to show our desired menu
 
+  Scene_Menu.prototype.create = function() {
+    Scene_MenuBase.prototype.create.call(this);
+    this.createCommandWindow();
+    this.createControlWindow();
+    // this.createGoldWindow();
+    this.createStatusWindow();
+  };
+
   Scene_Menu.prototype.createCommandWindow = function() {
-  this._commandWindow = new Window_MenuCommand(0, 0);
-  this._commandWindow.setHandler('formation', this.commandFormation.bind(this));
-  this._commandWindow.setHandler('item',      this.commandItem.bind(this));
-  this._commandWindow.setHandler('skill',     this.commandPersonal.bind(this));
-  this._commandWindow.setHandler('equip',     this.commandPersonal.bind(this));
-  this._commandWindow.setHandler('status',    this.commandPersonal.bind(this));
-  this._commandWindow.setHandler('options',   this.commandOptions.bind(this));
-  this._commandWindow.setHandler('save',      this.commandSave.bind(this));
-  this._commandWindow.setHandler('gameEnd',   this.commandGameEnd.bind(this));
-  this._commandWindow.setHandler('cancel',    this.popScene.bind(this));
-  this.addWindow(this._commandWindow);
-};
+    this._commandWindow = new Window_MenuCommand(0, 0);
+    this._commandWindow.setHandler('formation', this.commandFormation.bind(this));
+    this._commandWindow.setHandler('item',      this.commandItem.bind(this));
+    this._commandWindow.setHandler('skill',     this.commandPersonal.bind(this));
+    this._commandWindow.setHandler('equip',     this.commandPersonal.bind(this));
+    this._commandWindow.setHandler('status',    this.commandPersonal.bind(this));
+    this._commandWindow.setHandler('options',   this.commandOptions.bind(this));
+    this._commandWindow.setHandler('save',      this.commandSave.bind(this));
+    this._commandWindow.setHandler('gameEnd',   this.commandGameEnd.bind(this));
+    this._commandWindow.setHandler('cancel',    this.popScene.bind(this));
+    this.addWindow(this._commandWindow);
+  };
+
+  Scene_Menu.prototype.commandFormation = function() {
+    this._commandWindow.hide();
+    this._controlWindow.show();
+    this._controlWindow.activate();
+  };
+
+  Scene_Menu.prototype.createControlWindow = function() {
+    this._controlWindow = new Window_ControlCommand(0, 0);
+    this._controlWindow.setHandler('war', this.onWar.bind(this));
+    this._controlWindow.setHandler('magic', this.onMagic.bind(this));
+    this._controlWindow.setHandler('fire', this.onFire.bind(this));
+    this._controlWindow.setHandler('setFire', this.onSetFire.bind(this));
+    this._controlWindow.setHandler('walkDown', this.onWalkDown.bind(this));
+    this._controlWindow.setHandler('walkUp', this.onWalkUp.bind(this));
+    this._controlWindow.setHandler('inventory', this.onInventory.bind(this));
+    this._controlWindow.setHandler('get', this.onGet.bind(this));
+    this._controlWindow.setHandler('drop', this.onDrop.bind(this));
+    this._controlWindow.setHandler('open', this.onOpen.bind(this));
+    this._controlWindow.setHandler('close', this.onClose.bind(this));
+    this._controlWindow.setHandler('wear', this.onWear.bind(this));
+    this._controlWindow.setHandler('eat', this.onEat.bind(this));
+    this._controlWindow.setHandler('log', this.onLog.bind(this));
+    this._controlWindow.setHandler('read', this.onRead.bind(this));
+    this._controlWindow.setHandler('quaff', this.onQuaff.bind(this));
+    this._controlWindow.setHandler('mix', this.onMix.bind(this));
+    this._controlWindow.setHandler('search', this.onSearch.bind(this));
+    this._controlWindow.setHandler('save', this.onSave.bind(this));
+    this._controlWindow.setHandler('help', this.onHelp.bind(this));
+    this._controlWindow.setHandler('cancel', this.onControlCancel.bind(this));
+    this._controlWindow.hide();
+    this.addWindow(this._controlWindow);
+  }
+
+  Scene_Menu.prototype.onControlCancel = function() {
+    this._controlWindow.hide();
+    this._commandWindow.show();
+    this._commandWindow.activate();
+  }
+
+  Scene_Menu.createKeyEvent = function(key, code) {
+    return {key: key, keyCode: 65, code: code};
+  }
+
+  Scene_Menu.prototype.onWar = function() {
+    SceneManager.pop();   
+    setTimeout(function() {
+      Input._onKeyDown(Scene_Menu.createKeyEvent('W'));
+    }, controlCommandDelay);
+  }
+
+  Scene_Menu.prototype.onMagic = function() {
+    SceneManager.pop();   
+    setTimeout(function() {
+      Input._onKeyDown(Scene_Menu.createKeyEvent('C'));
+    }, controlCommandDelay);
+  }
+
+  Scene_Menu.prototype.onFire = function() {
+    SceneManager.pop();   
+    setTimeout(function() {
+      Input._onKeyDown(Scene_Menu.createKeyEvent('f'));
+    }, controlCommandDelay);
+  }
+
+  Scene_Menu.prototype.onSetFire = function() {
+    SceneManager.pop();   
+    setTimeout(function() {
+      Input._onKeyDown(Scene_Menu.createKeyEvent('Q'));
+    }, controlCommandDelay);
+  }
+
+  Scene_Menu.prototype.onWalkDown = function() {
+    SceneManager.pop();   
+    setTimeout(function() {
+      Input._onKeyDown(Scene_Menu.createKeyEvent('>'));
+    }, controlCommandDelay);
+  }
+
+  Scene_Menu.prototype.onWalkUp = function() {
+    SceneManager.pop();   
+    setTimeout(function() {
+      Input._onKeyDown(Scene_Menu.createKeyEvent('<'));
+    }, controlCommandDelay);
+  }
+
+  Scene_Menu.prototype.onInventory = function() {
+    SceneManager.pop();   
+    setTimeout(function() {
+      Input._onKeyDown(Scene_Menu.createKeyEvent('i'));
+    }, controlCommandDelay);
+  }
+
+  Scene_Menu.prototype.onGet = function() {
+    SceneManager.pop();   
+    setTimeout(function() {
+      Input._onKeyDown(Scene_Menu.createKeyEvent('g'));
+    }, controlCommandDelay);
+  }
+
+  Scene_Menu.prototype.onDrop = function() {
+    SceneManager.pop();   
+    setTimeout(function() {
+      Input._onKeyDown(Scene_Menu.createKeyEvent('d'));
+    }, controlCommandDelay);
+  }
+
+  Scene_Menu.prototype.onOpen = function() {
+    SceneManager.pop();   
+    setTimeout(function() {
+      Input._onKeyDown(Scene_Menu.createKeyEvent('o'));
+    }, controlCommandDelay);
+  }
+
+  Scene_Menu.prototype.onClose = function() {
+    SceneManager.pop();   
+    setTimeout(function() {
+      Input._onKeyDown(Scene_Menu.createKeyEvent('c'));
+    }, controlCommandDelay);
+  }
+
+  Scene_Menu.prototype.onWear = function() {
+    SceneManager.pop();   
+    setTimeout(function() {
+      Input._onKeyDown(Scene_Menu.createKeyEvent('w'));
+    }, controlCommandDelay);
+  }
+
+  Scene_Menu.prototype.onEat = function() {
+    SceneManager.pop();   
+    setTimeout(function() {
+      Input._onKeyDown(Scene_Menu.createKeyEvent('e'));
+    }, controlCommandDelay);
+  }
+
+  Scene_Menu.prototype.onLog = function() {
+    SceneManager.pop();   
+    setTimeout(function() {
+      Input._onKeyDown(Scene_Menu.createKeyEvent('/'));
+    }, controlCommandDelay);
+  }
+
+  Scene_Menu.prototype.onRead = function() {
+    SceneManager.pop();   
+    setTimeout(function() {
+      Input._onKeyDown(Scene_Menu.createKeyEvent('r'));
+    }, controlCommandDelay);
+  }
+
+  Scene_Menu.prototype.onQuaff = function() {
+    SceneManager.pop();   
+    setTimeout(function() {
+      Input._onKeyDown(Scene_Menu.createKeyEvent('q'));
+    }, controlCommandDelay);
+  }
+
+  Scene_Menu.prototype.onMix = function() {
+    SceneManager.pop();   
+    setTimeout(function() {
+      Input._onKeyDown(Scene_Menu.createKeyEvent('M'));
+    }, controlCommandDelay);
+  }
+
+  Scene_Menu.prototype.onSearch = function() {
+    SceneManager.pop();   
+    setTimeout(function() {
+      Input._onKeyDown(Scene_Menu.createKeyEvent('s'));
+    }, controlCommandDelay);
+  }
+
+  Scene_Menu.prototype.onSave = function() {
+    SceneManager.pop();   
+    setTimeout(function() {
+      Input._onKeyDown(Scene_Menu.createKeyEvent('S'));
+    }, controlCommandDelay);
+  }
+
+  Scene_Menu.prototype.onHelp = function() {
+    SceneManager.pop();   
+    setTimeout(function() {
+      Input._onKeyDown(Scene_Menu.createKeyEvent('h'));
+    }, controlCommandDelay);
+  }
+
+  TouchInput._onLeftButtonDown = function(event) {
+    var x = Graphics.pageToCanvasX(event.pageX);
+    var y = Graphics.pageToCanvasY(event.pageY);
+    if (SceneManager._scene instanceof Scene_Map) {
+      let deltaX = Math.round((x - $gamePlayer.screenX()) / 48);
+      let deltaY = Math.round((y - $gamePlayer.screenY()) / 48);
+      console.log('deltaX: ' + deltaX + ', deltaY: ' + deltaY);
+      if (deltaX == 0 && deltaY == 0) {
+        Input._onKeyDown(Scene_Menu.createKeyEvent(null, 'Numpad5'));
+      } else if (deltaX == 0) {
+        if (deltaY > 0) {
+          Input._onKeyDown(Scene_Menu.createKeyEvent(null, 'Numpad2'));
+        } else {
+          Input._onKeyDown(Scene_Menu.createKeyEvent(null, 'Numpad8'));
+        }
+      } else if (deltaX > 0) {
+        if (deltaY > 0) {
+          Input._onKeyDown(Scene_Menu.createKeyEvent(null, 'Numpad3'));
+        } else if (deltaY == 0) {
+          Input._onKeyDown(Scene_Menu.createKeyEvent(null, 'Numpad6'));
+        } else {
+          Input._onKeyDown(Scene_Menu.createKeyEvent(null, 'Numpad9'));
+        }
+      } else {
+        if (deltaY > 0) {
+          Input._onKeyDown(Scene_Menu.createKeyEvent(null, 'Numpad1'));
+        } else if (deltaY == 0) {
+          Input._onKeyDown(Scene_Menu.createKeyEvent(null, 'Numpad4'));
+        } else {
+          Input._onKeyDown(Scene_Menu.createKeyEvent(null, 'Numpad7'));
+        }
+      }
+    } else {
+      if (Graphics.isInsideCanvas(x, y)) {
+        this._mousePressed = true;
+        this._pressedTime = 0;
+        this._onTrigger(x, y);
+      }
+    }
+  };
 })();
