@@ -16133,7 +16133,6 @@
     if (SceneManager._scene instanceof Scene_Map) {
       let deltaX = Math.round((x - $gamePlayer.screenX()) / 48);
       let deltaY = Math.round((y - $gamePlayer.screenY()) / 48);
-      console.log('deltaX: ' + deltaX + ', deltaY: ' + deltaY);
       if (deltaX == 0 && deltaY == 0) {
         Input._onKeyDown(Scene_Menu.createKeyEvent(null, 'Numpad5'));
       } else if (deltaX == 0) {
@@ -16164,6 +16163,18 @@
         this._mousePressed = true;
         this._pressedTime = 0;
         this._onTrigger(x, y);
+      }
+    }
+  };
+
+  TouchInput._onRightButtonDown = function(event) {
+    var x = Graphics.pageToCanvasX(event.pageX);
+    var y = Graphics.pageToCanvasY(event.pageY);
+    if (Graphics.isInsideCanvas(x, y)) {
+      if ($gameVariables[0].directionalFlag || $gameVariables[0].messageFlag) {
+        Input._onKeyDown(Scene_Menu.createKeyEvent('Escape', 'Escape'));
+      } else {
+        this._onCancel(x, y);
       }
     }
   };
