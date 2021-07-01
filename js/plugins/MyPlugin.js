@@ -1394,6 +1394,30 @@
       selinaEncountered: $dataMap.events[11],
       selinaDefeated: $dataMap.events[12]
     }
+    // tutorial
+    $gameVariables[0].tutorialOn = true;
+    $gameVariables[0].tutorialEvents = {
+      move: {
+        triggered: false,
+        evt: $dataMap.events[13]
+      },
+      getDrop: {
+        triggered: false,
+        evt: $dataMap.events[15]
+      },
+      inventory: {
+        triggered: false,
+        evt: $dataMap.events[16]
+      },
+      meleeAttack: {
+        triggered: false,
+        evt: $dataMap.events[14]
+      },
+      obtainSoul: false,
+      equip: false,
+      warSkill: false,
+      magic: false
+    },
     // define event related states
     $gameVariables[0].eventState = {
       pressFloorDiscovered: false,
@@ -2077,6 +2101,8 @@
     let msg = '';
     if (event) {
       msg = ItemUtils.displayObjStack(event.itemPile.objectStack);
+      // tutorial: getDrop
+      TimeUtils.tutorialHandler.queue.push("getDrop");
     }
     // always show msg box, to avoid window lag (don't know why)
     MapUtils.displayMessageNonBlocking(msg);
@@ -2201,11 +2227,15 @@
       if (event.mob.status.invisibleEffect.turns > 0 || CharUtils.isCharInWater(event)) {
         if (CharUtils.playerCanSeeChar(event)) {
           event.setOpacity(128);
+          // tutorial: meleeAttack
+          TimeUtils.tutorialHandler.queue.push("meleeAttack");
         } else {
           event.setOpacity(0);
         }
       } else {
         event.setOpacity(255);
+        // tutorial: meleeAttack
+        TimeUtils.tutorialHandler.queue.push("meleeAttack");
       }
     }
   }
@@ -5356,6 +5386,9 @@
                 MapUtils.addBothLog(Message.display('getItemFailedMaxNum'));
               } else {
                 if (itemPile.itemPile.objectStack.length == 1) {
+                  // tutorial: inventory
+                  TimeUtils.tutorialHandler.queue.push("inventory");
+
                   let obj = itemPile.itemPile.objectStack[0];
                   ItemUtils.removeItemFromItemPile($gamePlayer._x, $gamePlayer._y, obj);
                   $gameParty.gainItem(obj, 1);
@@ -5520,7 +5553,6 @@
   }
 
   TimeUtils.eventScheduler = {
-    currentMapId: 0,
     getEventQueue: function() {
       return $gameVariables[0].eventQueue;
     },
@@ -5663,6 +5695,34 @@
         }
       } else {
         console.log('ERROR: schedule problem!');
+      }
+    }
+  };
+
+  TimeUtils.tutorialHandler = {
+    queue: [],
+    indicator: 0,
+    execute: function() {
+      let vm = TimeUtils.tutorialHandler;
+      if ($gameVariables[0].tutorialOn) {
+        if ($gameMap._interpreter._eventId != 0) {
+          setTimeout(TimeUtils.tutorialHandler.execute, 10);
+          return;
+        }
+        if (vm.indicator < vm.queue.length) {
+          let tutorialEvt = $gameVariables[0].tutorialEvents[vm.queue[vm.indicator]];
+          if (!tutorialEvt.triggered) {
+            tutorialEvt.triggered = true;
+            MapUtils.playEventFromTemplate(tutorialEvt.evt);
+          }
+          vm.indicator++;
+          vm.execute();
+        } else {
+          vm.indicator = 0;
+          vm.queue.length = 0;
+        }
+      } else {
+        vm.queue.length = 0;
       }
     }
   };
@@ -5839,6 +5899,9 @@
           setTimeout(TimeUtils.afterPlayerMoved, 1);
           return;
         }
+        // tutorial: move
+        TimeUtils.tutorialHandler.queue.push("move");
+
         CharUtils.decreaseNutrition($gamePlayer);
         CharUtils.calcPlayerCarryStatus();
         if (!timeSpent) {
@@ -5903,6 +5966,8 @@
           // player moveable again
           $gamePlayer._vehicleGettingOn = false;
           TimeUtils.afterPlayerMovedData.state = 0;
+          // run tutorial
+          TimeUtils.tutorialHandler.execute();
           return;
         }
     }
@@ -13875,6 +13940,8 @@
       LogUtils.addLog(String.format(Message.display('getItems'), ItemUtils.displayObjStack(ItemUtils.tempObjStack)));
       ItemUtils.tempObjStack.length = 0;
       setTimeout('TimeUtils.afterPlayerMoved();', 100);
+      // tutorial: inventory
+      TimeUtils.tutorialHandler.queue.push("inventory");
     }
   }
 
