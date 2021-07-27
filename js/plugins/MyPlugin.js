@@ -522,21 +522,222 @@
       iceHitLava: '{0}冷卻了岩漿, 形成可行走的陸地.',
       objectSummoned: '{0}召喚了{1}!',
       pressFloorTriggered: '你聽到機關被觸動的聲音...',
+      tutorialGuide: '艾比',
+      tutorialMove1:
+        '你好, 初次見面! 我是負責在遊戲進行中從旁進行提示教學的精\n'
+      + '靈, 請多指教～',
+      tutorialMove2:
+        '當遊戲進展到相關的操作指令時, 我就會跳出來提醒你哦! 到時\n'
+      + '候可要記好了...',
+      tutorialMove3:
+        '在地圖上有8個方向可以移動, 分別是上、下、左、右、左上、\n'
+      + '左下、右上、右下, 對應到數字小鍵盤的8、2、4、6、7、1、9\n'
+      + '、3.',
+      tutorialMove4:
+        '如果沒有數字小鍵盤, 則可以用方向鍵的上、下、左、右, 再加\n'
+      + '上Home、End、PgUp、PgDn來代替.',
+      tutorialMove5:
+        '在遊戲中, 玩家角色前進一格, 時間才會跟著流逝一回合, 所以\n'
+      + '前進的時候是一次次的按下方向鍵, 盡量不要按著不放, 否則容\n'
+      + '易不知道發生了什麼事情哦!',
+      tutorialMove6:
+        '其中數字小鍵盤的5, 或是符號"."可以讓角色原地休息一回合. \n'
+      + '隨著時間過去, 角色的狀態也會慢慢回復, 在角色虛弱的時候非\n'
+      + '常重要!',
+      tutorialMove7:
+        '按下按鍵"h"或是"?"就可以查看所有操作指令的說明, 如果忘記\n'
+      + '的時候記得打開說明欄複習一下!',
+      tutorialMove8:
+        '現在就開始在地下城中走走看看吧!',
+      tutorialMeleeAttack0:
+        '遇到敵人了!',
+      tutorialMeleeAttack1:
+        '在敵人的身邊對著敵人的方向按方向鍵, 就能夠對目標進行普通\n'
+      + '攻擊.',
+      tutorialMeleeAttack2:
+        '普通攻擊會消耗耐力(EN), 當耐力過低的時候就會無法進行攻擊,\n'
+      + '所以要時刻注意耐力的殘量哦!',
+      tutorialMeleeAttack3:
+        '耐力在不進行攻擊的時候就會自動回復, 特別是在原地休息的時\n'
+      + '候回復最多.',
+      tutorialGetDrop1:
+        '地上發現物品的時候, 物品的名稱會顯示在左下角, 這時候按下\n'
+      + '"g"就可以把地上的物品撿起來哦.',
+      tutorialGetDrop2:
+        '地上的物品多於1個的時候, 會跳出視窗, 在視窗中選擇要撿起\n'
+      + '的物品按下Enter鍵就能夠撿起. 如果要結束這個動作, 只要按\n'
+      + '下"Esc"或是數字小鍵盤的"0"就能夠取消畫面了.',
+      tutorialGetDrop3:
+        '"Esc"和數字小鍵盤的"0"都可以作為取消動作的按鍵哦! 此外, \n'
+      + '在平常的畫面按"Esc"或數字小鍵盤的"0"可以開啟主選單.',
+      tutorialGetDrop4:
+        '如果想要丟下身上的物品, 按下"d"就會顯示出身上攜帶的所有\n'
+      + '物件,選到要丟下的物品按下Enter即可.',
+      tutorialInventory1:
+        '如果想要查看角色身上攜帶著哪些物品, 可以按下"i"鍵, 就會\n'
+      + '跳出視窗顯示身上擁有的物件, 分為道具/武器/防具三個視窗.',
+      tutorialInventory2:
+        '需要注意的是, 物品欄視窗只是方便玩家確認身上有哪些東西, \n'
+      + '要使用物品還是需要按下相對應的功能鍵哦!',
+      tutorialEquip1:
+        '取得裝備之後, 按下"w"就可以開啟裝備介面, 再用方向鍵選擇\n'
+      + '要進行裝備的欄位. 底下的視窗會顯示身上擁有可以裝備在該\n'
+      + '部位的裝備名稱.',
+      tutorialEquip2:
+        '沒有使用過的裝備是不知道其數值的, 但是一旦裝備上去後就會\n'
+      + '自動鑑定. 之後就可以透過上方的敘述欄位得知裝備所影響的數\n'
+      + '值, 也能夠透過左邊的數值比較來判斷裝備的好壞.',
+      tutorialEquip3:
+        '值得注意的是, 如果運氣不好裝上了被詛咒的裝備, 可就無法脫\n'
+      + '下來了...這時候就得想辦法去除詛咒, 或是銷毀裝備了呢!',
+      tutorialSoul1:
+        '擊敗敵人時, 有機會從敵人身上吸收到魂. 魂會讓主角得到相對\n'
+      + '應的技能. 技能分成戰技、魔法、常駐三種類型, 想要確認主角\n'
+      + '擁有哪些技能, 可以按"Esc"或數字小鍵盤的"0"開啟主選單, 並\n'
+      + '且選擇技能頁面.',
+      tutorialSoul2:
+        '其中戰技是主要消耗耐力(EN)的技能, 透過"W"來施展; 魔法則\n'
+      + '是主要消耗魔力(MP)的技能, 透過"C"來施展; 常駐技能不能主\n'
+      + '動施展, 但是會持續影響角色的狀態.',
+      tutorialSoul3:
+        '主動技能分為範圍、指向、投射三種類型. 範圍技能在施展的當\n'
+      + '下隨即生效, 效果持續一段時間; 指向技能在施展後需要指定方\n'
+      + '向, 通常只對身邊一格距離生效; 投射技能則會放出飛行的投射\n'
+      + '物, 能夠對較遠距離的敵人進行攻擊.',
+      tutorialSoul4:
+        '技能的等級會隨著使用的次數提升, 技能威力和距離都有可能隨\n'
+      + '之增加, 所以密集使用想培養的技能吧!',
+      tutorialSoul5:
+        '除了可以在主選單確認擁有的技能之外, 也能夠在物品欄確認擁\n'
+      + '有的魂的種類.',
+      tutorialDoor0:
+        '前方出現了一道門!',
+      tutorialDoor1:
+        '關上的門可以透過"o"或是直接往門的方向前進來打開. 反之如果\n'
+      + '要關上門的話, 就要透過"c"指令.',
+      tutorialDoor2:
+        '值得注意的是, 如果門的所在位置有敵人, 或是地上有物品的時\n'
+      + '候, 門是關不起來的喔!',
+      tutorialSecretDoor0:
+        '你身邊的牆壁存在隱藏門!',
+      tutorialSecretDoor1:
+        '隱藏門的外觀就和普通牆壁一樣, 但是只要經過數次的搜查, 就有\n'
+      + '可能發現它們. 搜查的方式是"s". 並且因為單次尋找就找到隱藏\n'
+      + '門的機率不高, 因此最好是多按幾次哦!',
+      tutorialSecretDoor2:
+        '當迷宮中找不到出路的時候, 就肯定在哪邊的牆壁存在隱藏門, \n'
+      + '這時後就需要耐心沿著牆壁找找看了.',
+      tutorialTrap1:
+        '陷阱在地圖上是隱藏的, 一直到有生物踩到它之後才會顯示出來.\n'
+      + '陷阱有著多樣性的負面效果, 有的會讓角色受傷, 也有的會讓角\n'
+      + '色不能動彈.',
+      tutorialTrap2:
+        '你可以透過"s"來搜查自己身邊的地板上是否有陷阱. 因為單次\n'
+      + '搜查就找到的機率不高, 最好是多搜查幾回合哦! 當角色狀態危\n'
+      + '險的時候, 就小心的一邊搜查陷阱一邊前進吧.',
+      tutorialLog0:
+        '你擊敗敵人了!',
+      tutorialLog1:
+        '在戰鬥的時候的各種招式和傷害數值都會被記錄在歷史訊息中, \n'
+      + '按"/"就可以查看. 除了戰鬥之外, 一些比較重要的訊息也會記\n'
+      + '錄在其中, 比方說踩到陷阱、撿拾物品等.',
+      tutorialLog2:
+        '歷史訊息只能夠保留有限的長度, 超過長度的則會刪除, 這點可\n'
+      + '以稍微注意一下. 當局面混亂, 不知道發生什麼事情的時候, 最\n'
+      + '好打開歷史訊息看看哦!',
+      tutorialScroll0:
+        '你拿到了一捲卷軸.',
+      tutorialScroll1:
+        '卷軸在閱讀前無法得知其魔法效果. 若閱讀時不滿足發動效果的\n'
+      + '環境, 也不會得知其效果. 然而一旦成功發動卷軸效果後, 以後\n'
+      + '再拿到相同的卷軸就會顯示看得懂的名稱.',
+      tutorialScroll2:
+        '卷軸的名稱在每一局遊戲都會亂數產生, 因此記住未鑑定前的名\n'
+      + '稱並沒有意義哦! 按"r"可以對身上擁有的卷軸進行閱讀.',
+      tutorialPotion0:
+        '你拿到了一瓶藥水.',
+      tutorialPotion1:
+        '藥水可以給角色飲用, 也可以拿來投擲敵人. 按"q"可以選擇身上\n'
+      + '的藥水來飲用, 按"f"則能夠選擇將藥水向某個方向丟出. 被丟中\n'
+      + '的對象會獲得等同於飲用藥水的效果.',
+      tutorialPotion2:
+        '藥水要經過使用才知道其效果, 之後拿到同樣種類的藥水都會直\n'
+      + '接顯示名稱. 藥水的種類在每一局的遊戲都是打亂的, 所以記住\n'
+      + '未鑑定前的名稱並沒有意義哦!',
+      tutorialStair0:
+        '你發現了往下的樓梯!',
+      tutorialStair1:
+        '站在樓梯上按下">"就能夠往下走, 反之若是站在往上的樓梯上\n'
+      + '按下"<"可以往上走. 除了使用這兩個按鍵之外, 只要站在樓梯\n'
+      + '上按下Enter鍵也能夠使用樓梯.',
+      tutorialStair2:
+        '地城隨著越往地下深入, 所遭遇到的敵人也會更加困難, 因此好\n'
+      + '好的準備, 不要貿然前進! 在地城中除了遇到最上或最底層的狀\n'
+      + '況, 否則每一層地圖都至少會擁有一個向上的樓梯和一個向下的\n'
+      + '樓梯.',
+      tutorialStair3:
+        '當找不到樓梯的時候, 很有可能是某個隱藏通道沒有被發現喔! \n'
+      + '多嘗試找找看可疑的牆壁吧!',
+      tutorialBelly0:
+        '你撿到食物了!',
+      tutorialBelly1:
+        '在遊戲中, 必須不斷進食才能確保不餓死. 有些食物是有保存期\n'
+      + '限的, 過一段時間後會腐爛, 導致食用的時候出現一些負面效果\n'
+      + ', 有一些食物則可以長久保存.',
+      tutorialBelly2:
+        '按下"e"可以對身上或地上的食物進行食用. 特別注意吃東西的\n'
+      + '時候, 時間會迅速的流逝, 要小心這段期間被敵人攻擊喔!',
+      tutorialMix0:
+        '你撿到素材了!',
+      tutorialMix1:
+        '在遊戲中可以使用敵人掉落的素材來製作出裝備, 在遊戲進行過\n'
+      + '程中是不可或缺的. 按"M"可以進入合成頁面, 根據自己獲得的\n'
+      + '素材, 時常檢查可以進行合成的項目吧!',
+      tutorialDart0:
+        '你撿到飛鏢了!',
+      tutorialDart1:
+        '飛鏢可以用"f"向敵人投擲出去, 造成遠程物理傷害. 飛鏢可以\n'
+      + '使用合成製造, 投擲後有一定的機率會損壞. 在不想靠近敵人的\n'
+      + '時候多多使用吧.',
+      tutorialDart2:
+        '此外, 透過快捷鍵"Q"可以在投射物的清單內設定預設投射物品.\n'
+      + '再次選擇預設投射物則可取消此功能.',
+      tutorialSave1:
+        '長期進行遊戲是否感到疲倦呢? 這個遊戲是可以隨時存檔的哦! \n'
+      + '可以從主選單選擇存檔動作, 或者按"S"叫出存檔頁面, 關閉遊\n'
+      + '戲前記得保存自己的遊玩記錄哦.',
+      tutorialCarry0:
+        '你進入負重狀態了!',
+      tutorialCarry1:
+        '任何物品都有重量, 隨著身上的物品越來越多, 角色的狀態也會\n'
+      + '因為身上的重量而受影響哦. 謹慎的評估身上要攜帶的物品, 並\n'
+      + '盡量避免太高的負重吧.',
+      tutorialHotKey1:
+        '每次要施展招式時都要打開戰技或魔法頁面的話, 操作將會變得\n'
+      + '十分繁瑣, 因此本遊戲支援快捷鍵系統.',
+      tutorialHotKey2:
+        '打開戰技或魔法頁面, 在技能上按下鍵盤左側數字鍵0~9, 便可\n'
+      + '將該技能設定至該數字, 接著在地圖畫面上按下該數字便可以直\n'
+      + '接施放技能. 在選定的技能上再按一次快捷鍵可取消綁定.',
+      tutorialHotKey3:
+        '熟練快捷鍵的使用, 將會使遊戲流暢度大大提升.',
       helpMsg: '移動角色:\n'
-        + '數字小鍵盤(2468: 下左右上, 1379: 左下、右下、左上、右上, 5:原地等待一回合)\n\n'
+        + '數字小鍵盤(2468: 下左右上, 1379: 左下、右下、左上、\n'
+        + '右上, 5:原地等待一回合)\n'
+        + '或是使用方向鍵下左右上、End、PgDn、Home、PgUp\n\n'
         + '戰鬥操作:\n'
-        + '對著目標按移動鍵: 普通攻擊　　W: 發動戰技　　C: 施放魔法　　f: 投擲物品\n'
-        + 'Q: 預設投射物\n\n'
+        + '對著目標按移動鍵: 普通攻擊  W: 發動戰技  C: 施放魔法\n'
+        + 'f: 投擲物品  Q: 預設投射物\n\n'
         + '其他操作:\n'
-        + '>: 向下走一層　　<: 向上走一層　　Enter: 走樓梯快捷鍵　　i: 查看物品欄\n'
-        + 'g: 撿起地上物品　d: 丟下身上物品　o: 開門(或直接往門走)　c: 關上一扇門\n'
-        + 'w: 穿脫裝備　　　e: 吃東西　　　　/: 查看紀錄　　　　　　r: 閱讀卷軸\n'
-        + 'q: 飲用藥水　　　M: 合成物品　　　s: 搜尋隱藏門、陷阱　　S: 存檔頁面\n'
-        + 'h/?: 開啟此頁面\n\n'
-        + '快捷鍵系統:\n'
-        + '打開戰技或魔法頁面, 在技能上按下鍵盤左側數字鍵0~9, 便可將該技能設定至該\n'
-        + '數字, 接著在地圖畫面上按下該數字便可以直接施放技能. 在選定的技能上再按一\n'
-        + '次快捷鍵可取消綁定.'
+        + '>: 向下走一層    <: 向上走一層    Enter: 走樓梯快捷鍵\n'
+        + 'i: 查看物品欄    g: 撿起地上物品  d: 丟下身上物品\n'
+        + 'o: 開門         c: 關門         w: 穿脫裝備\n'
+        + 'e: 吃東西        /: 查看紀錄     r: 閱讀卷軸\n'
+        + 'q: 飲用藥水      M: 合成物品     s: 搜尋隱藏門、陷阱\n'
+        + 'S: 存檔頁面      h/?: 開啟此頁面\n'
+        + 'x/Esc/數字小鍵盤0: 取消動作/開啟主菜單\n\n'
+        + '技能快捷鍵:\n'
+        + '鍵盤左側數字0~9'
     },
     display: function(msgName) {
       switch (Message.language) {
@@ -1271,6 +1472,10 @@
       }
       $gameActors.actor(1).carryStatus = 4;
     }
+    if ($gameActors.actor(1).carryStatus > 0) {
+      // tutorial: carry
+      TimeUtils.tutorialHandler.queue.push('carry');
+    }
     // check carryStatus effect
     let damage;
     switch ($gameActors.actor(1).carryStatus) {
@@ -1413,10 +1618,62 @@
         triggered: false,
         evt: $dataMap.events[14]
       },
-      obtainSoul: false,
-      equip: false,
-      warSkill: false,
-      magic: false
+      soul: {
+        triggered: false,
+        evt: $dataMap.events[18]
+      },
+      equip: {
+        triggered: false,
+        evt: $dataMap.events[17]
+      },
+      door: {
+        triggered: false,
+        evt: $dataMap.events[19]
+      },
+      secretDoor: {
+        triggered: false,
+        evt: $dataMap.events[20]
+      },
+      trap: {
+        triggered: false,
+        evt: $dataMap.events[21]
+      },
+      log: {
+        triggered: false,
+        evt: $dataMap.events[22]
+      },
+      scroll: {
+        triggered: false,
+        evt: $dataMap.events[23]
+      },
+      potion: {
+        triggered: false,
+        evt: $dataMap.events[24]
+      },
+      stair: {
+        triggered: false,
+        evt: $dataMap.events[25]
+      },
+      belly: {
+        triggered: false,
+        evt: $dataMap.events[26]
+      },
+      mix: {
+        triggered: false,
+        evt: $dataMap.events[27]
+      },
+      dart: {
+        triggered: false,
+        evt: $dataMap.events[28]
+      },
+      save: {
+        triggered: false,
+        evt: $dataMap.events[29]
+      },
+      carry: {
+        triggered: false,
+        evt: $dataMap.events[30]
+      },
     },
     // define event related states
     $gameVariables[0].eventState = {
@@ -1746,12 +2003,6 @@
       } else {
         return this.getCharName(target);
       }
-    },
-    displayHelpWindow: function() {
-      $gameVariables[0].messageFlag = true;
-      logWindow.contents.clear();
-      logWindow.drawTextEx(Message.display('helpMsg'), 0, 0);
-      SceneManager._scene.addChild(logWindow);
     }
   };
   MapUtils.logUtils = LogUtils; // for browser debugging
@@ -4705,6 +4956,13 @@
       let evt = evts[id];
       if (evt.type == 'TRAP') {
         if (CharUtils.playerCanSeeChar(target)) {
+          if (!evt.trap.isRevealed) {
+            // tutorial: trap
+            TimeUtils.tutorialHandler.queue.push('trap');
+          } else if (evt instanceof DownStair) {
+            // tutorial: stair
+            TimeUtils.tutorialHandler.queue.push('stair');
+          }
           evt.trap.isRevealed = true;
         }
         if (evt.trap.lastTriggered != target) {
@@ -5307,7 +5565,7 @@
           case 'Numpad3': case 'PageDown':
             $gamePlayer.moveDiagonally(6, 2);
             break;
-          case 'Numpad5': case 'Period': // wait action
+          case 'Numpad5': // wait action
             TimeUtils.afterPlayerMoved();
             break;
         }
@@ -5386,10 +5644,9 @@
                 MapUtils.addBothLog(Message.display('getItemFailedMaxNum'));
               } else {
                 if (itemPile.itemPile.objectStack.length == 1) {
-                  // tutorial: inventory
-                  TimeUtils.tutorialHandler.queue.push("inventory");
-
                   let obj = itemPile.itemPile.objectStack[0];
+                  // check tutorial
+                  TimeUtils.tutorialHandler.addTutorialWhenGet(obj);
                   ItemUtils.removeItemFromItemPile($gamePlayer._x, $gamePlayer._y, obj);
                   $gameParty.gainItem(obj, 1);
                   LogUtils.addLog(String.format(Message.display('getItems'), ItemUtils.getItemDisplayName(obj)));
@@ -5515,7 +5772,10 @@
             SceneManager.push(Scene_SetupProjectile);
             break;
           case 'h': case '?': // help page
-            LogUtils.displayHelpWindow();
+            SceneManager.push(Scene_Help);
+            break;
+          case '.': // wait action
+            TimeUtils.afterPlayerMoved();
             break;
         }
       } else if (moveStatus == 1) {
@@ -5658,6 +5918,10 @@
           }
           TimeUtils.afterPlayerMoved();
         } else if (target == $gamePlayer) {
+          if ($gameActors.actor(1).turnCount >= 500) {
+            // tutorial: save
+            TimeUtils.tutorialHandler.queue.push('save');
+          }
           if ($gameActors.actor(1).turnCount % regenTurnCount == 0) {
             CharUtils.regenerate($gamePlayer);
           }
@@ -5723,6 +5987,47 @@
         }
       } else {
         vm.queue.length = 0;
+      }
+    },
+    display: function(messageName) {
+      $gameMessage.setFaceImage('Nature', 5);
+      $gameMessage.add(Message.display('tutorialGuide') + ':');
+      let msgs = Message.display(messageName).split('\n');
+      for (let id in msgs) {
+        $gameMessage.add(msgs[id]);
+      }
+      $gameMap._interpreter.setWaitMode('message');
+    },
+    addTutorialWhenGet: function(item) {
+      // tutorial: inventory
+      TimeUtils.tutorialHandler.queue.push("inventory");
+      if (DataManager.isWeapon(item) || DataManager.isArmor(item)) {
+        // tutorial: equip
+        TimeUtils.tutorialHandler.queue.push("equip");
+      } else {
+        let prop = JSON.parse(item.note);
+        switch (prop.type) {
+          case 'SCROLL':
+            // tutorial: scroll
+            TimeUtils.tutorialHandler.queue.push("scroll");
+            break;
+          case 'POTION':
+            // tutorial: potion
+            TimeUtils.tutorialHandler.queue.push("potion");
+            break;
+          case 'FOOD':
+            // tutorial: belly
+            TimeUtils.tutorialHandler.queue.push("belly");
+            break;
+          case 'MATERIAL':
+            // tutorial: mix
+            TimeUtils.tutorialHandler.queue.push("mix");
+            break;
+          case 'DART':
+            // tutorial: dart
+            TimeUtils.tutorialHandler.queue.push("dart");
+            break;
+        }
       }
     }
   };
@@ -5966,6 +6271,18 @@
           // player moveable again
           $gamePlayer._vehicleGettingOn = false;
           TimeUtils.afterPlayerMovedData.state = 0;
+          // check door/secretDoor tutorial
+          for (let i = 0; i < 8; i++) {
+            let coordinate = MapUtils.getNearbyCoordinate($gamePlayer._x, $gamePlayer._y, i);
+            if ($gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].originalTile == DOOR) {
+              if ($gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(coordinate.x, coordinate.y)]
+                && !$gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(coordinate.x, coordinate.y)].isRevealed) {
+                TimeUtils.tutorialHandler.queue.push('secretDoor');
+              } else {
+                TimeUtils.tutorialHandler.queue.push('door');
+              }
+            }
+          }
           // run tutorial
           TimeUtils.tutorialHandler.execute();
           return;
@@ -6099,6 +6416,11 @@
       if (target == $gamePlayer) {
         BattleUtils.playerDied(msg);
       } else {
+        if (realSrc == $gameActors.actor(1)) {
+          // tutorial: log
+          TimeUtils.tutorialHandler.queue.push('log');
+        }
+
         target.looting();
         if (realSrc == $gameActors.actor(1)) {
           let exp = Math.round(Soul_Chick.expAfterAmplify(realTarget.exp()));
@@ -12582,6 +12904,9 @@
   Game_Mob.prototype.dropSoul = function(soulClass) {
     let obtained = $gameParty.hasSoul(soulClass);
     if (!obtained) {
+      // tutorial: soul
+      TimeUtils.tutorialHandler.queue.push("soul");
+
       let soul = new soulClass();
       $gameParty._items.push(soul);
       Soul_Obtained_Action.learnSkill(soulClass);
@@ -13940,14 +14265,15 @@
       LogUtils.addLog(String.format(Message.display('getItems'), ItemUtils.displayObjStack(ItemUtils.tempObjStack)));
       ItemUtils.tempObjStack.length = 0;
       setTimeout('TimeUtils.afterPlayerMoved();', 100);
-      // tutorial: inventory
-      TimeUtils.tutorialHandler.queue.push("inventory");
     }
   }
 
   Scene_GetItem.prototype.onItemOk = function () {
     $gameParty.setLastItem(this.item());
     if (this.item()) {
+      // check tutorial
+      TimeUtils.tutorialHandler.addTutorialWhenGet(this.item());
+
       this.moved = true;
       // remove item from the ground
       $gameParty.loseItem(this.item(), 1);
@@ -16001,15 +16327,27 @@
     this._commandWindow = new Window_MenuCommand(0, 0);
     this._commandWindow.setHandler('formation', this.commandFormation.bind(this));
     this._commandWindow.setHandler('item',      this.commandItem.bind(this));
-    this._commandWindow.setHandler('skill',     this.commandPersonal.bind(this));
-    this._commandWindow.setHandler('equip',     this.commandPersonal.bind(this));
-    this._commandWindow.setHandler('status',    this.commandPersonal.bind(this));
+    this._commandWindow.setHandler('skill',     this.commandPersonalSkill.bind(this));
+    this._commandWindow.setHandler('equip',     this.commandPersonalEquip.bind(this));
+    this._commandWindow.setHandler('status',    this.commandPersonalStatus.bind(this));
     this._commandWindow.setHandler('options',   this.commandOptions.bind(this));
     this._commandWindow.setHandler('save',      this.commandSave.bind(this));
     this._commandWindow.setHandler('gameEnd',   this.commandGameEnd.bind(this));
     this._commandWindow.setHandler('cancel',    this.popScene.bind(this));
     this.addWindow(this._commandWindow);
   };
+
+  Scene_Menu.prototype.commandPersonalSkill = function() {
+    SceneManager.push(Scene_Skill);
+  }
+
+  Scene_Menu.prototype.commandPersonalEquip = function() {
+    SceneManager.push(Scene_Equip);
+  }
+
+  Scene_Menu.prototype.commandPersonalStatus = function() {
+    SceneManager.push(Scene_Status);
+  }
 
   Scene_Menu.prototype.commandFormation = function() {
     this._commandWindow.hide();
@@ -16245,4 +16583,153 @@
       }
     }
   };
+
+  //-----------------------------------------------------------------------------
+  // Window_CommandDescription
+  //
+  // The window for showing command help
+
+  function Window_CommandDescription() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_CommandDescription.prototype = Object.create(Window_Help.prototype);
+  Window_CommandDescription.prototype.constructor = Window_CommandDescription;
+
+  Window_CommandDescription.prototype.initialize = function(leftIndent) {
+    var width = Graphics.boxWidth - leftIndent;
+    var height = Graphics.boxHeight;
+    Window_Base.prototype.initialize.call(this, leftIndent, 0, width, height);
+    this._text = '';
+  }
+
+  //-----------------------------------------------------------------------------
+  // Window_HelpCommand
+  //
+  // The window for selecting a help page
+
+  function Window_HelpCommand() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_HelpCommand.attachHelpMsg = function(msgs) {
+    let result = '';
+    for (let id in msgs) {
+      result += Message.display(msgs[id]) + '\n\n';
+    }
+    return result;
+  }
+
+  Window_HelpCommand.list = [];
+  Window_HelpCommand.list[0] = Message.display('helpMsg');
+  Window_HelpCommand.list[1] = Window_HelpCommand.attachHelpMsg(['tutorialMove3', 'tutorialMove4', 'tutorialMove5'
+  , 'tutorialMove6']);
+  Window_HelpCommand.list[2] = Window_HelpCommand.attachHelpMsg(['tutorialMeleeAttack1', 'tutorialMeleeAttack2'
+  , 'tutorialMeleeAttack3']);
+  Window_HelpCommand.list[3] = Window_HelpCommand.attachHelpMsg(['tutorialGetDrop1', 'tutorialGetDrop2'
+  , 'tutorialGetDrop3', 'tutorialGetDrop4']);
+  Window_HelpCommand.list[4] = Window_HelpCommand.attachHelpMsg(['tutorialInventory1', 'tutorialInventory2']);
+  Window_HelpCommand.list[5] = Window_HelpCommand.attachHelpMsg(['tutorialEquip1', 'tutorialEquip2', 'tutorialEquip3']);
+  Window_HelpCommand.list[6] = Window_HelpCommand.attachHelpMsg(['tutorialSoul1', 'tutorialSoul2', 'tutorialSoul3'
+    , 'tutorialSoul4', 'tutorialSoul5']);
+  Window_HelpCommand.list[7] = Window_HelpCommand.attachHelpMsg(['tutorialDoor1', 'tutorialDoor2']);
+  Window_HelpCommand.list[8] = Window_HelpCommand.attachHelpMsg(['tutorialSecretDoor1', 'tutorialSecretDoor2']);
+  Window_HelpCommand.list[9] = Window_HelpCommand.attachHelpMsg(['tutorialTrap1', 'tutorialTrap2']);
+  Window_HelpCommand.list[10] = Window_HelpCommand.attachHelpMsg(['tutorialLog1', 'tutorialLog2']);
+  Window_HelpCommand.list[11] = Window_HelpCommand.attachHelpMsg(['tutorialScroll1', 'tutorialScroll2']);
+  Window_HelpCommand.list[12] = Window_HelpCommand.attachHelpMsg(['tutorialPotion1', 'tutorialPotion2']);
+  Window_HelpCommand.list[13] = Window_HelpCommand.attachHelpMsg(['tutorialStair1', 'tutorialStair1', 'tutorialStair3']);
+  Window_HelpCommand.list[14] = Window_HelpCommand.attachHelpMsg(['tutorialBelly1', 'tutorialBelly2']);
+  Window_HelpCommand.list[15] = Window_HelpCommand.attachHelpMsg(['tutorialMix1']);
+  Window_HelpCommand.list[16] = Window_HelpCommand.attachHelpMsg(['tutorialDart1', 'tutorialDart2']);
+  Window_HelpCommand.list[17] = Window_HelpCommand.attachHelpMsg(['tutorialSave1']);
+  Window_HelpCommand.list[18] = Window_HelpCommand.attachHelpMsg(['tutorialCarry1']);
+  Window_HelpCommand.list[19] = Window_HelpCommand.attachHelpMsg(['tutorialHotKey1', 'tutorialHotKey2'
+    , 'tutorialHotKey3']);
+
+  Window_HelpCommand.prototype = Object.create(Window_Command.prototype);
+  Window_HelpCommand.prototype.constructor = Window_HelpCommand;
+
+  Window_HelpCommand.prototype.initialize = function(x, y) {
+      Window_Command.prototype.initialize.call(this, x, y);
+  };
+
+  Window_HelpCommand.prototype.makeCommandList = function() {
+    this.addCommand('指令列表', 'commandList', true);
+    this.addCommand('角色移動', 'move', true);
+    this.addCommand('近身攻擊', 'meleeAttack', true);
+    this.addCommand('撿拾/丟棄', 'getDrop', true);
+    this.addCommand('查看物品欄', 'inventory', true);
+    this.addCommand('裝備', 'equip', true);
+    this.addCommand('魂的吸收', 'soul', true);
+    this.addCommand('開關門', 'door', true);
+    this.addCommand('隱藏門', 'secretDoor', true);
+    this.addCommand('陷阱', 'trap', true);
+    this.addCommand('歷史訊息', 'log', true);
+    this.addCommand('卷軸', 'scroll', true);
+    this.addCommand('藥水', 'scroll', true);
+    this.addCommand('階梯', 'stair', true);
+    this.addCommand('飽食度', 'belly', true);
+    this.addCommand('合成', 'mix', true);
+    this.addCommand('飛鏢', 'dart', true);
+    this.addCommand('存檔', 'save', true);
+    this.addCommand('負重', 'carry', true);
+    this.addCommand('技能快捷鍵', 'hotKey', true);
+  }
+
+  Window_HelpCommand.prototype.windowWidth = function() {
+    return 150;
+  };
+
+  Window_HelpCommand.prototype.numVisibleRows = function() {
+    return this.maxItems();
+  };
+
+  Window_HelpCommand.prototype.callUpdateHelp = function() {
+    if (this._helpWindow) {
+      this._helpWindow.setText(Window_HelpCommand.list[this._index]);
+    }
+  }
+
+  //-----------------------------------------------------------------------------
+  // Scene_Help
+  //
+  // The scene class of help window
+
+  Scene_Help = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Scene_Help.prototype = Object.create(Scene_Base.prototype);
+  Scene_Help.prototype.constructor = Scene_Help;
+
+  Scene_Help.prototype.initialize = function() {
+    Scene_Base.prototype.initialize.call(this);
+  }
+
+  Scene_Help.prototype.create = function() {
+    Scene_Base.prototype.create.call(this);
+    this.createBackground();
+    this.createWindowLayer();
+    this.createHelpWindow();
+    this.createCommandWindow();
+  }
+
+  Scene_Help.prototype.createBackground = function() {
+    this._backgroundSprite = new Sprite();
+    this._backgroundSprite.bitmap = SceneManager.backgroundBitmap();
+    this.addChild(this._backgroundSprite);
+  }
+
+  Scene_Help.prototype.createHelpWindow = function() {
+    this._helpWindow = new Window_CommandDescription(150);
+    this.addWindow(this._helpWindow);
+  }
+
+  Scene_Help.prototype.createCommandWindow = function() {
+    this._commandWindow = new Window_HelpCommand();
+    this._commandWindow.setHandler('cancel', this.popScene.bind(this));
+    this._commandWindow.setHelpWindow(this._helpWindow);
+    this.addWindow(this._commandWindow);
+  }
 })();

@@ -5,5 +5,6 @@ var $plugins =
 {"name":"MyPlugin","status":true,"description":"","parameters":{}},
 {"name":"HealthBar","status":true,"description":"HealthBar","parameters":{}},
 {"name":"Community_Basic","status":true,"description":"Plugin used to set basic parameters.","parameters":{"cacheLimit":"10","screenWidth":"1024","screenHeight":"783","changeWindowWidthTo":"1024","changeWindowHeightTo":"783","renderingMode":"auto","alwaysDash":"off"}},
-{"name":"MrTS_PopUp","status":true,"description":"Creates pop ups on item pick ups or custom ones as needed.","parameters":{"Pop Speed":"2","Pop Delay":"3","Pop Fade Out":"30","Pop Font Type":"GameFont","Pop Font Size":"28","Gold Icon":"17","Quantity Sign":"x"}}
+{"name":"MrTS_PopUp","status":true,"description":"Creates pop ups on item pick ups or custom ones as needed.","parameters":{"Pop Speed":"2","Pop Delay":"3","Pop Fade Out":"30","Pop Font Type":"GameFont","Pop Font Size":"28","Gold Icon":"17","Quantity Sign":"x"}},
+{"name":"NekoGakuen_FontManager","status":true,"description":"指定自訂字型","parameters":{"Font Group":"","Custom Fontlist":"[\"{\\\"Fonts File\\\":\\\"Cousine-Regular\\\",\\\"Fonts Format\\\":\\\"ttf\\\"}\"]","Font Size":"28"}}
 ];
