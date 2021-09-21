@@ -391,6 +391,7 @@
       throwPotionHit: '{0}在{1}頭上碎裂開來!',
       throwPotionCrash: '{0}碎裂開來, 你聞到一股奇怪的味道...',
       throwItemHitObstacle: '{0}撞到障礙物, 落在地上.',
+      throwItemHitLava: '{0}掉入岩漿中融化了.',
       throwItemBroken: '{0}壞掉了!',
       monsterFlee: '{0}轉身逃跑!',
       recoverFromAfraid: '{0}恢復鎮定了.',
@@ -522,6 +523,7 @@
       iceHitLava: '{0}冷卻了岩漿, 形成可行走的陸地.',
       objectSummoned: '{0}召喚了{1}!',
       pressFloorTriggered: '你聽到機關被觸動的聲音...',
+      lavaDamage: '{0}身在滾燙的熔岩中, 受到了{1}點傷害!',
       tutorialGuide: '艾比',
       tutorialMove1:
         '你好, 初次見面! 我是負責在遊戲進行中從旁進行提示教學的精'
@@ -960,12 +962,14 @@
     target._paramPlus[1] += 2 + Math.round(target.param(5) / 2);
   }
 
+  // now checks both water & lava
   CharUtils.isCharInWater = function(target) {
     if (target._x < 0 || target._y < 0) {
       return false;
     }
     let realTarget = BattleUtils.getRealTarget(target);
-    if ($gameVariables[$gameMap.mapId()].mapData[target._x][target._y].originalTile == WATER
+    if (($gameVariables[$gameMap.mapId()].mapData[target._x][target._y].originalTile == WATER
+      || $gameVariables[$gameMap.mapId()].mapData[target._x][target._y].originalTile == LAVA)
       && realTarget.moveType != 2) {
       return true;
     }
@@ -1345,7 +1349,7 @@
       $gameActors.actor(1)._paramPlus[2]++;
       $gameVariables[0].paramsExperience.str = 0;
       let msg = Message.display('strUp');
-      $gameMessage.add(msg);
+      TimeUtils.tutorialHandler.msg += msg + '\n';
       LogUtils.addLog(msg);
     }
   }
@@ -1356,7 +1360,7 @@
       $gameActors.actor(1)._paramPlus[3]++;
       $gameVariables[0].paramsExperience.vit = 0;
       let msg = Message.display('vitUp');
-      $gameMessage.add(msg);
+      TimeUtils.tutorialHandler.msg += msg + '\n';
       LogUtils.addLog(msg);
     }
   }
@@ -1367,7 +1371,7 @@
       $gameActors.actor(1)._paramPlus[4]++;
       $gameVariables[0].paramsExperience.int = 0;
       let msg = Message.display('intUp');
-      $gameMessage.add(msg);
+      TimeUtils.tutorialHandler.msg += msg + '\n';
       LogUtils.addLog(msg);
     }
   }
@@ -1378,7 +1382,7 @@
       $gameActors.actor(1)._paramPlus[5]++;
       $gameVariables[0].paramsExperience.wis = 0;
       let msg = Message.display('wisUp');
-      $gameMessage.add(msg);
+      TimeUtils.tutorialHandler.msg += msg + '\n';
       LogUtils.addLog(msg);
     }
   }
@@ -1389,7 +1393,7 @@
       $gameActors.actor(1)._paramPlus[6]++;
       $gameVariables[0].paramsExperience.agi = 0;
       let msg = Message.display('agiUp');
-      $gameMessage.add(msg);
+      TimeUtils.tutorialHandler.msg += msg + '\n';
       LogUtils.addLog(msg);
     }
   }
@@ -1515,10 +1519,10 @@
 
   MapUtils.initialize = function () {
     // define map variables here
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 30; i++) {
       $gameVariables[i + 1] = new MapVariable(null, null, 'EARTH');
     }
-    for (let i = 1; i < 20; i++) {
+    for (let i = 1; i < 30; i++) {
       $gameVariables[i + 1].generateRandom = true;
       $gameVariables[i + 1].dungeonLevel = i;
     }
@@ -1546,6 +1550,20 @@
     $gameVariables[15].stairToList.pop();
     $gameVariables[15].stairDownNum = 0;
     $gameVariables[15].preDefinedMobs.push('Selina');
+
+    // let fireEntranceLevel = 2;
+    // $gameVariables[fireEntranceLevel].stairDownNum++;
+    // $gameVariables[fireEntranceLevel].stairToList.push(21);
+    // $gameVariables[21].stairToList.push(fireEntranceLevel);
+    // for (let i = 21; i < 26; i++) {
+    //   $gameVariables[i].stairToList.push(i - 1);
+    //   $gameVariables[i].stairToList.push(i + 1);
+    //   $gameVariables[i].mapType = 'FIRE';
+    //   $gameVariables[i].dungeonLevel = i - 16;
+    // }
+    // $gameVariables[21].stairToList.splice(1, 1);
+    // $gameVariables[25].stairToList.pop();
+    // $gameVariables[25].stairDownNum = 0;
 
     // initialize $gameVariables[0] for multiple usage
     $gameVariables[0] = {};
@@ -1843,8 +1861,9 @@
     return null;
   }
 
+  // for spawn items/mobs usage
   MapUtils.getMapTypeIndex = function(mapType) {
-    let mapTypeIndex;
+    let mapTypeIndex = 0;
     switch (mapType) {
       case 'EARTH':
         mapTypeIndex = 0;
@@ -2414,6 +2433,7 @@
 
   MapUtils.drawMap = function (mapData, mapArray) {
     var mapSize = mapData.length * mapData[0].length;
+    mapArray.length = mapSize * 6;
     // do not update item piles & doors
     for (var i = 0; i < mapSize * 2; i++) {
       mapArray[i] = 0;
@@ -2528,6 +2548,10 @@
     // check if this stair already exists
     var stair = null;
     var mapVariable = $gameVariables[$gameMap.mapId()];
+    // add for reduce save file size
+    if (mapVariable.rmDataMap) {
+      mapVariable.rmDataMap.data.length = 0;
+    }
     for (var i = 0; i < mapVariable.stairList.length; i++) {
       var candidate = mapVariable.stairList[i];
       if (character._x == candidate.x && character._y == candidate.y) {
@@ -2687,13 +2711,20 @@
       MapUtils.drawEvents($gameVariables[$gameMap.mapId()].mapData);
       //setTimeout('SceneManager.goto(Scene_Map)', 250);
       // try to use the following code, which make screen update not lag so much
-      var scene = SceneManager._scene;
-      scene.removeChild(scene._fadeSprite);
-      scene.removeChild(scene._mapNameWindow);
-      scene.removeChild(scene._windowLayer);
-      scene.removeChild(scene._spriteset);
-      scene.createDisplayObjects();
-      scene.setupStatus();
+      let func = function() {
+        if (SceneManager._scene.createDisplayObjects) {
+          var scene = SceneManager._scene;
+          scene.removeChild(scene._fadeSprite);
+          scene.removeChild(scene._mapNameWindow);
+          scene.removeChild(scene._windowLayer);
+          scene.removeChild(scene._spriteset);
+          scene.createDisplayObjects();
+          scene.setupStatus();
+        } else {
+          setTimeout(func, 5);
+        }
+      }
+      func();
     }
     // show on map objs
     showObjsOnMap();
@@ -3220,16 +3251,6 @@
     return map;
   }
 
-  function findShortestPossiblePath(map, path, targetRoom) {
-    var found = false;
-    var nowX = path[path.length - 1].x;
-    var nowY = path[path.length - 1].y;
-    while (!found) {
-
-    }
-    return found;
-  }
-
   function findPathBetweenRooms(map, room1, room2) {
     var pathFound = false;
     var path = [];
@@ -3288,16 +3309,37 @@
     let mapType = $gameVariables[mapId].mapType;
     let xBound = mapPixel.length;
     let yBound = mapPixel[0].length;
-    let poolNum = getRandomInt(2);
-    if (mapType == 'ICE') {
+    let poolNum;
+    if (mapType == 'EARTH') {
+      poolNum = getRandomInt(2);
+    } else {
       poolNum = getRandomIntRange(6, 10);
     }
+    let poolTile = WATER;
+    if (mapType == 'FIRE') {
+      poolTile = LAVA;
+    }
     for (let i = 0; i < poolNum; i++) {
-      let x = getRandomIntRange(2, xBound - 3);
-      let y = getRandomIntRange(2, yBound - 3);
-      for (let j = x - 1; j < x + 2; j++) {
-        for (let k = y - 1; k < y + 2; k++) {
-          mapPixel[j][k] = WATER;
+      if (poolTile == WATER) {
+        let x = getRandomIntRange(2, xBound - 3);
+        let y = getRandomIntRange(2, yBound - 3);
+        for (let j = x - 1; j < x + 2; j++) {
+          for (let k = y - 1; k < y + 2; k++) {
+            mapPixel[j][k] = poolTile;
+          }
+        }
+      } else {
+        let x = getRandomIntRange(3, xBound - 4);
+        let y = getRandomIntRange(3, yBound - 4);
+        for (let j = x - 2; j < x + 3; j++) {
+          for (let k = y - 2; k < y + 3; k++) {
+            if ((j == x - 2 || j == x + 2 || k == y - 2 || k == y + 2) && mapPixel[j][k] != poolTile) {
+              // add border land
+              mapPixel[j][k] = FLOOR;
+            } else {
+              mapPixel[j][k] = poolTile;
+            }
+          }
         }
       }
     }
@@ -3400,7 +3442,7 @@
   }
 
   // find route between two events (using Dijkstra's algorithm)
-  MapUtils.findShortestRoute = function (x1, y1, x2, y2, maxPathLength, mob) {
+  MapUtils.findShortestRoute = function (x1, y1, x2, y2, maxPathLength, mobEvt) {
     var mapData = $gameVariables[$gameMap.mapId()].mapData;
     var path = [], explored = [];
 
@@ -3430,13 +3472,15 @@
             let mapBlock = mapData[coordinate.x][coordinate.y];
             let tile = mapBlock.originalTile;
             let weight = -1;
-            // TODO: consider hollow/lava tile
-            if ((tile == FLOOR && mob.moveType != 1) || tile == WATER || (tile == HOLLOW && mob.moveType == 2)) {
+            let mob = mobEvt.mob;
+            // check if mob can pass through tile
+            if ((tile == FLOOR && mob.moveType != 1) || tile == WATER || (tile == HOLLOW && mob.moveType == 2)
+              || (tile == LAVA && mob.moveType == 2)) {
               // check if mob on it
-              let mob = $gameMap.eventsXy(coordinate.x, coordinate.y).filter(function(evt) {
+              let mobList = $gameMap.eventsXy(coordinate.x, coordinate.y).filter(function(evt) {
                 return evt.type == 'MOB';
               })
-              if (mob[0] && !(mob[0]._x == x2 && mob[0]._y == y2)) {
+              if (mobList[0] && !(mobList[0]._x == x2 && mobList[0]._y == y2)) {
                 // mob on it & it's not destination
                 weight = -1;
               } else {
@@ -3756,6 +3800,11 @@
       Decrypter.hasEncryptedAudio = !!object.hasEncryptedAudio;
       Scene_Boot.loadSystemImages();
     }
+  };
+
+  // override this so web players won't run into cache limit problem
+  DataManager.maxSavefiles = function() {
+    return 5;
   };
 
   //-----------------------------------------------------------------------------------
@@ -4637,46 +4686,6 @@
   }
 
   //-----------------------------------------------------------------------------------
-  // FireBall extends Game_Projectile
-
-  FireBall = function () {
-    this.initialize.apply(this, arguments);
-  }
-
-  FireBall.prototype = Object.create(Game_Projectile.prototype);
-  FireBall.prototype.constructor = FireBall;
-
-  FireBall.prototype.initialize = function (src, x, y) {
-    Game_Projectile.prototype.initialize.call(this, src, x, y);
-    // setup images
-    this.setImage('!Flame', 4);
-    this.skillName = '火球術';
-    this.distance = 5;
-  };
-
-  FireBall.prototype.createProjectile = function(src, x, y) {
-    let projectile = new FireBall(src, x, y);
-    projectile.action();
-    $gameVariables[0].messageFlag = false;
-    return true;
-  }
-
-  FireBall.prototype.hitCharacter = function(vm, evt) {
-    let realSrc = BattleUtils.getRealTarget(vm.src);
-    let realTarget = BattleUtils.getRealTarget(evt);
-    let value = 30;
-    CharUtils.decreaseHp(realTarget, value);
-    TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
-    TimeUtils.animeQueue.push(new AnimeObject(evt, 'ANIME', 67));
-    TimeUtils.animeQueue.push(new AnimeObject(evt, 'POP_UP', value * -1));
-    LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc)
-      ,vm.skillName, LogUtils.getCharName(realTarget), value));
-    BattleUtils.checkTargetAlive(realSrc, realTarget, evt);
-    vm.distanceCount = 99;
-    return true;
-  }
-
-  //-----------------------------------------------------------------------------------
   // Projectile_SingleTarget
   //
   // projectile that hits single enemy, then vanish
@@ -4756,7 +4765,14 @@
 
   Projectile_Item.checkItemBroken = function(evt, x, y) {
     if (getRandomInt(100) < 90) {
-      ItemUtils.addItemToItemPile(x, y, $gameVariables[0].fireProjectileInfo.item);
+      // check if hit lava
+      if ($gameVariables[$gameMap.mapId()].mapData[x][y].originalTile == LAVA) {
+        AudioManager.playSe({name: 'Fire2', pan: 0, pitch: 100, volume: 100});
+        LogUtils.addLog(String.format(Message.display('throwItemHitLava')
+          , ItemUtils.getItemDisplayName($gameVariables[0].fireProjectileInfo.item)));
+      } else {
+        ItemUtils.addItemToItemPile(x, y, $gameVariables[0].fireProjectileInfo.item);
+      }
     } else if (CharUtils.playerCanSeeBlock(x, y)) {
       AudioManager.playSe({name: 'Buzzer2', pan: 0, pitch: 100, volume: 100});
       LogUtils.addLog(String.format(Message.display('throwItemBroken')
@@ -4839,7 +4855,6 @@
       LogUtils.addLog(String.format(Message.display('throwItemHitObstacle')
         , ItemUtils.getItemDisplayName($gameVariables[0].fireProjectileInfo.item)));
     }
-    // ItemUtils.addItemToItemPile(lastPos.x, lastPos.y, $gameVariables[0].fireProjectileInfo.item);
     Projectile_Item.checkItemBroken(vm, lastPos.x, lastPos.y);
     return true;
   }
@@ -4854,7 +4869,6 @@
       let direction = this.calcLastPosition(this);
       let newX = this._x - (direction.x - this._x) * this.distance;
       let newY = this._y - (direction.y - this._y) * this.distance;
-      // ItemUtils.addItemToItemPile(newX, newY, $gameVariables[0].fireProjectileInfo.item);
       Projectile_Item.checkItemBroken(this, newX, newY);
     }
   }
@@ -4976,7 +4990,8 @@
     }
     // check if target in the water
     let realTarget = BattleUtils.getRealTarget(target);
-    if (CharUtils.isCharInWater(target)) {
+    if (CharUtils.isCharInWater(target)
+      && $gameVariables[$gameMap.mapId()].mapData[target._x][target._y].originalTile == WATER) {
       realTarget.status.wetEffect.turns = 10;
       TimeUtils.eventScheduler.addStatusEffect(target, 'wetEffect');
       // check if target adapts water
@@ -4986,6 +5001,16 @@
         let prop = window[skill.constructor.name].prop;
         SkillUtils.gainSkillExp(realTarget, skill, index, prop);
       }
+    }
+    // check if target in the lava
+    if ($gameVariables[$gameMap.mapId()].mapData[target._x][target._y].originalTile == LAVA
+      && realTarget.moveType != 2) {
+      let value = 30;
+      TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
+      TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
+      CharUtils.decreaseHp(realTarget, value);
+      LogUtils.addLog(String.format(Message.display('lavaDamage'), LogUtils.getCharName(realTarget), value));
+      BattleUtils.checkTargetAlive(null, realTarget, target);
     }
   }
 
@@ -5968,9 +5993,16 @@
 
   TimeUtils.tutorialHandler = {
     queue: [],
+    msg: '',
     indicator: 0,
     execute: function() {
       let vm = TimeUtils.tutorialHandler;
+      // handle game message
+      if (vm.msg != '') {
+        $gameMessage.add(vm.msg);
+        $gameMap._interpreter.setWaitMode('message');
+        vm.msg = '';
+      }
       if ($gameVariables[0].tutorialOn) {
         if ($gameMap._interpreter._eventId != 0) {
           setTimeout(TimeUtils.tutorialHandler.execute, 10);
@@ -6566,7 +6598,7 @@
         weaponSkill.exp += Soul_Chick.expAfterAmplify(1);
         if (prop.effect[index].levelUp != -1 && weaponSkill.exp >= prop.effect[index].levelUp) {
           let msg = String.format(Message.display('skillLevelUp'), weaponSkill.name);
-          $gameMessage.add(msg);
+          TimeUtils.tutorialHandler.msg += msg + '\n';
           LogUtils.addLog(msg);
           weaponSkill.lv++;
           weaponSkill.exp = 0;
@@ -6619,7 +6651,7 @@
         weaponSkill.exp += Soul_Chick.expAfterAmplify(1);
         if (prop.effect[index].levelUp != -1 && weaponSkill.exp >= prop.effect[index].levelUp) {
           let msg = String.format(Message.display('skillLevelUp'), weaponSkill.name);
-          $gameMessage.add(msg);
+          TimeUtils.tutorialHandler.msg += msg + '\n';
           LogUtils.addLog(msg);
           weaponSkill.lv++;
           weaponSkill.exp = 0;
@@ -6785,19 +6817,26 @@
   }
 
   ItemUtils.addItemToItemPile = function (x, y, item) {
-    let itemPileEvent = ItemUtils.findMapItemPileEvent(x, y);
-    let itemPile;
-    if (!itemPileEvent) {
-      itemPile = new ItemPile(x, y);
-      itemPileEvent = new Game_ItemPile(x, y);
-      itemPileEvent.itemPile = itemPile;
+    // check if hit lava
+    if ($gameVariables[$gameMap.mapId()].mapData[x][y].originalTile == LAVA) {
+      AudioManager.playSe({name: 'Fire2', pan: 0, pitch: 100, volume: 100});
+      LogUtils.addLog(String.format(Message.display('throwItemHitLava')
+        , ItemUtils.getItemDisplayName(item)));
     } else {
-      itemPile = itemPileEvent.itemPile;
+      let itemPileEvent = ItemUtils.findMapItemPileEvent(x, y);
+      let itemPile;
+      if (!itemPileEvent) {
+        itemPile = new ItemPile(x, y);
+        itemPileEvent = new Game_ItemPile(x, y);
+        itemPileEvent.itemPile = itemPile;
+      } else {
+        itemPile = itemPileEvent.itemPile;
+      }
+      ItemUtils.addItemToSet(item, itemPile.items, itemPile.weapons, itemPile.armors);
+      // setup object stack
+      itemPile.objectStack.push(item);
+      ItemUtils.updateItemPile(itemPileEvent);
     }
-    ItemUtils.addItemToSet(item, itemPile.items, itemPile.weapons, itemPile.armors);
-    // setup object stack
-    itemPile.objectStack.push(item);
-    ItemUtils.updateItemPile(itemPileEvent);
   }
 
   ItemUtils.removeItemFromItemPile = function (x, y, item) {
@@ -10924,7 +10963,7 @@
       skill.exp += Soul_Chick.expAfterAmplify(1);
       if (prop.effect[index].levelUp != -1 && skill.exp >= prop.effect[index].levelUp) {
         let msg = String.format(Message.display('skillLevelUp'), skill.name)
-        $gameMessage.add(msg);
+        TimeUtils.tutorialHandler.msg += msg + '\n';
         LogUtils.addLog(msg);
         skill.lv++;
         skill.exp = 0;
@@ -12149,26 +12188,26 @@
   }
 
   //-----------------------------------------------------------------------------------
-  // Skill_DarkFire
+  // Skill_FireBall
 
-  Skill_DarkFire = function() {
+  Skill_FireBall = function() {
     this.initialize.apply(this, arguments);
   }
 
-  Skill_DarkFire.prototype = Object.create(ItemTemplate.prototype);
-  Skill_DarkFire.prototype.constructor = Skill_DarkFire;
+  Skill_FireBall.prototype = Object.create(ItemTemplate.prototype);
+  Skill_FireBall.prototype.constructor = Skill_FireBall;
 
-  Skill_DarkFire.prototype.initialize = function () {
+  Skill_FireBall.prototype.initialize = function () {
     ItemTemplate.prototype.initialize.call(this, $dataSkills[13]);
-    this.name = '暗滅';
-    this.description = '直線射出一顆黑色火球, 魔法傷害';
+    this.name = '火球';
+    this.description = '直線射出一顆火球, 魔法傷害';
     this.iconIndex = 64;
     this.mpCost = 15;
     this.lv = 1;
     this.exp = 0;
   }
 
-  Skill_DarkFire.prop = {
+  Skill_FireBall.prop = {
     type: "SKILL",
     subType: "PROJECTILE",
     damageType: "MAGIC",
@@ -12181,7 +12220,7 @@
     ]
   }
 
-  Skill_DarkFire.prototype.action = function(src, x, y) {
+  Skill_FireBall.prototype.action = function(src, x, y) {
     let realSrc = BattleUtils.getRealTarget(src);
     CharUtils.decreaseMp(realSrc, this.mpCost);
     CharUtils.decreaseTp(realSrc, this.tpCost);
@@ -12199,7 +12238,7 @@
       damage = BattleUtils.getFinalDamage(damage);
       CharUtils.decreaseHp(realTarget, damage);
       if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
-        TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 121));
+        TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
         TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
         LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc)
           , this.skill.name, LogUtils.getCharName(realTarget), damage));
@@ -12209,7 +12248,7 @@
     if (CharUtils.playerCanSeeBlock(src._x, src._y)) {
       LogUtils.addLog(String.format(Message.display('shootProjectile'), LogUtils.getCharName(realSrc), this.name));
     }
-    let imageData = new ImageData('!Flame2', 5, 1, 2);
+    let imageData = new ImageData('!Flame', 4, 1, 2);
     let data = new ProjectileData(this, imageData
       , window[this.constructor.name].prop.effect[this.lv - 1].distance, hitCharFunc);
     new Projectile_SingleTarget(src, x, y, data);
@@ -12728,7 +12767,7 @@
             }
           }
         } else {
-          this.moveRandom();
+          // do nothing
         }
       }
     }
@@ -12794,7 +12833,7 @@
     }
   }
 
-  // Override moveTowardCharacter() function so mobs can move diagonally
+  // Override so mobs can move diagonally
   Game_Mob.prototype.moveTowardCharacter = function (character) {
     var mapData = $gameVariables[$gameMap.mapId()].mapData;
     var candidate = [], distanceRecord = [];
@@ -12802,7 +12841,9 @@
     for (var i = 0; i < 8; i++) {
       var coordinate = MapUtils.getNearbyCoordinate(this._x, this._y, i);
       if (!MapUtils.isTilePassable($gameMap.mapId(), coordinate.x, coordinate.y
-        , mapData[coordinate.x][coordinate.y].originalTile)) {
+        , mapData[coordinate.x][coordinate.y].originalTile)
+        || (mapData[coordinate.x][coordinate.y].originalTile == LAVA && this.mob.moveType != 2)
+        || (mapData[coordinate.x][coordinate.y].originalTile == HOLLOW && this.mob.moveType != 2)) {
         continue;
       }
       var distance = MapUtils.getDistance(coordinate.x, coordinate.y, character._x, character._y);
@@ -12843,7 +12884,9 @@
     for (var i = 0; i < 8; i++) {
       var coordinate = MapUtils.getNearbyCoordinate(this._x, this._y, i);
       if (!MapUtils.isTilePassable($gameMap.mapId(), coordinate.x, coordinate.y
-        , mapData[coordinate.x][coordinate.y].originalTile)) {
+        , mapData[coordinate.x][coordinate.y].originalTile)
+        || (mapData[coordinate.x][coordinate.y].originalTile == LAVA && this.mob.moveType != 2)
+        || (mapData[coordinate.x][coordinate.y].originalTile == HOLLOW && this.mob.moveType != 2)) {
         continue;
       }
       var distance = MapUtils.getDistance(coordinate.x, coordinate.y, character._x, character._y);
@@ -12877,7 +12920,7 @@
     return this.isMovementSucceeded();
   }
 
-  // Override moveRandom() function so mobs can move diagonally
+  // Override this so mobs can move diagonally
   Game_Mob.prototype.moveRandom = function () {
     var moveType = Math.randomInt(2);
     if (moveType == 0) { // straight
@@ -12919,9 +12962,7 @@
       TimeUtils.animeQueue.push(new AnimeObject($gamePlayer, 'ANIME', 58));
       let msg = String.format(Message.display('absorbSoul'), LogUtils.getCharName(this.mob), soul.name);
       LogUtils.addLog(msg);
-      setTimeout(function() {
-        $gameMessage.add(msg);
-      }, 200);
+      TimeUtils.tutorialHandler.msg += msg + '\n';
     }
   }
   
@@ -13251,7 +13292,7 @@
     moveType: 0,
     skills: [
       new SkillData(Skill_Clever, 1),
-      new SkillData(Skill_DarkFire, 1)
+      new SkillData(Skill_FireBall, 1)
     ]
   }
 
@@ -13271,7 +13312,7 @@
   }
 
   Cat.prototype.projectileAction = function(x, y, distance) {
-    if (getRandomInt(100) < 80) { // Skill_DarkFire
+    if (getRandomInt(100) < 80) { // Skill_FireBall
       let skill = this.mob._skills[1];
       if (distance <= window[skill.constructor.name].prop.effect[skill.lv - 1].distance
         && SkillUtils.canPerform(this.mob, skill)) {
