@@ -172,6 +172,7 @@
         // draw buff/debuff
         let debuffColor = '#FF0000';
         let buffColor = '#00FF23';
+        let auraColor = '#BB35BB';
         let color;
         for (let id in player.status) {
             if (player.status[id].turns && player.status[id].turns > 0) {
@@ -228,6 +229,7 @@
         for (let id in $gameActors.actor(1).status.skillEffect) {
             let skillEffect = $gameActors.actor(1).status.skillEffect[id];
             let color = (skillEffect.skill.isBuff) ? buffColor : debuffColor;
+            color = (skillEffect.skill.isAura) ? auraColor : color;
             this.changeTextColor(color);
             status = skillEffect.skill.name + ' ';
             width = this.textWidth(status);

@@ -354,8 +354,12 @@
       projectileAttack: '{0}的{1}對{2}造成了{3}點傷害.',
       targetKilled: '{0}被{1}殺死了!',
       targetDied: '{0}死了...',
-      openDoor: '你打開了一扇門.',
-      closeDoor: '你關上了一扇門.',
+      openDoor: '{0}打開了一扇門.',
+      seeDoorOpen: '你看到一扇門被打開.',
+      hearDoorOpen: '你聽見開門的聲音',
+      closeDoor: '{0}關上了一扇門.',
+      seeDoorClose: '你看到一扇門被關上.',
+      hearDoorClose: '你聽見關門的聲音.',
       goUpstair: '你往上走了一層.',
       goDownstair: '你往下走了一層.',
       getItems: '你撿起了{0}.',
@@ -524,6 +528,10 @@
       objectSummoned: '{0}召喚了{1}!',
       pressFloorTriggered: '你聽到機關被觸動的聲音...',
       lavaDamage: '{0}身在滾燙的熔岩中, 受到了{1}點傷害!',
+      auraEnabled: '{0}的身邊能量湧動, 出現了一個{1}!',
+      auraDisabled: '{0}散去了身旁的{1}.',
+      auraOutOfEnergy: '{0}沒有足夠的能量維持{1}...',
+      auraDamage: '{0}身旁的{1}對{2}造成{3}點傷害!',
       tutorialGuide: '艾比',
       tutorialMove1:
         '你好, 初次見面! 我是負責在遊戲進行中從旁進行提示教學的精'
@@ -808,6 +816,7 @@
       faintEffect: new StatusEffect(),
       breakArmorEffect: new StatusEffect(),
       wetEffect: new StatusEffect(),
+      auraFireEffect: new StatusEffect(),
       groundHoleTrapped: false,
       skillEffect: [],
       bellyStatus: 'NORMAL', // FAINT, WEAK, HUNGRY, NORMAL, FULL
@@ -926,9 +935,34 @@
         }
       }
     } else if (skillEffect) {
-      // update skill effects
-      skillEffect.effectCount--;
+      // check aura effect
+      if (skillEffect instanceof SkillEffect_Aura) {
+        let skill = skillEffect.skill;
+        let realSrc = skillEffect.realSrc;
+        if (realSrc._mp < skill.mpCost || realSrc._tp < skill.tpCost) {
+          AudioManager.playSe({name: "Down2", pan: 0, pitch: 100, volume: 100});
+          LogUtils.addLog(String.format(Message.display('auraOutOfEnergy'), LogUtils.getCharName(realSrc)
+            , skill.name));
+          skillEffect.effectCount = 0;
+        } else {
+          // check & created aura map event
+          let evts = $gameMap.eventsXy(event._x, event._y).filter(function(evt) {
+            return evt.type == 'AURA';
+          });
+          if (!evts[0]) {
+            let auraEvent = new window[skillEffect.eventClassName](event._x, event._y);
+            auraEvent.caster = event;
+          }
+          CharUtils.decreaseMp(realSrc, skill.mpCost);
+          CharUtils.decreaseTp(realSrc, skill.tpCost);
+          skillEffect.auraEffect();
+        }
+      } else {
+        // update skill effects
+        skillEffect.effectCount--;
+      }
       skillEffect.lastTime = $gameVariables[0].gameTime;
+      // check effect ends
       if (skillEffect.effectCount == 0) {
         if (CharUtils.playerCanSeeChar(event)) {
           LogUtils.addLog(String.format(Message.display('skillEffectEnd'), LogUtils.getCharName(target)
@@ -1612,6 +1646,7 @@
       trap: $dataMap.events[7],
       goHome: $dataMap.events[1],
       bolder: $dataMap.events[8],
+      aura: $dataMap.events[32],
       visitIceDungeon: $dataMap.events[9],
       discoverPressFloor: $dataMap.events[10],
       selinaEncountered: $dataMap.events[11],
@@ -1767,6 +1802,7 @@
 
     $gameParty._items.push(new Soul_Bite());
     Soul_Obtained_Action.learnSkill(Skill_Bite);
+    Soul_Obtained_Action.learnSkill(Skill_AuraFire);
     // Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
     // Soul_Obtained_Action.learnSkill(Skill_IceBolt);
     // Soul_Obtained_Action.learnSkill(Skill_IceBreath);
@@ -2476,9 +2512,15 @@
     // draw doors
     for (var i in $gameMap.events()) {
       var event = $gameMap.events()[i];
-      if (event instanceof Game_Door && mapData[event._x][event._y].isVisible) {
+      if (event instanceof Game_Door && mapData[event._x][event._y].isExplored) {
         var index = stairOffset + event._y * mapData.length + event._x;
-        mapArray[index] = (event.status == 2) ? doorOpenedIcon : doorClosedIcon;
+        if (mapData[event._x][event._y].isVisible) {
+          mapArray[index] = (event.status == 2) ? doorOpenedIcon : doorClosedIcon;
+          event.lastStatus = event.status;
+        } else {
+          // show last status
+          mapArray[index] = (event.lastStatus == 2) ? doorOpenedIcon : doorClosedIcon;
+        }
       }
     }
   }
@@ -2522,8 +2564,10 @@
       } else if (event.type == 'TRAP') {
         TrapUtils.drawTrap(event);
       } else if (event._x > 0 && event._y > 0 && mapData[event._x][event._y].isVisible) {
-        if (event.mob) {
+        if (event.mob) { // mob
           MapUtils.drawMob(mapData, event);
+        } else if (event.type == 'AURA') {
+          event.setOpacity(128);
         } else {
           event.setOpacity(255);
         }
@@ -2570,6 +2614,16 @@
       $gameScreen.startFadeOut(1);
       // clear scheduler
       TimeUtils.eventScheduler.clearEventExceptPlayer();
+      // clear aura events
+      let auraEvents = $gameMap.events().filter(function(evt) {
+        return evt.type == 'AURA';
+      })
+      for (let id in auraEvents) {
+        let target = auraEvents[id];
+        target.setPosition(-10, -10);
+        $gameMap._events[target._eventId] = null;
+        $dataMap.events[target._eventId] = null;
+      }
       // wait until map is fully loaded
       var checkMapReady = function () {
         if (SceneManager.isCurrentSceneStarted()) {
@@ -3986,6 +4040,16 @@
       this._y = $gameMap.roundYWithDirection(this._y, d);
       this._realX = $gameMap.xWithDirection(this._x, this.reverseDir(d));
       this._realY = $gameMap.yWithDirection(this._y, this.reverseDir(d));
+
+      // check & move aura
+      let vm = this;
+      let auraEvts = $gameMap.events().filter(function(evt) {
+        return evt.type == 'AURA' && evt.caster == vm;
+      })
+      if (auraEvts[0]) {
+        auraEvts[0].moveStraight(d);
+      }
+
       this.increaseSteps();
       MapUtils.checkInOutWater(this, oldX, oldY, this._x, this._y);
       return true;
@@ -4006,6 +4070,16 @@
       this._y = $gameMap.roundYWithDirection(this._y, vert);
       this._realX = $gameMap.xWithDirection(this._x, this.reverseDir(horz));
       this._realY = $gameMap.yWithDirection(this._y, this.reverseDir(vert));
+
+      // check & move aura
+      let vm = this;
+      let auraEvts = $gameMap.events().filter(function(evt) {
+        return evt.type == 'AURA' && evt.caster == vm;
+      })
+      if (auraEvts[0]) {
+        auraEvts[0].moveDiagonally(horz, vert);
+      }
+
       this.increaseSteps();
       moved = true;
       MapUtils.checkInOutWater(this, oldX, oldY, this._x, this._y);
@@ -4079,6 +4153,24 @@
       }
     }
     return false;
+  };
+
+  // modify this so aura can follow character
+  Game_CharacterBase.prototype.setPosition = function(x, y) {
+    this._x = Math.round(x);
+    this._y = Math.round(y);
+    this._realX = x;
+    this._realY = y;
+    // check & move aura
+    if ($gameMap) {
+      let vm = this;
+      let auraEvts = $gameMap.events().filter(function(evt) {
+        return evt.type == 'AURA' && evt.caster == vm;
+      })
+      if (auraEvts[0]) {
+        auraEvts[0].setPosition(x, y);
+      }
+    }
   };
 
   //-----------------------------------------------------------------------------------
@@ -4373,6 +4465,78 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Game_Aura
+  //
+  // class for character's aura
+
+  Game_Aura = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Game_Aura.prototype = Object.create(Game_Event.prototype);
+  Game_Aura.prototype.constructor = Game_Aura;
+
+  Game_Aura.prototype.fromEvent = function (src, target) {
+    target.type = src.type;
+    target.x = src.x;
+    target.y = src.y;
+    target.caster = src.caster;
+  }
+
+  Game_Aura.prototype.initStatus = function (event) {
+    event.type = 'AURA';
+  }
+
+  Game_Aura.prototype.updateDataMap = function () {
+    Game_Aura.prototype.fromEvent(this, $dataMap.events[this._eventId]);
+  }
+
+  Game_Aura.prototype.initialize = function (x, y, fromData) {
+    var eventId = -1;
+    if (fromData) {
+      for (var i = 1; i < $dataMap.events.length; i++) {
+        if ($dataMap.events[i] && $dataMap.events[i] == fromData) {
+          eventId = i;
+          Game_Aura.prototype.fromEvent($dataMap.events[i], this);
+          break;
+        }
+      }
+    } else {
+      // find empty space for new event
+      var eventId = MapUtils.findEmptyFromList($dataMap.events);
+      $dataMap.events[eventId] = newDataMapEvent($gameVariables[0].templateEvents.aura, eventId, x, y);
+      this.initStatus($dataMap.events[eventId]);
+      this.initStatus(this);
+    }
+    // store new events back to map variable
+    $gameVariables[$gameMap.mapId()].rmDataMap = $dataMap;
+    Game_Event.prototype.initialize.call(this, $gameMap.mapId(), eventId);
+    this.name = '光環';
+    $gameMap._events[eventId] = this;
+  };
+
+  //-----------------------------------------------------------------------------------
+  // Aura_Fire
+
+  Aura_Fire = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Aura_Fire.prototype = Object.create(Game_Aura.prototype);
+  Aura_Fire.prototype.constructor = Aura_Fire;
+
+  Aura_Fire.prototype.initialize = function (x, y, fromData) {
+    Game_Aura.prototype.initialize.call(this, x, y, fromData);
+    // setup image
+    this._originalPattern = 1;
+    this.setPattern(1);
+    this.setDirection(2);
+    this.setImage('!Door2', 0);
+    this.setOpacity(64);
+    this.name = '火焰光環';
+  }
+
+  //-----------------------------------------------------------------------------------
   // Game_Door
   //
   // The game object class for a door (opened/closed/locked), inherit from Game_Event
@@ -4388,12 +4552,14 @@
     target.x = src.x;
     target.y = src.y;
     target.status = src.status;
+    target.lastStatus = src.lastStatus;
   }
 
   Game_Door.prototype.initStatus = function (event) {
     event.type = 'DOOR';
     // 0: locked, 1: closed, 2: opened
     event.status = 1;
+    event.lastStatus = 1; // for player's information
   }
 
   Game_Door.prototype.updateDataMap = function () {
@@ -4452,6 +4618,9 @@
     }
     // open the door successfully
     door.status = 2;
+    if (character == $gamePlayer || CharUtils.playerCanSeeBlock(x, y)) {
+      door.lastStatus = 2;
+    }
     if (character == $gamePlayer && $gameActors.actor(1).status.blindEffect.turns > 0) {
       MapUtils.drawDoorWhenBlind(x, y);
     }
@@ -4459,8 +4628,17 @@
     door.updateDataMap();
     $gameVariables[0].messageFlag = false;
     SceneManager._scene.removeChild(messageWindow);
-    LogUtils.addLog(Message.display('openDoor'));
     AudioManager.playSe({name: 'Open1', pan: 0, pitch: 100, volume: 100});
+    if (CharUtils.playerCanSeeBlock(x, y)) {
+      if (CharUtils.playerCanSeeChar(character)) {
+        let realTarget = BattleUtils.getRealTarget(character);
+        LogUtils.addLog(String.format(Message.display('openDoor'), LogUtils.getCharName(realTarget)));
+      } else {
+        LogUtils.addLog(Message.display('seeDoorOpen'));
+      }
+    } else {
+      LogUtils.addLog(Message.display('hearDoorOpen'));
+    }
     return true;
   }
 
@@ -4495,6 +4673,9 @@
     }
     // close the door successfully
     door.status = 1;
+    if (character == $gamePlayer || CharUtils.playerCanSeeBlock(x, y)) {
+      door.lastStatus = 1;
+    }
     if (character == $gamePlayer && $gameActors.actor(1).status.blindEffect.turns > 0) {
       MapUtils.drawDoorWhenBlind(x, y);
     }
@@ -4502,8 +4683,17 @@
     door.updateDataMap();
     $gameVariables[0].messageFlag = false;
     SceneManager._scene.removeChild(messageWindow);
-    LogUtils.addLog(Message.display('closeDoor'));
     AudioManager.playSe({name: 'Close1', pan: 0, pitch: 100, volume: 100});
+    if (CharUtils.playerCanSeeBlock(x, y)) {
+      if (CharUtils.playerCanSeeChar(character)) {
+        let realTarget = BattleUtils.getRealTarget(character);
+        LogUtils.addLog(String.format(Message.display('closeDoor'), LogUtils.getCharName(realTarget)));
+      } else {
+        LogUtils.addLog(Message.display('seeDoorClose'));
+      }
+    } else {
+      LogUtils.addLog(Message.display('hearDoorClose'));
+    }
     return true;
   }
 
@@ -6282,12 +6472,10 @@
           TimeUtils.afterPlayerMovedData.state = 3;
           return TimeUtils.afterPlayerMoved();
         }
-        // var event = $gameMap._events[TimeUtils.afterPlayerMovedData.mobIndex];
         let event = TimeUtils.afterPlayerMovedData.currentEvent;
         // check trap
         TrapUtils.checkTrapStepped(event);
         TrapUtils.updateLastTriggered();
-        // CharUtils.updateStatus(event);
         CharUtils.updateTp(event);
         TimeUtils.afterPlayerMovedData.state = 1;
         return TimeUtils.afterPlayerMoved();
@@ -6442,7 +6630,8 @@
 
   // realSrc can be null, which means realTarget died on his own
   BattleUtils.checkTargetAlive = function(realSrc, realTarget, target) {
-    if (realTarget._hp <= 0) {
+    if (realTarget._hp <= 0 && !realTarget.checked) {
+      realTarget.checked = true;
       let msg;
       if (realSrc) {
         msg = String.format(Message.display('targetKilled'), LogUtils.getCharName(realTarget)
@@ -11789,6 +11978,7 @@
     let newEffect = new SkillEffect_Clever(realSrc, this, prop.effect[index].turns, buffAmount);
     realSrc.status.skillEffect.push(newEffect);
     TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
+    SkillUtils.gainSkillExp(realSrc, this, index, prop);
     return true;
   }
 
@@ -11851,6 +12041,7 @@
     let newEffect = new SkillEffect_Scud(realSrc, this, prop.effect[index].turns, buffAmount);
     realSrc.status.skillEffect.push(newEffect);
     TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
+    SkillUtils.gainSkillExp(realSrc, this, index, prop);
     return true;
   }
 
@@ -11912,6 +12103,7 @@
     let newEffect = new SkillEffect_Shield(realSrc, this, prop.effect[index].turns, buffAmount);
     realSrc.status.skillEffect.push(newEffect);
     TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
+    SkillUtils.gainSkillExp(realSrc, this, index, prop);
     return true;
   }
 
@@ -11973,6 +12165,7 @@
     let newEffect = new SkillEffect_Barrier(realSrc, this, prop.effect[index].turns, buffAmount);
     realSrc.status.skillEffect.push(newEffect);
     TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
+    SkillUtils.gainSkillExp(realSrc, this, index, prop);
     return true;
   }
 
@@ -12036,6 +12229,7 @@
     let newEffect = new SkillEffect_Roar(realSrc, this, prop.effect[index].turns, buffAmount);
     realSrc.status.skillEffect.push(newEffect);
     TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
+    SkillUtils.gainSkillExp(realSrc, this, index, prop);
     return true;
   }
 
@@ -12099,6 +12293,7 @@
     let newEffect = new SkillEffect_Tough(realSrc, this, prop.effect[index].turns, buffAmount);
     realSrc.status.skillEffect.push(newEffect);
     TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
+    SkillUtils.gainSkillExp(realSrc, this, index, prop);
     return true;
   }
 
@@ -12152,6 +12347,67 @@
     if (realSrc.status.invisibleEffect.turns < Skill_Hide.prop.effect[index].turn) {
       realSrc.status.invisibleEffect.turns = Skill_Hide.prop.effect[index].turn;
       TimeUtils.eventScheduler.addStatusEffect(src, 'invisibleEffect');
+    }
+    SkillUtils.gainSkillExp(realSrc, this, index, Skill_Hide.prop);
+    return true;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Skill_AuraFire
+
+  Skill_AuraFire = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_AuraFire.prototype = Object.create(ItemTemplate.prototype);
+  Skill_AuraFire.prototype.constructor = Skill_AuraFire;
+
+  Skill_AuraFire.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[13]);
+    this.name = '火焰光環';
+    this.description = '持續對身旁的敵人造成火焰傷害';
+    this.iconIndex = 72;
+    this.mpCost = 2;
+    this.tpCost = 0;
+    this.lv = 1;
+    this.exp = 0;
+
+    this.isAura = true;
+  }
+
+  Skill_AuraFire.prop = {
+    type: "SKILL",
+    subType: "RANGE",
+    effect: [
+      {lv: 1, baseDamage: 1, levelUp: 50},
+      {lv: 2, baseDamage: 2, levelUp: 150},
+      {lv: 3, baseDamage: 3, levelUp: 300},
+      {lv: 4, baseDamage: 4, levelUp: 450},
+      {lv: 5, baseDamage: 5, levelUp: -1}
+    ]
+  }
+
+  Skill_AuraFire.prototype.action = function(src) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    let effect = CharUtils.getTargetEffect(realSrc, Skill_AuraFire);
+    if (effect) {
+      AudioManager.playSe({name: "Down2", pan: 0, pitch: 100, volume: 100});
+      LogUtils.addLog(String.format(Message.display('auraDisabled')
+        , LogUtils.getCharName(realSrc), this.name));
+      effect.effectEnd();
+      let index = realSrc.status.skillEffect.indexOf(effect);
+      realSrc.status.skillEffect.splice(index, 1);
+      TimeUtils.eventScheduler.removeEvent(src, effect);
+    } else {
+      if (CharUtils.playerCanSeeChar(src)) {
+        TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 52));
+        TimeUtils.animeQueue.push(new AnimeObject(src, 'POP_UP', this.name));
+        LogUtils.addLog(String.format(Message.display('auraEnabled')
+          , LogUtils.getCharName(realSrc), this.name));
+      }
+      let newEffect = new SkillEffect_AuraFire(realSrc, this);
+      realSrc.status.skillEffect.push(newEffect);
+      TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
     }
     return true;
   }
@@ -12212,11 +12468,11 @@
     subType: "PROJECTILE",
     damageType: "MAGIC",
     effect: [
-      {lv: 1, baseDamage: 10, distance: 5, levelUp: 50},
-      {lv: 2, baseDamage: 12, distance: 5, levelUp: 150},
-      {lv: 3, baseDamage: 14, distance: 6, levelUp: 300},
-      {lv: 4, baseDamage: 16, distance: 6, levelUp: 450},
-      {lv: 5, baseDamage: 18, distance: 7, levelUp: -1}
+      {lv: 1, baseDamage: 6, distance: 5, levelUp: 50},
+      {lv: 2, baseDamage: 8, distance: 5, levelUp: 150},
+      {lv: 3, baseDamage: 10, distance: 6, levelUp: 300},
+      {lv: 4, baseDamage: 12, distance: 6, levelUp: 450},
+      {lv: 5, baseDamage: 14, distance: 7, levelUp: -1}
     ]
   }
 
@@ -12583,6 +12839,78 @@
 
   SkillEffect_Tough.prototype.effectEnd = function() {
     this.realSrc._buffs[3] -= this.amount;
+  }
+
+  //-----------------------------------------------------------------------------
+  // SkillEffect_Aura
+  //
+  // The game object template class for aura skills
+
+  SkillEffect_Aura = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  SkillEffect_Aura.prototype = Object.create(Game_SkillEffect.prototype);
+  SkillEffect_Aura.prototype.constructor = SkillEffect_Aura;
+
+  SkillEffect_Aura.prototype.initialize = function(realSrc, skill, eventClassName) {
+    Game_SkillEffect.prototype.initialize.call(this, realSrc, skill, 10, 0);
+    this.eventClassName = eventClassName;
+  }
+
+  SkillEffect_Aura.prototype.effectEnd = function() {
+    let src = BattleUtils.getEventFromCharacter(this.realSrc);
+    let evts = $gameMap.eventsXy(src._x, src._y).filter(function(evt) {
+      return evt.type == 'AURA';
+    });
+    evts[0].setPosition(-10, -10);
+    $gameMap._events[evts[0]._eventId] = null;
+    $dataMap.events[evts[0]._eventId] = null;
+  }
+
+  SkillEffect_Aura.prototype.auraEffect = function() {
+    // implement by auras
+  }
+
+  //-----------------------------------------------------------------------------
+  // SkillEffect_AuraFire
+  //
+  // The game object class for skill: AuraFire
+
+  SkillEffect_AuraFire = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  SkillEffect_AuraFire.prototype = Object.create(SkillEffect_Aura.prototype);
+  SkillEffect_AuraFire.prototype.constructor = SkillEffect_AuraFire;
+
+  SkillEffect_AuraFire.prototype.initialize = function(realSrc, skill) {
+    SkillEffect_Aura.prototype.initialize.call(this, realSrc, skill, 'Aura_Fire');
+  }
+
+  SkillEffect_AuraFire.prototype.auraEffect = function() {
+    let index = this.skill.lv - 1;
+    let prop = Skill_AuraFire.prop;
+    let src = BattleUtils.getEventFromCharacter(this.realSrc);
+    for (let i = 0; i < 8; i++) {
+      let coordinate = MapUtils.getNearbyCoordinate(src._x, src._y, i);
+      let target = MapUtils.getCharXy(coordinate.x, coordinate.y);
+      if (target) {
+        let realTarget = BattleUtils.getRealTarget(target);
+        if (!realTarget.checked) {
+          let damage = prop.effect[index].baseDamage;
+          CharUtils.decreaseHp(realTarget, damage);
+          if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
+            TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
+            TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
+            LogUtils.addLog(String.format(Message.display('auraDamage'), LogUtils.getCharName(this.realSrc)
+              , this.skill.name, LogUtils.getCharName(realTarget), damage));
+          }
+          BattleUtils.checkTargetAlive(this.realSrc, realTarget, target);
+        }
+      }
+    }
+    SkillUtils.gainSkillExp(this.realSrc, this.skill, index, prop);
   }
 
   //-----------------------------------------------------------------------------
@@ -14865,8 +15193,6 @@
       return false;
     })
   }
-
-  Game_Party.prototype.gainExp
 
   //-----------------------------------------------------------------------------------
   // DataManager
