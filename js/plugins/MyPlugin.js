@@ -532,6 +532,9 @@
       auraDisabled: '{0}散去了身旁的{1}.',
       auraOutOfEnergy: '{0}沒有足夠的能量維持{1}...',
       auraDamage: '{0}身旁的{1}對{2}造成{3}點傷害!',
+      terrainDamage: '{0}受到{1}點{2}傷害.',
+      firePathEnabled: '{0}的腳下出現了一團火焰!',
+      firePathDisabled: '{0}腳下的火焰熄滅了.',
       tutorialGuide: '艾比',
       tutorialMove1:
         '你好, 初次見面! 我是負責在遊戲進行中從旁進行提示教學的精'
@@ -945,14 +948,18 @@
             , skill.name));
           skillEffect.effectCount = 0;
         } else {
-          // check & created aura map event
-          let evts = $gameMap.eventsXy(event._x, event._y).filter(function(evt) {
-            return evt.type == 'AURA';
-          });
-          if (!evts[0]) {
-            let auraEvent = new window[skillEffect.eventClassName](event._x, event._y);
-            auraEvent.caster = event;
+          // FirePath no need to display event
+          if (skillEffect.eventClassName) {
+            // check & created aura map event
+            let evts = $gameMap.eventsXy(event._x, event._y).filter(function(evt) {
+              return evt.type == 'AURA';
+            });
+            if (!evts[0]) {
+              let auraEvent = new window[skillEffect.eventClassName](event._x, event._y);
+              auraEvent.caster = event;
+            }
           }
+
           CharUtils.decreaseMp(realSrc, skill.mpCost);
           CharUtils.decreaseTp(realSrc, skill.tpCost);
           skillEffect.auraEffect();
@@ -1647,6 +1654,7 @@
       goHome: $dataMap.events[1],
       bolder: $dataMap.events[8],
       aura: $dataMap.events[32],
+      terrain: $dataMap.events[33],
       visitIceDungeon: $dataMap.events[9],
       discoverPressFloor: $dataMap.events[10],
       selinaEncountered: $dataMap.events[11],
@@ -1803,6 +1811,7 @@
     $gameParty._items.push(new Soul_Bite());
     Soul_Obtained_Action.learnSkill(Skill_Bite);
     Soul_Obtained_Action.learnSkill(Skill_AuraFire);
+    Soul_Obtained_Action.learnSkill(Skill_FirePath);
     // Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
     // Soul_Obtained_Action.learnSkill(Skill_IceBolt);
     // Soul_Obtained_Action.learnSkill(Skill_IceBreath);
@@ -4532,8 +4541,82 @@
     this.setPattern(1);
     this.setDirection(2);
     this.setImage('!Door2', 0);
-    this.setOpacity(64);
+    this.setOpacity(128);
     this.name = '火焰光環';
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Game_Terrain
+  //
+  // class for terrain effect
+
+  Game_Terrain = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Game_Terrain.prototype = Object.create(Game_Event.prototype);
+  Game_Terrain.prototype.constructor = Game_Terrain;
+
+  Game_Terrain.prototype.fromEvent = function (src, target) {
+    target.type = src.type;
+    target.x = src.x;
+    target.y = src.y;
+    target.damage = src.damage;
+  }
+
+  Game_Terrain.prototype.initStatus = function (event) {
+    event.type = 'TERRAIN';
+  }
+
+  Game_Terrain.prototype.updateDataMap = function () {
+    Game_Terrain.prototype.fromEvent(this, $dataMap.events[this._eventId]);
+  }
+
+  Game_Terrain.prototype.initialize = function (x, y, fromData) {
+    var eventId = -1;
+    if (fromData) {
+      for (var i = 1; i < $dataMap.events.length; i++) {
+        if ($dataMap.events[i] && $dataMap.events[i] == fromData) {
+          eventId = i;
+          Game_Terrain.prototype.fromEvent($dataMap.events[i], this);
+          break;
+        }
+      }
+    } else {
+      // find empty space for new event
+      var eventId = MapUtils.findEmptyFromList($dataMap.events);
+      $dataMap.events[eventId] = newDataMapEvent($gameVariables[0].templateEvents.terrain, eventId, x, y);
+      this.initStatus($dataMap.events[eventId]);
+      this.initStatus(this);
+    }
+    // store new events back to map variable
+    $gameVariables[$gameMap.mapId()].rmDataMap = $dataMap;
+    Game_Event.prototype.initialize.call(this, $gameMap.mapId(), eventId);
+    this.name = '地形效果';
+    $gameMap._events[eventId] = this;
+  };
+
+  //-----------------------------------------------------------------------------------
+  // Terrain_Fire
+  //
+  // must assign damage after new object
+
+  Terrain_Fire = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Terrain_Fire.prototype = Object.create(Game_Terrain.prototype);
+  Terrain_Fire.prototype.constructor = Terrain_Fire;
+
+  Terrain_Fire.prototype.initialize = function (x, y, fromData) {
+    Game_Terrain.prototype.initialize.call(this, x, y, fromData);
+    // setup image
+    this._originalPattern = 1;
+    this.setPattern(1);
+    this.setDirection(2);
+    this.setImage('!Flame', 3);
+    this.setOpacity(128);
+    this.name = '火焰';
   }
 
   //-----------------------------------------------------------------------------------
@@ -5201,6 +5284,24 @@
       CharUtils.decreaseHp(realTarget, value);
       LogUtils.addLog(String.format(Message.display('lavaDamage'), LogUtils.getCharName(realTarget), value));
       BattleUtils.checkTargetAlive(null, realTarget, target);
+    }
+    // check if target on terrain effect
+    let terrainEvt = $gameMap.eventsXy(target._x, target._y).filter(function(event) {
+      return event.type == 'TERRAIN';
+    })[0];
+    if (terrainEvt) {
+      if (terrainEvt instanceof Terrain_Fire && !CharUtils.getTargetEffect(realTarget, Skill_FirePath)) {
+        // not using same skill, should take damage
+        let damage = terrainEvt.damage;
+        CharUtils.decreaseHp(realTarget, damage);
+        if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
+          TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
+          TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
+          LogUtils.addLog(String.format(Message.display('terrainDamage'), LogUtils.getCharName(realTarget)
+            , damage, terrainEvt.name));
+        }
+        BattleUtils.checkTargetAlive(null, realTarget, target);
+      }
     }
   }
 
@@ -6169,6 +6270,13 @@
             AudioManager.playSe({name: 'Water5', pan: 0, pitch: 100, volume: 100});
             LogUtils.addLog(String.format(Message.display('iceMelt'), target.name));
           }
+          target.setPosition(-10, -10);
+          $gameMap._events[target._eventId] = null;
+          $dataMap.events[target._eventId] = null;
+          MapUtils.refreshMap();
+          TimeUtils.afterPlayerMoved();
+        } else if (target.type == 'TERRAIN') {
+          // remove terrain effect
           target.setPosition(-10, -10);
           $gameMap._events[target._eventId] = null;
           $dataMap.events[target._eventId] = null;
@@ -12413,6 +12521,66 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Skill_FirePath
+
+  Skill_FirePath = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_FirePath.prototype = Object.create(ItemTemplate.prototype);
+  Skill_FirePath.prototype.constructor = Skill_FirePath;
+
+  Skill_FirePath.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[13]);
+    this.name = '火焰路徑';
+    this.description = '在行進路線上留下燃燒的火焰';
+    this.iconIndex = 64;
+    this.mpCost = 1;
+    this.tpCost = 0;
+    this.lv = 1;
+    this.exp = 0;
+
+    this.isAura = true;
+  }
+
+  Skill_FirePath.prop = {
+    type: "SKILL",
+    subType: "RANGE",
+    effect: [
+      {lv: 1, baseDamage: 1, duration: 100, levelUp: 50},
+      {lv: 2, baseDamage: 2, duration: 120, levelUp: 150},
+      {lv: 3, baseDamage: 3, duration: 140, levelUp: 300},
+      {lv: 4, baseDamage: 4, duration: 160, levelUp: 450},
+      {lv: 5, baseDamage: 5, duration: 180, levelUp: -1}
+    ]
+  }
+
+  Skill_FirePath.prototype.action = function(src) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    let effect = CharUtils.getTargetEffect(realSrc, Skill_FirePath);
+    if (effect) {
+      AudioManager.playSe({name: "Down2", pan: 0, pitch: 100, volume: 100});
+      LogUtils.addLog(String.format(Message.display('firePathDisabled')
+        , LogUtils.getCharName(realSrc)));
+      effect.effectEnd();
+      let index = realSrc.status.skillEffect.indexOf(effect);
+      realSrc.status.skillEffect.splice(index, 1);
+      TimeUtils.eventScheduler.removeEvent(src, effect);
+    } else {
+      if (CharUtils.playerCanSeeChar(src)) {
+        TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 67));
+        TimeUtils.animeQueue.push(new AnimeObject(src, 'POP_UP', this.name));
+        LogUtils.addLog(String.format(Message.display('firePathEnabled')
+          , LogUtils.getCharName(realSrc)));
+      }
+      let newEffect = new SkillEffect_FirePath(realSrc, this);
+      realSrc.status.skillEffect.push(newEffect);
+      TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
+    }
+    return true;
+  }
+
+  //-----------------------------------------------------------------------------------
   // Skill_EatRot
 
   Skill_EatRot = function() {
@@ -12911,6 +13079,47 @@
       }
     }
     SkillUtils.gainSkillExp(this.realSrc, this.skill, index, prop);
+  }
+
+  //-----------------------------------------------------------------------------
+  // SkillEffect_FirePath
+  //
+  // The game object template class for skill: FirePath
+
+  SkillEffect_FirePath = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  SkillEffect_FirePath.prototype = Object.create(SkillEffect_Aura.prototype);
+  SkillEffect_FirePath.prototype.constructor = SkillEffect_FirePath;
+
+  SkillEffect_FirePath.prototype.initialize = function(realSrc, skill) {
+    SkillEffect_Aura.prototype.initialize.call(this, realSrc, skill, null);
+  }
+
+  SkillEffect_FirePath.prototype.auraEffect = function() {
+    let src = BattleUtils.getEventFromCharacter(this.realSrc);
+    // check if floor already burns
+    let evts = $gameMap.eventsXy(src._x, src._y).filter(function(event) {
+      return event.type == 'TERRAIN';
+    })
+    if (evts[0]) {
+      TimeUtils.eventScheduler.removeEvent(evts[0]);
+      evts[0].setPosition(-10, -10);
+      $gameMap._events[evts[0]._eventId] = null;
+      $dataMap.events[evts[0]._eventId] = null;
+      MapUtils.refreshMap();
+    }
+    let evt = new Terrain_Fire(src._x, src._y);
+    let effect = Skill_FirePath.prop.effect[this.skill.lv - 1];
+    evt.damage = effect.baseDamage;
+    let duration = effect.duration;
+    let scheduleEvent = new ScheduleEvent(evt, $gameVariables[0].gameTime + duration);
+    TimeUtils.eventScheduler.insertEvent(scheduleEvent);
+  }
+
+  SkillEffect_FirePath.prototype.effectEnd = function() {
+    // do nothing
   }
 
   //-----------------------------------------------------------------------------
