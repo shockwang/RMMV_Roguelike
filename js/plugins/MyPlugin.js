@@ -1812,6 +1812,9 @@
     Soul_Obtained_Action.learnSkill(Skill_Bite);
     Soul_Obtained_Action.learnSkill(Skill_AuraFire);
     Soul_Obtained_Action.learnSkill(Skill_FirePath);
+    Soul_Obtained_Action.learnSkill(Skill_FireBall);
+    Soul_Obtained_Action.learnSkill(Skill_FireBreath);
+    Soul_Obtained_Action.learnSkill(Skill_SuperRegen);
     // Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
     // Soul_Obtained_Action.learnSkill(Skill_IceBolt);
     // Soul_Obtained_Action.learnSkill(Skill_IceBreath);
@@ -4233,6 +4236,9 @@
           this._events[i] = new window[$dataMap.events[i].trap.trapClass]($dataMap.events[i].x
             , $dataMap.events[i].y, $dataMap.events[i]);
           TrapUtils.drawTrap(this._events[i]);
+        } else if ($dataMap.events[i].type == 'TERRAIN') {
+          this._events[i] = new window[$dataMap.events[i].evt.className]($dataMap.events[i].x
+            , $dataMap.events[i].y, $dataMap.events[i]);
         } else {
           this._events[i] = new Game_Event(this._mapId, i);
         }
@@ -4561,7 +4567,7 @@
     target.type = src.type;
     target.x = src.x;
     target.y = src.y;
-    target.damage = src.damage;
+    target.evt = src.evt;
   }
 
   Game_Terrain.prototype.initStatus = function (event) {
@@ -4608,6 +4614,15 @@
   Terrain_Fire.prototype = Object.create(Game_Terrain.prototype);
   Terrain_Fire.prototype.constructor = Terrain_Fire;
 
+  Terrain_Fire.prototype.initStatus = function(event) {
+    Game_Terrain.prototype.initStatus.call(this, event);
+    
+    event.evt = {
+      name: '火焰',
+      className: 'Terrain_Fire'
+    }
+  }
+
   Terrain_Fire.prototype.initialize = function (x, y, fromData) {
     Game_Terrain.prototype.initialize.call(this, x, y, fromData);
     // setup image
@@ -4616,7 +4631,9 @@
     this.setDirection(2);
     this.setImage('!Flame', 3);
     this.setOpacity(128);
-    this.name = '火焰';
+    if (this.evt.damage && this.evt.expire) {
+      TimeUtils.eventScheduler.insertEvent(new ScheduleEvent(this, this.evt.expire));
+    }
   }
 
   //-----------------------------------------------------------------------------------
@@ -5292,13 +5309,13 @@
     if (terrainEvt) {
       if (terrainEvt instanceof Terrain_Fire && !CharUtils.getTargetEffect(realTarget, Skill_FirePath)) {
         // not using same skill, should take damage
-        let damage = terrainEvt.damage;
+        let damage = terrainEvt.evt.damage;
         CharUtils.decreaseHp(realTarget, damage);
         if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
           TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
           TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
           LogUtils.addLog(String.format(Message.display('terrainDamage'), LogUtils.getCharName(realTarget)
-            , damage, terrainEvt.name));
+            , damage, terrainEvt.evt.name));
         }
         BattleUtils.checkTargetAlive(null, realTarget, target);
       }
@@ -6244,6 +6261,12 @@
           if ($gameActors.actor(1).turnCount % regenTurnCount == 0) {
             CharUtils.regenerate($gamePlayer);
           }
+          if (CharUtils.getTargetEffect($gameActors.actor(1), Skill_SuperRegen)) {
+            let regenValue = Math.round(1 + $gameActors.actor(1).param(3) / 3);
+            regenValue = getRandomIntRange(1, regenValue);
+            $gameActors.actor(1).gainHp(Math.round(regenValue / 2));
+            $gameActors.actor(1).nutrition -= Math.round(regenTurnCount / 2);
+          }
           if ($gameActors.actor(1).status.paralyzeEffect.turns > 0 || $gameActors.actor(1).status.sleepEffect.turns > 0
             || $gameActors.actor(1).status.faintEffect.turns > 0) {
             TimeUtils.afterPlayerMovedData.state = 0;
@@ -6258,6 +6281,11 @@
           target.mob.turnCount++;
           if (target.mob.turnCount % regenTurnCount == 0) {
             CharUtils.regenerate(target);
+          }
+          if (CharUtils.getTargetEffect(target.mob, Skill_SuperRegen)) {
+            let regenValue = Math.round(1 + target.mob.param(3) / 3);
+            regenValue = getRandomIntRange(1, regenValue);
+            target.mob.gainHp(Math.round(regenValue / 2));
           }
           // schedule next turn event
           this.insertEvent(new ScheduleEvent(target
@@ -12461,6 +12489,67 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Skill_SuperRegen
+
+  Skill_SuperRegen = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_SuperRegen.prototype = Object.create(ItemTemplate.prototype);
+  Skill_SuperRegen.prototype.constructor = Skill_SuperRegen;
+
+  Skill_SuperRegen.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[13]);
+    this.name = '超速再生';
+    this.description = '一段時間內迅速回復生命力，但會迅速降低飽食度';
+    this.iconIndex = 64;
+    this.mpCost = 10;
+    this.lv = 1;
+    this.exp = 0;
+    // buff or debuf
+    this.isBuff = true;
+  }
+
+  Skill_SuperRegen.prop = {
+    type: "SKILL",
+    subType: "RANGE",
+    effect: [
+      {lv: 1, turns: 10, levelUp: 50},
+      {lv: 2, turns: 15, levelUp: 150},
+      {lv: 3, turns: 20, levelUp: 300},
+      {lv: 4, turns: 25, levelUp: 450},
+      {lv: 5, turns: 30, levelUp: -1}
+    ]
+  }
+
+  Skill_SuperRegen.prototype.action = function(src) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    CharUtils.decreaseMp(realSrc, this.mpCost);
+    CharUtils.decreaseTp(realSrc, this.tpCost);
+
+    let prop = window[this.constructor.name].prop;
+    let effect = CharUtils.getTargetEffect(realSrc, Skill_SuperRegen);
+    if (effect) {
+      effect.effectEnd();
+      let index = realSrc.status.skillEffect.indexOf(effect);
+      realSrc.status.skillEffect.splice(index, 1);
+      TimeUtils.eventScheduler.removeEvent(src, effect);
+    }
+    if (CharUtils.playerCanSeeChar(src)) {
+      TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 52));
+      TimeUtils.animeQueue.push(new AnimeObject(src, 'POP_UP', this.name));
+      LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
+        , LogUtils.getCharName(realSrc), this.name));
+    }
+    let index = this.lv - 1;
+    let newEffect = new SkillEffect_SuperRegen(realSrc, this, prop.effect[index].turns);
+    realSrc.status.skillEffect.push(newEffect);
+    TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
+    SkillUtils.gainSkillExp(realSrc, this, index, prop);
+    return true;
+  }
+
+  //-----------------------------------------------------------------------------------
   // Skill_AuraFire
 
   Skill_AuraFire = function() {
@@ -12676,6 +12765,71 @@
     let data = new ProjectileData(this, imageData
       , window[this.constructor.name].prop.effect[this.lv - 1].distance, hitCharFunc);
     new Projectile_SingleTarget(src, x, y, data);
+    return true;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Skill_FireBreath
+
+  Skill_FireBreath = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_FireBreath.prototype = Object.create(ItemTemplate.prototype);
+  Skill_FireBreath.prototype.constructor = Skill_FireBreath;
+
+  Skill_FireBreath.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[13]);
+    this.name = '火焰吐息';
+    this.description = '直線吐出灼熱的火焰, 魔法貫穿傷害';
+    this.iconIndex = 64;
+    this.mpCost = 30;
+    this.lv = 1;
+    this.exp = 0;
+  }
+
+  Skill_FireBreath.prop = {
+    type: "SKILL",
+    subType: "PROJECTILE",
+    damageType: "MAGIC",
+    effect: [
+      {lv: 1, baseDamage: 10, distance: 5, levelUp: 50},
+      {lv: 2, baseDamage: 12, distance: 5, levelUp: 150},
+      {lv: 3, baseDamage: 14, distance: 6, levelUp: 300},
+      {lv: 4, baseDamage: 16, distance: 6, levelUp: 450},
+      {lv: 5, baseDamage: 18, distance: 7, levelUp: -1}
+    ]
+  }
+
+  Skill_FireBreath.prototype.action = function(src, x, y) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    CharUtils.decreaseMp(realSrc, this.mpCost);
+    CharUtils.decreaseTp(realSrc, this.tpCost);
+
+    // parent of this function would be ProjectileData
+    let hitCharFunc = function(vm, target) {
+      let realSrc = BattleUtils.getRealTarget(vm.src);
+      let realTarget = BattleUtils.getRealTarget(target);
+      let atkValue = window[this.skill.constructor.name].prop.effect[this.skill.lv - 1].baseDamage
+        + realSrc.param(4) / 3;
+      let damage = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
+      damage = Math.round(damage * (1 - realTarget.status.resistance.cold));
+      CharUtils.decreaseHp(realTarget, damage);
+      if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
+        TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
+        TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
+        LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc)
+          , this.skill.name, LogUtils.getCharName(realTarget), damage));
+      }
+      BattleUtils.checkTargetAlive(realSrc, realTarget, target);
+    }
+    if (CharUtils.playerCanSeeBlock(src._x, src._y)) {
+      LogUtils.addLog(String.format(Message.display('shootProjectile'), LogUtils.getCharName(realSrc), this.name));
+    }
+    let imageData = new ImageData('Collections3', 4, 2, 2);
+    let data = new ProjectileData(this, imageData
+      , window[this.constructor.name].prop.effect[this.lv - 1].distance, hitCharFunc);
+    new Projectile_Ray(src, x, y, data);
     return true;
   }
 
@@ -13010,6 +13164,22 @@
   }
 
   //-----------------------------------------------------------------------------
+  // SkillEffect_SuperRegen
+  //
+  // The game object class for skill: SuperRegen
+
+  SkillEffect_SuperRegen = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  SkillEffect_SuperRegen.prototype = Object.create(Game_SkillEffect.prototype);
+  SkillEffect_SuperRegen.prototype.constructor = SkillEffect_SuperRegen;
+
+  SkillEffect_SuperRegen.prototype.initialize = function(realSrc, skill, effectCount) {
+    Game_SkillEffect.prototype.initialize.call(this, realSrc, skill, effectCount, null);
+  }
+
+  //-----------------------------------------------------------------------------
   // SkillEffect_Aura
   //
   // The game object template class for aura skills
@@ -13112,10 +13282,10 @@
     }
     let evt = new Terrain_Fire(src._x, src._y);
     let effect = Skill_FirePath.prop.effect[this.skill.lv - 1];
-    evt.damage = effect.baseDamage;
-    let duration = effect.duration;
-    let scheduleEvent = new ScheduleEvent(evt, $gameVariables[0].gameTime + duration);
-    TimeUtils.eventScheduler.insertEvent(scheduleEvent);
+    evt.evt.damage = effect.baseDamage;
+    evt.evt.expire = $gameVariables[0].gameTime + effect.duration;
+    evt.updateDataMap();
+    TimeUtils.eventScheduler.insertEvent(new ScheduleEvent(evt, evt.evt.expire));
   }
 
   SkillEffect_FirePath.prototype.effectEnd = function() {
