@@ -125,8 +125,8 @@
     this.lastTime = 0;
   }
 
-  var SkillData = function(skillClass, lv) {
-    this.skillClass = skillClass;
+  var SkillData = function(skillClassName, lv) {
+    this.skillClassName = skillClassName;
     this.lv = lv;
   }
 
@@ -135,6 +135,12 @@
     this.x = x;
     this.y = y;
     this.relatedEventClassName = relatedEventClassName;
+  }
+
+  // can not serialize
+  var spawnMobData = function(mobClass, percentage) {
+    this.mobClass = mobClass;
+    this.percentage = percentage;
   }
 
   var FLOOR = '□';
@@ -202,7 +208,7 @@
   var restTpRecover = 6;
   var mobTraceRouteMaxDistance = 15;
   var regenTurnCount = 20;
-  var genLocalDungeonObjectPercentage = 0.7;
+  var genLocalDungeonObjectPercentage = 0.8;
   var mobFleeHpPercentage = 0.3;
   var carryObjectMaxNum = 52;
   var controlCommandDelay = 50;
@@ -1126,14 +1132,8 @@
   }
 
   CharUtils.calcMobAppearPercentage = function(mobLevel, dungeonLevel) {
-    let result = 0;
-    if (mobLevel > dungeonLevel) {
-      if (mobLevel - dungeonLevel <= 3) {
-        result = Math.pow(0.5, mobLevel - dungeonLevel);
-      }
-    } else {
-      result = 1 - (dungeonLevel - mobLevel) * 10 / 100;
-    }
+    let result = 1 - Math.abs(dungeonLevel - mobLevel) * 10 / 100;
+    result = Math.pow(result, 4); // try to create a gaussian-like distribution
     return result;
   }
 
@@ -1153,27 +1153,53 @@
       }
       for (let id in CharUtils.mobTemplates[mobTypeIndicator]) {
         let mobClass = CharUtils.mobTemplates[mobTypeIndicator][id];
-        if (CharUtils.calcMobAppearPercentage(mobClass.mobInitData.level, dungeonLevel) > Math.random()) {
-          pool.push(mobClass);
+        let spawnPercentage = CharUtils.calcMobAppearPercentage(mobClass.mobInitData.level, dungeonLevel);
+        if (spawnPercentage > 0) {
+          pool.push(new spawnMobData(mobClass, spawnPercentage));
         }
       }
       if (pool.length == 0 && mobTypeIndicator != mapTypeIndex) {
         // recalculate: use local dungeon creature
         for (let id in CharUtils.mobTemplates[mapTypeIndex]) {
           let mobClass = CharUtils.mobTemplates[mapTypeIndex][id];
-          if (CharUtils.calcMobAppearPercentage(mobClass.mobInitData.level, dungeonLevel) > Math.random()) {
-            pool.push(mobClass);
+          let spawnPercentage = CharUtils.calcMobAppearPercentage(mobClass.mobInitData.level, dungeonLevel);
+          if (spawnPercentage > 0) {
+            pool.push(new spawnMobData(mobClass, spawnPercentage));
           }
         }
       }
     } while (pool.length == 0);
+    // sort & normalize percentage
+    pool.sort(function(a, b) {
+      return b.percentage - a.percentage;
+    });
+    let denominator = 0;
+    for (let id in pool) {
+      denominator += pool[id].percentage;
+    }
+    let indicator = 1;
+    for (let id in pool) {
+      pool[id].percentage = indicator - pool[id].percentage / denominator;
+      indicator = pool[id].percentage;
+    }
     return pool;
   }
 
+  CharUtils.chooseMobClassFromPool = function(mobClassPool) {
+    let randNum = Math.random();
+    for (let i = 0; i < mobClassPool.length; i++) {
+      if (mobClassPool[i].percentage < randNum) {
+        return mobClassPool[i].mobClass;
+      }
+    }
+    // should not happen
+    throw 'Can not find available mobClass!';
+  }
+
   CharUtils.spawnMob = function(mapId, mapBlocks, outOfSight, mobClassInput) {
+    let pool = CharUtils.getMobPools(mapId);
     while (true) {
-      let pool = CharUtils.getMobPools(mapId);
-      let mobClass = (mobClassInput) ? mobClassInput : pool[getRandomInt(pool.length)];
+      let mobClass = (mobClassInput) ? mobClassInput : CharUtils.chooseMobClassFromPool(pool);
       let locations = [];
       switch (mobClass.mobInitData.moveType) {
         case 0:
@@ -1201,7 +1227,7 @@
           }
         }
         if (location) {
-          return new mobClass(location.x, location.y);
+          return new mobClass(location.x, location.y, null, $gameVariables[mapId].dungeonLevel);
         } else {
           console.log('can not find location out of sight!');
         }
@@ -1212,11 +1238,10 @@
   }
 
   CharUtils.spawnMobXy = function(mapId, x, y) {
-    let pool;
+    let pool = CharUtils.getMobPools(mapId);
     let tileType = $gameVariables[mapId].mapData[x][y].originalTile;
     let candidates = [];
     do {
-      pool = CharUtils.getMobPools(mapId);
       for (let id in pool) {
         let toCheck = pool[id];
         let moveType = toCheck.mobInitData.moveType;
@@ -1237,11 +1262,12 @@
         }
       }
     } while (candidates.length == 0);
-    return new candidates[getRandomInt(candidates.length)](x, y);
+    return new candidates[getRandomInt(candidates.length)](x, y, null, $gameVariables[mapId].dungeonLevel);
   }
 
   CharUtils.spawnMobNearPlayer = function(mobType, xOffset, yOffset) {
-    return new mobType($gamePlayer._x + xOffset, $gamePlayer._y + yOffset);
+    return new mobType($gamePlayer._x + xOffset, $gamePlayer._y + yOffset, null
+      , $gameVariables[$gameMap.mapId()].dungeonLevel);
   }
 
   // for distance attack
@@ -1585,7 +1611,7 @@
       $gameVariables[i].stairToList.push(i - 1);
       $gameVariables[i].stairToList.push(i + 1);
       $gameVariables[i].mapType = 'ICE';
-      $gameVariables[i].dungeonLevel = i - 6;
+      $gameVariables[i].dungeonLevel = i - 10 + iceEntranceLevel;
     }
     $gameVariables[11].stairToList.splice(1, 1);
     $gameVariables[15].stairToList.pop();
@@ -1966,7 +1992,8 @@
       for (let i = 1; i <= 8; i++) {
         for (let j = 0; j < mobNumPerMap; j++) {
           let mobClassPool = CharUtils.getMobPools(i);
-          let mob = new mobClassPool[getRandomInt(mobClassPool.length)](1, 1);
+          let mobClass = CharUtils.chooseMobClassFromPool(mobClassPool);
+          let mob = new mobClass(1, 1, null, $gameVariables[$gameMap.mapId()].dungeonLevel);
           mob.looting();
           mob.setPosition(-10, -10);
           $gameMap._events[mob._eventId] = null;
@@ -6846,7 +6873,7 @@
     let attrDamage = (realSrc.level + realSrc.param(2)) * 2 / 3;
     let attrDef = (realTarget.level + realTarget.param(3)) / 3;
     let equipDef = realTarget.param(8);
-    let damage = (atkValue + attrDamage - attrDef) * Math.pow(0.5, equipDef / 10);
+    let damage = (atkValue + attrDamage - attrDef) * Math.pow(0.5, equipDef / 20);
     return BattleUtils.getFinalDamage(damage);
   }
 
@@ -6859,7 +6886,7 @@
     let attrDamage = (realSrc.level + realSrc.param(4)) * 2 / 3;
     let attrDef = (realTarget.level + realTarget.param(5)) / 3;
     let equipDef = realTarget.param(9);
-    let damage = (atkValue + attrDamage - attrDef) * Math.pow(0.5, equipDef / 10);
+    let damage = (atkValue + attrDamage - attrDef) * Math.pow(0.5, equipDef / 20);
     return BattleUtils.getFinalDamage(damage);
   }
 
@@ -7633,6 +7660,25 @@
     }
   }
 
+  // adjust equipment attributes by level
+  ItemUtils.adjustEquipByLevel = function(equip, level) {
+    let delta = level - window[equip.constructor.name].spawnLevel;
+    // update def & mdef
+    for (let i = 0; i < 2; i++) {
+      ItemUtils.modifyAttr(equip.traits[i], delta);
+      equip.traits[i].value = (equip.traits[i].value < 0) ? 0 : equip.traits[i].value;
+    }
+    // update weapon atk
+    if (equip.traits[2].value) {
+      ItemUtils.enchantEquip(equip, delta);
+    }
+    // update params
+    for (let i = 2; i <= 6; i++) {
+      equip.params[i] += delta;
+      equip.params[i] = (equip.params[i] < 0) ? 0 : equip.params[i];
+    }
+  }
+
   //-----------------------------------------------------------------------------------
   // ItemTemplate
   //
@@ -7723,7 +7769,7 @@
   Buffalo_Horn = function() {
     this.initialize.apply(this, arguments);
   }
-  Buffalo_Horn.spawnLevel = 8;
+  Buffalo_Horn.spawnLevel = 7;
 
   Buffalo_Horn.prototype = Object.create(ItemTemplate.prototype);
   Buffalo_Horn.prototype.constructor = Buffalo_Horn;
@@ -7935,7 +7981,7 @@
   Dog_Tooth = function() {
     this.initialize.apply(this, arguments);
   }
-  Dog_Tooth.spawnLevel = 1;
+  Dog_Tooth.spawnLevel = 2;
 
   Dog_Tooth.prototype = Object.create(EquipTemplate.prototype);
   Dog_Tooth.prototype.constructor = Dog_Tooth;
@@ -8199,7 +8245,7 @@
   Dog_Bone = function() {
     this.initialize.apply(this, arguments);
   }
-  Dog_Bone.spawnLevel = 1;
+  Dog_Bone.spawnLevel = 2;
 
   Dog_Bone.prototype = Object.create(EquipTemplate.prototype);
   Dog_Bone.prototype.constructor = Dog_Bone;
@@ -8240,7 +8286,7 @@
     ItemUtils.updateEquipName(this);
     // randomize attributes
     this.traits[2].value = '1d2';
-    this.params[4] = 2;
+    this.params[4] = 3;
     ItemUtils.updateEquipDescription(this);
   }
   ItemUtils.lootingTemplates[0].bone.push(Cat_Bone);
@@ -8586,7 +8632,7 @@
   Dog_Skin = function() {
     this.initialize.apply(this, arguments);
   }
-  Dog_Skin.spawnLevel = 1;
+  Dog_Skin.spawnLevel = 2;
 
   Dog_Skin.prototype = Object.create(EquipTemplate.prototype);
   Dog_Skin.prototype.constructor = Dog_Skin;
@@ -8599,7 +8645,7 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.lootingTemplates[0].skin.push(Dog_Skin);
@@ -8625,8 +8671,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 1);
-    ItemUtils.modifyAttr(this.traits[1], 2 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 2);
+    ItemUtils.modifyAttr(this.traits[1], 4 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.lootingTemplates[0].skin.push(Cat_Skin);
@@ -8652,8 +8698,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 3 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[1], 1);
+    ItemUtils.modifyAttr(this.traits[0], 6 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 2);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.lootingTemplates[0].skin.push(Wolf_Skin);
@@ -8679,7 +8725,7 @@
     this.weight = 15;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.lootingTemplates[0].skin.push(Bear_Skin);
@@ -8705,8 +8751,8 @@
     this.weight = 15;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 3);
-    ItemUtils.modifyAttr(this.traits[1], 2 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 6);
+    ItemUtils.modifyAttr(this.traits[1], 4 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.lootingTemplates[0].skin.push(Lion_Skin);
@@ -8732,8 +8778,8 @@
     this.weight = 15;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[1], 4);
+    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 8);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.lootingTemplates[1].skin.push(Dragon_Skin);
@@ -8759,8 +8805,8 @@
     this.weight = 20;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[1], 2);
+    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 4);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.lootingTemplates[0].skin.push(Turtle_Shell);
@@ -8913,7 +8959,7 @@
   Dog_Gloves = function() {
     this.initialize.apply(this, arguments);
   }
-  Dog_Gloves.spawnLevel = 1;
+  Dog_Gloves.spawnLevel = 2;
 
   Dog_Gloves.itemName = '狗皮手套';
   Dog_Gloves.itemDescription = '輕薄的手套';
@@ -8930,7 +8976,7 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dog_Gloves);
@@ -8944,7 +8990,7 @@
   Dog_Shoes = function() {
     this.initialize.apply(this, arguments);
   }
-  Dog_Shoes.spawnLevel = 1;
+  Dog_Shoes.spawnLevel = 2;
 
   Dog_Shoes.itemName = '狗皮靴子';
   Dog_Shoes.itemDescription = '輕薄的靴子';
@@ -8961,7 +9007,7 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dog_Shoes);
@@ -8975,7 +9021,7 @@
   Dog_Shield = function() {
     this.initialize.apply(this, arguments);
   }
-  Dog_Shield.spawnLevel = 1;
+  Dog_Shield.spawnLevel = 2;
 
   Dog_Shield.itemName = '狗皮盾';
   Dog_Shield.itemDescription = '簡單的輕盾';
@@ -8992,8 +9038,8 @@
     this.weight = 30;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 3 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[1], 1);
+    ItemUtils.modifyAttr(this.traits[0], 6 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 2);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dog_Shield);
@@ -9007,7 +9053,7 @@
   Dog_Helmet = function() {
     this.initialize.apply(this, arguments);
   }
-  Dog_Helmet.spawnLevel = 1;
+  Dog_Helmet.spawnLevel = 2;
 
   Dog_Helmet.itemName = '狗皮帽';
   Dog_Helmet.itemDescription = '輕薄的皮帽';
@@ -9024,7 +9070,7 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dog_Helmet);
@@ -9038,7 +9084,7 @@
   Dog_Coat = function() {
     this.initialize.apply(this, arguments);
   }
-  Dog_Coat.spawnLevel = 1;
+  Dog_Coat.spawnLevel = 2;
 
   Dog_Coat.itemName = '狗皮大衣';
   Dog_Coat.itemDescription = '輕薄的大衣';
@@ -9055,7 +9101,7 @@
     this.weight = 80;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dog_Coat);
@@ -9086,8 +9132,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 1);
-    ItemUtils.modifyAttr(this.traits[1], 2 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 2);
+    ItemUtils.modifyAttr(this.traits[1], 4 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Cat_Gloves);
@@ -9118,8 +9164,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 1);
-    ItemUtils.modifyAttr(this.traits[1], 2 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 2);
+    ItemUtils.modifyAttr(this.traits[1], 4 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Cat_Shoes);
@@ -9150,8 +9196,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 1);
-    ItemUtils.modifyAttr(this.traits[1], 2 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 2);
+    ItemUtils.modifyAttr(this.traits[1], 4 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Cat_Helmet);
@@ -9182,8 +9228,8 @@
     this.weight = 80;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 2);
-    ItemUtils.modifyAttr(this.traits[1], 4 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 4);
+    ItemUtils.modifyAttr(this.traits[1], 8 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Cat_Coat);
@@ -9214,8 +9260,8 @@
     this.weight = 30;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 2);
-    ItemUtils.modifyAttr(this.traits[1], 3 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 4);
+    ItemUtils.modifyAttr(this.traits[1], 6 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Cat_Shield);
@@ -9246,8 +9292,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 3 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[1], 1);
+    ItemUtils.modifyAttr(this.traits[0], 6 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 2);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Wolf_Gloves);
@@ -9278,8 +9324,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 3 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[1], 1);
+    ItemUtils.modifyAttr(this.traits[0], 6 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 2);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Wolf_Shoes);
@@ -9310,8 +9356,8 @@
     this.weight = 40;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[1], 2);
+    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 4);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Wolf_Shield);
@@ -9342,8 +9388,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 3 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[0], 1);
+    ItemUtils.modifyAttr(this.traits[0], 6 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 2);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Wolf_Helmet);
@@ -9374,8 +9420,8 @@
     this.weight = 80;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 6 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[0], 2);
+    ItemUtils.modifyAttr(this.traits[0], 12 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 4);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Wolf_Coat);
@@ -9406,7 +9452,7 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Bear_Gloves);
@@ -9437,7 +9483,7 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Bear_Shoes);
@@ -9468,8 +9514,8 @@
     this.weight = 40;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 5 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[1], 1);
+    ItemUtils.modifyAttr(this.traits[0], 10 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 2);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Bear_Shield);
@@ -9500,7 +9546,7 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Bear_Helmet);
@@ -9531,7 +9577,7 @@
     this.weight = 100;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 16 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Bear_Coat);
@@ -9562,8 +9608,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 2);
-    ItemUtils.modifyAttr(this.traits[1], 3 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 4);
+    ItemUtils.modifyAttr(this.traits[1], 6 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Lion_Gloves);
@@ -9594,8 +9640,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 2);
-    ItemUtils.modifyAttr(this.traits[1], 3 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 4);
+    ItemUtils.modifyAttr(this.traits[1], 6 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Lion_Shoes);
@@ -9626,8 +9672,8 @@
     this.weight = 50;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 3);
-    ItemUtils.modifyAttr(this.traits[1], 4 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 6);
+    ItemUtils.modifyAttr(this.traits[1], 8 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Lion_Shield);
@@ -9658,8 +9704,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 2);
-    ItemUtils.modifyAttr(this.traits[1], 3 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 4);
+    ItemUtils.modifyAttr(this.traits[1], 6 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Lion_Helmet);
@@ -9690,8 +9736,8 @@
     this.weight = 100;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 4);
-    ItemUtils.modifyAttr(this.traits[1], 6 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 8);
+    ItemUtils.modifyAttr(this.traits[1], 12 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Lion_Coat);
@@ -9722,8 +9768,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[1], 4);
+    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 8);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dragon_Gloves);
@@ -9754,8 +9800,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[1], 4);
+    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 8);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dragon_Shoes);
@@ -9786,8 +9832,8 @@
     this.weight = 50;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 5 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[1], 5);
+    ItemUtils.modifyAttr(this.traits[0], 10 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 10);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dragon_Shield);
@@ -9818,8 +9864,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[1], 4);
+    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 8);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dragon_Helmet);
@@ -9850,8 +9896,8 @@
     this.weight = 120;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[1], 8);
+    ItemUtils.modifyAttr(this.traits[0], 16 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 16);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dragon_Coat);
@@ -9881,8 +9927,8 @@
     this.weight = 40;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 4);
-    ItemUtils.modifyAttr(this.traits[1], 4 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 8);
+    ItemUtils.modifyAttr(this.traits[1], 8 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.equipTemplates[1].coat.push(Ice_Coat);
@@ -9914,7 +9960,7 @@
     this.weight = 2;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 4);
+    ItemUtils.modifyAttr(this.traits[0], 8);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Ring_Protection);
@@ -9946,7 +9992,7 @@
     this.weight = 2;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[1], 4);
+    ItemUtils.modifyAttr(this.traits[1], 8);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Ring_MagicResistance);
@@ -13356,7 +13402,7 @@
     Game_Mob.prototype.fromEvent(this, $dataMap.events[this._eventId]);
   }
 
-  Game_Mob.prototype.initialize = function (x, y, mobId, fromData, mobInitData) {
+  Game_Mob.prototype.initialize = function (x, y, fromData, targetLevel) {
     var eventId = -1;
     if (fromData) {
       for (var i = 1; i < $dataMap.events.length; i++) {
@@ -13367,8 +13413,9 @@
         }
       }
     } else {
-      // new mob instance from mobId
-      this.mob = new Game_Enemy(mobId, x, y, mobInitData.params, mobInitData.xparams);
+      // new mob instance from mobId & attributes, also read mobInitData from Game_Mob.mobInitData
+      let mobInitData = Game_Mob.mobInitData;
+      this.mob = new Game_Enemy(11, x, y, mobInitData.params, mobInitData.xparams);
       this.mob._name = mobInitData.name;
       this.mob.level = mobInitData.level;
       this.mob.moveType = mobInitData.moveType;
@@ -13379,7 +13426,7 @@
       this.mob._skills = [];
       for (let id in mobInitData.skills) {
         let skillData = mobInitData.skills[id];
-        let newSkill = new skillData.skillClass();
+        let newSkill = new window[skillData.skillClassName]();
         newSkill.lv = skillData.lv;
         this.mob._skills.push(newSkill);
       }
@@ -13672,34 +13719,24 @@
       TimeUtils.tutorialHandler.msg += msg + '\n';
     }
   }
-  
-  //-----------------------------------------------------------------------------------
-  // Bat
-  // 
-  // not implemented yet
 
-  Bat = function () {
-    this.initialize.apply(this, arguments);
-  }
+  // mob lv adjust due to dungeon level
+  Game_Mob.mobInitData = null;
 
-  Bat.prototype = Object.create(Game_Mob.prototype);
-  Bat.prototype.constructor = Bat;
-
-  Bat.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData);
-    this.setImage('Monster', 0);
-    if (!fromData) {
-      this.mob.mobClass = 'Bat';
+  Game_Mob.adjustMobAbility = function(mobClass, targetLevel) {
+    let mobInitData = cloneObject(mobClass.mobInitData);
+    let delta = targetLevel - mobInitData.level;
+    mobInitData.level = targetLevel;
+    if (delta != 0) {
+      // deal with attributes except AGI
+      for (let i = 2; i <= 5; i++) {
+        mobInitData.params[i] += delta;
+        mobInitData.params[i] = (mobInitData.params[i] < 0) ? 0 : mobInitData.params[i];
+      }
+      // deal with AGI
+      mobInitData.params[6] += Math.round(delta / 2);
     }
-  }
-
-  Bat.prototype.looting = function () {
-    var lootings = [];
-    // TODO: implements Bat looting
-
-    for (var id in lootings) {
-      ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
-    }
+    Game_Mob.mobInitData = mobInitData;
   }
 
   //-----------------------------------------------------------------------------------
@@ -13708,7 +13745,6 @@
   Chick = function () {
     this.initialize.apply(this, arguments);
   }
-  Chick.baseDungeonLevel = 1;
 
   Chick.prototype = Object.create(Game_Mob.prototype);
   Chick.prototype.constructor = Chick;
@@ -13722,8 +13758,9 @@
     skills: []
   }
 
-  Chick.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Chick.mobInitData);
+  Chick.prototype.initialize = function (x, y, fromData, targetLevel) {
+    Game_Mob.adjustMobAbility(Chick, targetLevel);
+    Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Chick', 0);
     if (!fromData) {
       this.mob.mobClass = 'Chick';
@@ -13751,24 +13788,24 @@
   Dog = function () {
     this.initialize.apply(this, arguments);
   }
-  Dog.baseDungeonLevel = 1;
 
   Dog.prototype = Object.create(Game_Mob.prototype);
   Dog.prototype.constructor = Dog;
 
   Dog.mobInitData = {
     name: '小狗',
-    params: [1, 1, 6, 6, 10, 10, 5, 5],
+    params: [1, 1, 6, 5, 6, 6, 5, 5],
     xparams: [0, 0, '1d3'],
-    level: 1,
+    level: 2,
     moveType: 0,
     skills: [
-      new SkillData(Skill_Bite, 1)
+      new SkillData('Skill_Bite', 1)
     ]
   }
 
-  Dog.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Dog.mobInitData);
+  Dog.prototype.initialize = function (x, y, fromData, targetLevel) {
+    Game_Mob.adjustMobAbility(Dog, targetLevel);
+    Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Nature', 0);
     if (!fromData) {
       this.mob.mobClass = 'Dog';
@@ -13813,7 +13850,6 @@
   Bee = function () {
     this.initialize.apply(this, arguments);
   }
-  Bee.baseDungeonLevel = 3;
 
   Bee.prototype = Object.create(Game_Mob.prototype);
   Bee.prototype.constructor = Bee;
@@ -13825,12 +13861,13 @@
     level: 2,
     moveType: 2,
     skills: [
-      new SkillData(Skill_Pierce, 1)
+      new SkillData('Skill_Pierce', 1)
     ]
   }
 
-  Bee.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Bee.mobInitData);
+  Bee.prototype.initialize = function (x, y, fromData, targetLevel) {
+    Game_Mob.adjustMobAbility(Bee, targetLevel);
+    Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Fly1', 0);
     if (!fromData) {
       this.mob.mobClass = 'Bee';
@@ -13872,22 +13909,22 @@
   Rooster = function () {
     this.initialize.apply(this, arguments);
   }
-  Rooster.baseDungeonLevel = 3;
 
   Rooster.prototype = Object.create(Game_Mob.prototype);
   Rooster.prototype.constructor = Rooster;
 
   Rooster.mobInitData = {
     name: '公雞',
-    params: [1, 1, 10, 10, 1, 5, 9, 3],
+    params: [1, 1, 8, 6, 1, 5, 9, 3],
     xparams: [0, 0, '1d4'],
     level: 3,
     moveType: 0,
     skills: []
   }
 
-  Rooster.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Rooster.mobInitData);
+  Rooster.prototype.initialize = function (x, y, fromData, targetLevel) {
+    Game_Mob.adjustMobAbility(Rooster, targetLevel);
+    Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Nature', 2);
     if (!fromData) {
       this.mob.mobClass = 'Rooster';
@@ -13924,24 +13961,24 @@
   Rat = function () {
     this.initialize.apply(this, arguments);
   }
-  Rat.baseDungeonLevel = 4;
 
   Rat.prototype = Object.create(Game_Mob.prototype);
   Rat.prototype.constructor = Rat;
 
   Rat.mobInitData = {
     name: '老鼠',
-    params: [1, 1, 12, 5, 0, 0, 15, 10],
+    params: [1, 1, 10, 5, 0, 0, 15, 10],
     xparams: [0, 0, 0],
     level: 4,
     moveType: 0,
     skills: [
-      new SkillData(Skill_Hide, 1)
+      new SkillData('Skill_Hide', 1)
     ]
   }
 
-  Rat.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Rat.mobInitData);
+  Rat.prototype.initialize = function (x, y, fromData, targetLevel) {
+    Game_Mob.adjustMobAbility(Rat, targetLevel);
+    Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Mice', 1);
     if (!fromData) {
       this.mob.mobClass = 'Rat';
@@ -13986,25 +14023,25 @@
   Cat = function () {
     this.initialize.apply(this, arguments);
   }
-  Cat.baseDungeonLevel = 4;
 
   Cat.prototype = Object.create(Game_Mob.prototype);
   Cat.prototype.constructor = Cat;
 
   Cat.mobInitData = {
     name: '貓',
-    params: [1, 1, 6, 6, 30, 20, 15, 5],
+    params: [1, 1, 6, 6, 15, 15, 15, 5],
     xparams: [0, 0, '1d5'],
     level: 4,
     moveType: 0,
     skills: [
-      new SkillData(Skill_Clever, 1),
-      new SkillData(Skill_FireBall, 1)
+      new SkillData('Skill_Clever', 1),
+      new SkillData('Skill_FireBall', 1)
     ]
   }
 
-  Cat.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Cat.mobInitData);
+  Cat.prototype.initialize = function (x, y, fromData, targetLevel) {
+    Game_Mob.adjustMobAbility(Cat, targetLevel);
+    Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Nature', 1);
     if (!fromData) {
       this.mob.mobClass = 'Cat';
@@ -14063,7 +14100,6 @@
   Boar = function () {
     this.initialize.apply(this, arguments);
   }
-  Boar.baseDungeonLevel = 5;
 
   Boar.prototype = Object.create(Game_Mob.prototype);
   Boar.prototype.constructor = Boar;
@@ -14075,12 +14111,13 @@
     level: 5,
     moveType: 0,
     skills: [
-      new SkillData(Skill_Charge, 1)
+      new SkillData('Skill_Charge', 1)
     ]
   }
 
-  Boar.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Boar.mobInitData);
+  Boar.prototype.initialize = function (x, y, fromData, targetLevel) {
+    Game_Mob.adjustMobAbility(Boar, targetLevel);
+    Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Boar', 1);
     if (!fromData) {
       this.mob.mobClass = 'Boar';
@@ -14122,7 +14159,6 @@
   Wolf = function () {
     this.initialize.apply(this, arguments);
   }
-  Wolf.baseDungeonLevel = 5;
 
   Wolf.prototype = Object.create(Game_Mob.prototype);
   Wolf.prototype.constructor = Wolf;
@@ -14134,13 +14170,14 @@
     level: 6,
     moveType: 0,
     skills: [
-      new SkillData(Skill_Scud, 1),
-      new SkillData(Skill_Bite, 2)
+      new SkillData('Skill_Scud', 1),
+      new SkillData('Skill_Bite', 2)
     ]
   }
 
-  Wolf.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Wolf.mobInitData);
+  Wolf.prototype.initialize = function (x, y, fromData, targetLevel) {
+    Game_Mob.adjustMobAbility(Wolf, targetLevel);
+    Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Animal', 2);
     if (!fromData) {
       this.mob.mobClass = 'Wolf';
@@ -14198,7 +14235,6 @@
   Turtle = function () {
     this.initialize.apply(this, arguments);
   }
-  Turtle.baseDungeonLevel = 5;
 
   Turtle.prototype = Object.create(Game_Mob.prototype);
   Turtle.prototype.constructor = Turtle;
@@ -14210,12 +14246,13 @@
     level: 6,
     moveType: 0,
     skills: [
-      new SkillData(Skill_Shield, 1)
+      new SkillData('Skill_Shield', 1)
     ]
   }
 
-  Turtle.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Turtle.mobInitData);
+  Turtle.prototype.initialize = function (x, y, fromData, targetLevel) {
+    Game_Mob.adjustMobAbility(Turtle, targetLevel);
+    Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Animal', 6);
     if (!fromData) {
       this.mob.mobClass = 'Turtle';
@@ -14261,24 +14298,24 @@
   Bear = function () {
     this.initialize.apply(this, arguments);
   }
-  Bear.baseDungeonLevel = 5;
 
   Bear.prototype = Object.create(Game_Mob.prototype);
   Bear.prototype.constructor = Bear;
 
   Bear.mobInitData = {
     name: '熊',
-    params: [1, 1, 16, 20, 10, 10, 8, 5],
+    params: [1, 1, 14, 20, 10, 10, 8, 5],
     xparams: [0, 0, '2d3+2'],
     level: 6,
     moveType: 0,
     skills: [
-      new SkillData(Skill_Bash, 1)
+      new SkillData('Skill_Bash', 1)
     ]
   }
 
-  Bear.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Bear.mobInitData);
+  Bear.prototype.initialize = function (x, y, fromData, targetLevel) {
+    Game_Mob.adjustMobAbility(Bear, targetLevel);
+    Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Bear', 0);
     if (!fromData) {
       this.mob.mobClass = 'Bear';
@@ -14323,24 +14360,24 @@
   Lion = function () {
     this.initialize.apply(this, arguments);
   }
-  Lion.baseDungeonLevel = 8;
 
   Lion.prototype = Object.create(Game_Mob.prototype);
   Lion.prototype.constructor = Lion;
 
   Lion.mobInitData = {
     name: '獅子',
-    params: [1, 1, 20, 20, 10, 10, 18, 5],
+    params: [1, 1, 16, 20, 10, 10, 18, 5],
     xparams: [0, 0, '1d7'],
     level: 8,
     moveType: 0,
     skills: [
-      new SkillData(Skill_Roar, 1)
+      new SkillData('Skill_Roar', 1)
     ]
   }
 
-  Lion.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Lion.mobInitData);
+  Lion.prototype.initialize = function (x, y, fromData, targetLevel) {
+    Game_Mob.adjustMobAbility(Lion, targetLevel);
+    Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Lion', 0);
     if (!fromData) {
       this.mob.mobClass = 'Lion';
@@ -14389,24 +14426,24 @@
   Buffalo = function () {
     this.initialize.apply(this, arguments);
   }
-  Buffalo.baseDungeonLevel = 7;
 
   Buffalo.prototype = Object.create(Game_Mob.prototype);
   Buffalo.prototype.constructor = Buffalo;
 
   Buffalo.mobInitData = {
     name: '水牛',
-    params: [1, 1, 15, 30, 20, 20, 15, 5],
+    params: [1, 1, 15, 25, 10, 10, 15, 5],
     xparams: [0, 0, '1d6'],
     level: 7,
     moveType: 0,
     skills: [
-      new SkillData(Skill_Tough, 1)
+      new SkillData('Skill_Tough', 1)
     ]
   }
 
-  Buffalo.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Buffalo.mobInitData);
+  Buffalo.prototype.initialize = function (x, y, fromData, targetLevel) {
+    Game_Mob.adjustMobAbility(Buffalo, targetLevel);
+    Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Buffalo', 1);
     if (!fromData) {
       this.mob.mobClass = 'Buffalo';
@@ -14455,25 +14492,25 @@
   Shark = function () {
     this.initialize.apply(this, arguments);
   }
-  Shark.baseDungeonLevel = 8;
 
   Shark.prototype = Object.create(Game_Mob.prototype);
   Shark.prototype.constructor = Shark;
 
   Shark.mobInitData = {
     name: '鯊魚',
-    params: [1, 1, 18, 15, 10, 10, 19, 5],
+    params: [1, 1, 16, 15, 10, 10, 15, 5],
     xparams: [0, 0, '1d8'],
-    level: 5,
+    level: 8,
     moveType: 1,
     skills: [
-      new SkillData(Skill_Bite, 3),
-      new SkillData(Skill_AdaptWater, 3)
+      new SkillData('Skill_Bite', 3),
+      new SkillData('Skill_AdaptWater', 3)
     ]
   }
 
-  Shark.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Shark.mobInitData);
+  Shark.prototype.initialize = function (x, y, fromData, targetLevel) {
+    Game_Mob.adjustMobAbility(Shark, targetLevel);
+    Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Shark', 0);
     if (!fromData) {
       this.mob.mobClass = 'Shark';
@@ -14512,7 +14549,6 @@
   Slime = function () {
     this.initialize.apply(this, arguments);
   }
-  Slime.baseDungeonLevel = 5;
 
   Slime.prototype = Object.create(Game_Mob.prototype);
   Slime.prototype.constructor = Slime;
@@ -14521,16 +14557,17 @@
     name: '史萊姆',
     params: [1, 1, 10, 10, 15, 15, 10, 5],
     xparams: [5, 0, 0],
-    level: 6,
+    level: 5,
     moveType: 0,
     skills: [
-      new SkillData(Skill_Acid, 1),
-      new SkillData(Skill_AdaptWater, 3)
+      new SkillData('Skill_Acid', 1),
+      new SkillData('Skill_AdaptWater', 3)
     ]
   }
 
-  Slime.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Slime.mobInitData);
+  Slime.prototype.initialize = function (x, y, fromData, targetLevel) {
+    Game_Mob.adjustMobAbility(Slime, targetLevel);
+    Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Monster', 1);
     if (!fromData) {
       this.mob.mobClass = 'Slime';
@@ -14569,7 +14606,6 @@
   Jellyfish = function () {
     this.initialize.apply(this, arguments);
   }
-  Jellyfish.baseDungeonLevel = 6;
 
   Jellyfish.prototype = Object.create(Game_Mob.prototype);
   Jellyfish.prototype.constructor = Jellyfish;
@@ -14581,13 +14617,14 @@
     level: 6,
     moveType: 1,
     skills: [
-      new SkillData(Skill_Discharge, 1),
-      new SkillData(Skill_AdaptWater, 3)
+      new SkillData('Skill_Discharge', 1),
+      new SkillData('Skill_AdaptWater', 3)
     ]
   }
 
-  Jellyfish.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Jellyfish.mobInitData);
+  Jellyfish.prototype.initialize = function (x, y, fromData, targetLevel) {
+    Game_Mob.adjustMobAbility(Jellyfish, targetLevel);
+    Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Jellyfish', 0);
     if (!fromData) {
       this.mob.mobClass = 'Jellyfish';
@@ -14629,7 +14666,6 @@
   Ice_Spirit = function () {
     this.initialize.apply(this, arguments);
   }
-  Ice_Spirit.baseDungeonLevel = 7;
 
   Ice_Spirit.prototype = Object.create(Game_Mob.prototype);
   Ice_Spirit.prototype.constructor = Ice_Spirit;
@@ -14641,13 +14677,14 @@
     level: 7,
     moveType: 2,
     skills: [
-      new SkillData(Skill_Barrier, 1),
-      new SkillData(Skill_IceBolt, 1)
+      new SkillData('Skill_Barrier', 1),
+      new SkillData('Skill_IceBolt', 1)
     ]
   }
 
-  Ice_Spirit.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Ice_Spirit.mobInitData);
+  Ice_Spirit.prototype.initialize = function (x, y, fromData, targetLevel) {
+    Game_Mob.adjustMobAbility(Ice_Spirit, targetLevel);
+    Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Fairy', 2);
     if (!fromData) {
       this.mob.mobClass = 'Ice_Spirit';
@@ -14705,27 +14742,27 @@
   Ice_Dragon = function () {
     this.initialize.apply(this, arguments);
   }
-  Ice_Dragon.baseDungeonLevel = 10;
 
   Ice_Dragon.prototype = Object.create(Game_Mob.prototype);
   Ice_Dragon.prototype.constructor = Ice_Dragon;
 
   Ice_Dragon.mobInitData = {
     name: '冰龍',
-    params: [1, 1, 20, 20, 20, 20, 10, 5],
+    params: [1, 1, 18, 18, 18, 18, 10, 5],
     xparams: [8, 8, '1d9'],
     level: 10,
     moveType: 2,
     skills: [
-      new SkillData(Skill_Barrier, 1),
-      new SkillData(Skill_Bash, 1),
-      new SkillData(Skill_IceBolt, 1),
-      new SkillData(Skill_IceBreath, 1)
+      new SkillData('Skill_Barrier', 1),
+      new SkillData('Skill_Bash', 1),
+      new SkillData('Skill_IceBolt', 1),
+      new SkillData('Skill_IceBreath', 1)
     ]
   }
 
-  Ice_Dragon.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Ice_Dragon.mobInitData);
+  Ice_Dragon.prototype.initialize = function (x, y, fromData, targetLevel) {
+    Game_Mob.adjustMobAbility(Ice_Dragon, targetLevel);
+    Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Dragon', 1);
     if (!fromData) {
       this.mob.mobClass = 'Ice_Dragon';
@@ -14806,7 +14843,6 @@
   Selina = function () {
     this.initialize.apply(this, arguments);
   }
-  Selina.baseDungeonLevel = 12;
 
   Selina.prototype = Object.create(Game_Mob.prototype);
   Selina.prototype.constructor = Selina;
@@ -14819,16 +14855,17 @@
     moveType: 0,
     fleeAtLowHp: true,
     skills: [
-      new SkillData(Skill_Barrier, 2),
-      new SkillData(Skill_IceBolt, 2),
-      new SkillData(Skill_IceBreath, 2),
-      new SkillData(Skill_IceBolder, 2),
-      new SkillData(Skill_AdaptWater, 3)
+      new SkillData('Skill_Barrier', 2),
+      new SkillData('Skill_IceBolt', 2),
+      new SkillData('Skill_IceBreath', 2),
+      new SkillData('Skill_IceBolder', 2),
+      new SkillData('Skill_AdaptWater', 3)
     ]
   }
 
-  Selina.prototype.initialize = function (x, y, fromData) {
-    Game_Mob.prototype.initialize.call(this, x, y, 11, fromData, Selina.mobInitData);
+  Selina.prototype.initialize = function (x, y, fromData, targetLevel) {
+    Game_Mob.adjustMobAbility(Selina, targetLevel);
+    Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Jelly_Maid', 0);
     if (!fromData) {
       this.mob.mobClass = 'Selina';
