@@ -4043,9 +4043,6 @@
   Game_CharacterBase.prototype.canPass = function(x, y, d) {
     var x2 = $gameMap.roundXWithDirection(x, d);
     var y2 = $gameMap.roundYWithDirection(y, d);
-    if (!$gameMap.isValid(x2, y2)) {
-        return false;
-    }
     if (this.isThrough() || this.isDebugThrough()) {
         return true;
     }
@@ -13470,7 +13467,7 @@
     Game_Mob.prototype.fromEvent(this, $dataMap.events[this._eventId]);
   }
 
-  Game_Mob.prototype.initialize = function (x, y, fromData, targetLevel) {
+  Game_Mob.prototype.initialize = function (x, y, fromData) {
     var eventId = -1;
     if (fromData) {
       for (var i = 1; i < $dataMap.events.length; i++) {
@@ -13594,7 +13591,7 @@
       }
     }
     let func = function(vm) {
-      if (TimeUtils.actionDone) {
+      if (TimeUtils.actionDone && $dataMap) {
         // store data back to $dataMap
         vm.updateDataMap();
         TimeUtils.afterPlayerMoved();
@@ -16816,7 +16813,9 @@
         $gameParty.loseItem(this._materialStack[id], 1);
       }
       // apply materials attribute
-      this._item.applyMaterials(this._materialStack);
+      if (this._item instanceof EquipTemplate) {
+        this._item.applyMaterials(this._materialStack);
+      }
       $gameParty.gainItem(this._item, 1);
       this.popScene();
       var func = function(item) {
