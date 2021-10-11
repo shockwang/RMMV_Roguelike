@@ -1227,7 +1227,11 @@
           }
         }
         if (location) {
-          return new mobClass(location.x, location.y, null, $gameVariables[mapId].dungeonLevel);
+          let spawnLevel = $gameVariables[mapId].dungeonLevel;
+          if (mobClass.isBoss) {
+            spawnLevel += 3;
+          }
+          return new mobClass(location.x, location.y, null, spawnLevel);
         } else {
           console.log('can not find location out of sight!');
         }
@@ -1243,7 +1247,7 @@
     let candidates = [];
     do {
       for (let id in pool) {
-        let toCheck = pool[id];
+        let toCheck = pool[id].mobClass;
         let moveType = toCheck.mobInitData.moveType;
         switch (tileType) {
           case WATER:
@@ -1836,11 +1840,11 @@
 
     $gameParty._items.push(new Soul_Bite());
     Soul_Obtained_Action.learnSkill(Skill_Bite);
-    Soul_Obtained_Action.learnSkill(Skill_AuraFire);
-    Soul_Obtained_Action.learnSkill(Skill_FirePath);
-    Soul_Obtained_Action.learnSkill(Skill_FireBall);
-    Soul_Obtained_Action.learnSkill(Skill_FireBreath);
-    Soul_Obtained_Action.learnSkill(Skill_SuperRegen);
+    // Soul_Obtained_Action.learnSkill(Skill_AuraFire);
+    // Soul_Obtained_Action.learnSkill(Skill_FirePath);
+    // Soul_Obtained_Action.learnSkill(Skill_FireBall);
+    // Soul_Obtained_Action.learnSkill(Skill_FireBreath);
+    // Soul_Obtained_Action.learnSkill(Skill_SuperRegen);
     // Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
     // Soul_Obtained_Action.learnSkill(Skill_IceBolt);
     // Soul_Obtained_Action.learnSkill(Skill_IceBreath);
@@ -6886,7 +6890,7 @@
     let attrDamage = (realSrc.level + realSrc.param(4)) * 2 / 3;
     let attrDef = (realTarget.level + realTarget.param(5)) / 3;
     let equipDef = realTarget.param(9);
-    let damage = (atkValue + attrDamage - attrDef) * Math.pow(0.5, equipDef / 20);
+    let damage = (atkValue + attrDamage - attrDef) * Math.pow(0.5, equipDef / 10);
     return BattleUtils.getFinalDamage(damage);
   }
 
@@ -7598,12 +7602,29 @@
         newItemClass = ItemUtils.getItemClassFromList(list, dungeonLevel);
       }
     } while (!newItemClass);
-    return new newItemClass();
+    let newItem = new newItemClass();
+    if (newItem instanceof EquipTemplate) {
+      // check if newItem is craftable equipment
+      if (newItemClass.material) {
+        let materials = [];
+        for (let id in newItemClass.material) {
+          let materialType = newItemClass.material[id];
+          for (let i = 0; i < materialType.amount; i++) {
+            let obj = ItemUtils.adjustEquipByLevel(new materialType.itemClass(), dungeonLevel);
+            materials.push(obj);
+          }
+        }
+        newItem.applyMaterials(materials);
+      } else {
+        ItemUtils.adjustEquipByLevel(newItem, $gameVariables[mapId].dungeonLevel);
+      }
+    }
+    return newItem;
   }
 
   ItemUtils.checkFoodTime = function(food, isInventory, itemPileEvent) {
     if (food.duration) {
-      if (food.status == 'FRESH'
+      if (food.status == 'FLESH'
         && $gameVariables[0].gameTime - food.producedTime >= food.duration * $gameVariables[0].gameTimeAmp) {
         if (isInventory) {
           LogUtils.addLog(String.format(Message.display('foodRot'), food.name));
@@ -7663,20 +7684,31 @@
   // adjust equipment attributes by level
   ItemUtils.adjustEquipByLevel = function(equip, level) {
     let delta = level - window[equip.constructor.name].spawnLevel;
+    if (delta > 0) {
+      // get higher is more difficult
+      delta /= 3;
+    }
     // update def & mdef
     for (let i = 0; i < 2; i++) {
-      ItemUtils.modifyAttr(equip.traits[i], delta);
-      equip.traits[i].value = (equip.traits[i].value < 0) ? 0 : equip.traits[i].value;
+      if (equip.traits[i].value != 0) {
+        ItemUtils.modifyAttr(equip.traits[i], delta);
+        equip.traits[i].value = (equip.traits[i].value < 0) ? 0 : equip.traits[i].value;
+      }
     }
-    // update weapon atk
-    if (equip.traits[2].value) {
+    // update weapon atk if equip is weapon
+    if (equip.traits[2]) {
       ItemUtils.enchantEquip(equip, delta);
     }
+
     // update params
     for (let i = 2; i <= 6; i++) {
-      equip.params[i] += delta;
-      equip.params[i] = (equip.params[i] < 0) ? 0 : equip.params[i];
+      if (equip.params[i] != 0) {
+        equip.params[i] += delta;
+        equip.params[i] = (equip.params[i] < 0) ? 0 : equip.params[i];
+      }
     }
+    ItemUtils.updateEquipDescription(equip);
+    return equip;
   }
 
   //-----------------------------------------------------------------------------------
@@ -7720,6 +7752,41 @@
       this.bucState = 1;
     }
   };
+
+  // combine materials attribute
+  EquipTemplate.prototype.applyMaterials = function(materials) {
+    let tempValue = {
+      params: [0, 0, 0, 0, 0, 0, 0],
+      traits: [0, 0]
+    }
+    for (let i = 0; i < materials.length; i++) {
+      let toAdd = materials[i];
+      // update params
+      if (toAdd.params) {
+        for (let j = 2; j <= 6; j++) {
+          tempValue.params[j] += toAdd.params[j];
+        }
+      }
+
+      // update attrs (weapon damage not included)
+      if (toAdd.traits) {
+        for (let j = 0; j < 2; j++) {
+          tempValue.traits[j] += toAdd.traits[j].value;
+        }
+      }
+    }
+    // average them & apply to this equipment
+    let len = materials.length;
+    for (let i = 2; i <= 6; i++) {
+      tempValue.params[i] /= len;
+      this.params[i] += tempValue.params[i];
+    }
+    for (let i = 0; i < 2; i++) {
+      tempValue.traits[i] /= len;
+      this.traits[i].value += tempValue.traits[i];
+    }
+    ItemUtils.updateEquipDescription(this);
+  }
 
   //-----------------------------------------------------------------------------------
   // Feather
@@ -7885,7 +7952,7 @@
     this.templateName = this.name;
     this.nutrition = nutrition;
     this.duration = duration;
-    this.status = status; // FRESH, ROTTEN
+    this.status = status; // FLESH, ROTTEN
     this.producedTime = $gameVariables[0].gameTime;
     this.weight = 50;
   }
@@ -8976,7 +9043,7 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dog_Gloves);
@@ -9007,7 +9074,7 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dog_Shoes);
@@ -9038,8 +9105,8 @@
     this.weight = 30;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 6 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[1], 2);
+    ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 2 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dog_Shield);
@@ -9070,7 +9137,7 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dog_Helmet);
@@ -9101,7 +9168,7 @@
     this.weight = 80;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dog_Coat);
@@ -9132,8 +9199,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 2);
-    ItemUtils.modifyAttr(this.traits[1], 4 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Cat_Gloves);
@@ -9164,8 +9231,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 2);
-    ItemUtils.modifyAttr(this.traits[1], 4 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Cat_Shoes);
@@ -9196,8 +9263,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 2);
-    ItemUtils.modifyAttr(this.traits[1], 4 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Cat_Helmet);
@@ -9228,8 +9295,8 @@
     this.weight = 80;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 4);
-    ItemUtils.modifyAttr(this.traits[1], 8 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 4 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Cat_Coat);
@@ -9260,8 +9327,8 @@
     this.weight = 30;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 4);
-    ItemUtils.modifyAttr(this.traits[1], 6 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 2 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Cat_Shield);
@@ -9292,8 +9359,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 6 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[1], 2);
+    ItemUtils.modifyAttr(this.traits[0], this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Wolf_Gloves);
@@ -9324,8 +9391,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 6 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[1], 2);
+    ItemUtils.modifyAttr(this.traits[0], this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Wolf_Shoes);
@@ -9356,8 +9423,8 @@
     this.weight = 40;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[1], 4);
+    ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 2 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Wolf_Shield);
@@ -9388,8 +9455,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 6 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[0], 2);
+    ItemUtils.modifyAttr(this.traits[0], this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Wolf_Helmet);
@@ -9420,8 +9487,8 @@
     this.weight = 80;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 12 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[0], 4);
+    ItemUtils.modifyAttr(this.traits[0], 6 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Wolf_Coat);
@@ -9452,7 +9519,7 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Bear_Gloves);
@@ -9483,7 +9550,7 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Bear_Shoes);
@@ -9514,8 +9581,8 @@
     this.weight = 40;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 10 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[1], 2);
+    ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 2 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Bear_Shield);
@@ -9546,7 +9613,7 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Bear_Helmet);
@@ -9577,7 +9644,7 @@
     this.weight = 100;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 16 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Bear_Coat);
@@ -9608,8 +9675,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 4);
-    ItemUtils.modifyAttr(this.traits[1], 6 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Lion_Gloves);
@@ -9640,8 +9707,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 4);
-    ItemUtils.modifyAttr(this.traits[1], 6 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Lion_Shoes);
@@ -9672,8 +9739,8 @@
     this.weight = 50;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 6);
-    ItemUtils.modifyAttr(this.traits[1], 8 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 2 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Lion_Shield);
@@ -9704,8 +9771,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 4);
-    ItemUtils.modifyAttr(this.traits[1], 6 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Lion_Helmet);
@@ -9736,8 +9803,8 @@
     this.weight = 100;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 8);
-    ItemUtils.modifyAttr(this.traits[1], 12 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[0], 4 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 6 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Lion_Coat);
@@ -9768,8 +9835,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[1], 8);
+    ItemUtils.modifyAttr(this.traits[0], this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dragon_Gloves);
@@ -9800,8 +9867,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[1], 8);
+    ItemUtils.modifyAttr(this.traits[0], this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dragon_Shoes);
@@ -9832,8 +9899,8 @@
     this.weight = 50;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 10 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[1], 10);
+    ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 2 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dragon_Shield);
@@ -9864,8 +9931,8 @@
     this.weight = 10;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[1], 8);
+    ItemUtils.modifyAttr(this.traits[0], this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dragon_Helmet);
@@ -9896,8 +9963,8 @@
     this.weight = 120;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 16 + this.bucState);
-    ItemUtils.modifyAttr(this.traits[1], 16);
+    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 8 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dragon_Coat);
@@ -9927,7 +9994,7 @@
     this.weight = 40;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    ItemUtils.modifyAttr(this.traits[0], 8);
+    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
     ItemUtils.modifyAttr(this.traits[1], 8 + this.bucState);
     ItemUtils.updateEquipDescription(this);
   };
@@ -10025,15 +10092,15 @@
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.updateEquipDescription(this);
-
-    // define wear/remove effect
-    this.onWear = function(realTarget) {
-      realTarget.status.resistance.paralyze++;
-    }
-    this.onRemove = function(realTarget) {
-      realTarget.status.resistance.paralyze--;
-    }
   };
+
+  Ring_ParalyzeResistance.prototype.onWear = function(realTarget) {
+    realTarget.status.resistance.paralyze++;
+  }
+
+  Ring_ParalyzeResistance.prototype.onRemove = function(realTarget) {
+    realTarget.status.resistance.paralyze--;
+  }
   ItemUtils.recipes.push(Ring_ParalyzeResistance);
 
   //-----------------------------------------------------------------------------------
@@ -10064,15 +10131,15 @@
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.updateEquipDescription(this);
-
-    // define wear/remove effect
-    this.onWear = function(realTarget) {
-      realTarget.status.resistance.acid++;
-    }
-    this.onRemove = function(realTarget) {
-      realTarget.status.resistance.acid--;
-    }
   };
+
+  Ring_AcidResistance.prototype.onWear = function(realTarget) {
+    realTarget.status.resistance.acid++;
+  }
+
+  Ring_AcidResistance.prototype.onRemove = function(realTarget) {
+    realTarget.status.resistance.acid--;
+  }
   ItemUtils.recipes.push(Ring_AcidResistance);
 
   //-----------------------------------------------------------------------------------
@@ -10102,15 +10169,16 @@
     ItemUtils.updateEquipName(this);
     // randomize attributes
     ItemUtils.updateEquipDescription(this);
-
-    // define wear/remove effect
-    this.onWear = function(realTarget) {
-      realTarget.status.resistance.cold += 0.5;
-    }
-    this.onRemove = function(realTarget) {
-      realTarget.status.resistance.cold -= 0.5;
-    }
   };
+
+  Ring_ColdResistance.prototype.onWear = function(realTarget) {
+    realTarget.status.resistance.cold += 0.5;
+  }
+
+  Ring_ColdResistance.prototype.onRemove = function(realTarget) {
+    realTarget.status.resistance.cold -= 0.5;
+  }
+  ItemUtils.recipes.push(Ring_ColdResistance);
 
   //-----------------------------------------------------------------------------------
   // Potion_Heal
@@ -13770,7 +13838,7 @@
   Chick.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(10) < 3) {
-      lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
+      lootings.push(new Flesh(this.mob, 250, 100, 'FLESH'));
     }
 
     for (var id in lootings) {
@@ -13823,16 +13891,16 @@
   Dog.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(10) < 3) {
-      lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
+      lootings.push(new Flesh(this.mob, 250, 100, 'FLESH'));
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Dog_Skin());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Dog_Skin(), this.mob.level));
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Dog_Tooth());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Dog_Tooth(), this.mob.level));
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Dog_Bone());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Dog_Bone(), this.mob.level));
     }
 
     for (var id in lootings) {
@@ -13885,13 +13953,13 @@
   Bee.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(10) < 3) {
-      lootings.push(new Flesh(this.mob, 100, 100, 'FRESH'));
+      lootings.push(new Flesh(this.mob, 100, 100, 'FLESH'));
     }
     if (getRandomInt(100) < 25) {
       lootings.push(new Honey());
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Bee_Sting());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Bee_Sting(), this.mob.level));
     }
 
     for (var id in lootings) {
@@ -13934,13 +14002,13 @@
   Rooster.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(10) < 3) {
-      lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
+      lootings.push(new Flesh(this.mob, 250, 100, 'FLESH'));
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Rooster_Tooth());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Rooster_Tooth(), this.mob.level));
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Rooster_Claw());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Rooster_Claw(), this.mob.level));
     }
     if (getRandomInt(100) < 50) {
       lootings.push(new Feather());
@@ -13999,7 +14067,7 @@
   Rat.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(10) < 3) {
-      lootings.push(new Flesh(this.mob, 100, 100, 'FRESH'));
+      lootings.push(new Flesh(this.mob, 100, 100, 'FLESH'));
     }
     if (getRandomInt(100) < 25) {
       lootings.push(new Cheese());
@@ -14070,19 +14138,19 @@
   Cat.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(10) < 3) {
-      lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
+      lootings.push(new Flesh(this.mob, 250, 100, 'FLESH'));
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Cat_Tooth());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Cat_Tooth(), this.mob.level));
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Cat_Claw());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Cat_Claw(), this.mob.level));
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Cat_Skin());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Cat_Skin(), this.mob.level));
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Cat_Bone());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Cat_Bone(), this.mob.level));
     }
 
     for (var id in lootings) {
@@ -14138,10 +14206,10 @@
   Boar.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(10) < 30) {
-      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
+      lootings.push(new Flesh(this.mob, 300, 100, 'FLESH'));
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Boar_Tooth());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Boar_Tooth(), this.mob.level));
     }
 
     for (var id in lootings) {
@@ -14205,19 +14273,19 @@
   Wolf.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(100) < 25) {
-      lootings.push(new Wolf_Tooth());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Wolf_Tooth(), this.mob.level));
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Wolf_Skin());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Wolf_Skin(), this.mob.level));
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Wolf_Claw());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Wolf_Claw(), this.mob.level));
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Wolf_Bone());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Wolf_Bone(), this.mob.level));
     }
     if (getRandomInt(100) < 30) {
-      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
+      lootings.push(new Flesh(this.mob, 300, 100, 'FLESH'));
     }
 
     for (var id in lootings) {
@@ -14277,10 +14345,10 @@
   Turtle.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(100) < 25) {
-      lootings.push(new Turtle_Shell());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Turtle_Shell(), this.mob.level));
     }
     if (getRandomInt(100) < 30) {
-      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
+      lootings.push(new Flesh(this.mob, 300, 100, 'FLESH'));
     }
 
     for (var id in lootings) {
@@ -14333,16 +14401,16 @@
   Bear.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(100) < 25) {
-      lootings.push(new Bear_Skin());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Bear_Skin(), this.mob.level));
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Bear_Claw());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Bear_Claw(), this.mob.level));
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Bear_Bone());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Bear_Bone(), this.mob.level));
     }
     if (getRandomInt(100) < 30) {
-      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
+      lootings.push(new Flesh(this.mob, 300, 100, 'FLESH'));
     }
 
     for (var id in lootings) {
@@ -14402,13 +14470,13 @@
   Lion.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(100) < 25) {
-      lootings.push(new Lion_Tooth());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Lion_Tooth(), this.mob.level));
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Lion_Claw());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Lion_Claw(), this.mob.level));
     }
     if (getRandomInt(100) < 30) {
-      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
+      lootings.push(new Flesh(this.mob, 300, 100, 'FLESH'));
     }
 
     for (var id in lootings) {
@@ -14471,10 +14539,10 @@
       lootings.push(new Buffalo_Horn());
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Buffalo_Bone());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Buffalo_Bone(), this.mob.level));
     }
     if (getRandomInt(100) < 30) {
-      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
+      lootings.push(new Flesh(this.mob, 300, 100, 'FLESH'));
     }
 
     for (var id in lootings) {
@@ -14528,10 +14596,10 @@
   Shark.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(100) < 25) {
-      lootings.push(new Shark_Tooth());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Shark_Tooth(), this.mob.level));
     }
     if (getRandomInt(100) < 30) {
-      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
+      lootings.push(new Flesh(this.mob, 300, 100, 'FLESH'));
     }
 
     for (var id in lootings) {
@@ -14648,7 +14716,7 @@
       lootings.push(new Tentacle());
     }
     if (getRandomInt(100) < 30) {
-      lootings.push(new Flesh(this.mob, 200, 100, 'FRESH'));
+      lootings.push(new Flesh(this.mob, 200, 100, 'FLESH'));
     }
 
     for (var id in lootings) {
@@ -14721,7 +14789,7 @@
   Ice_Spirit.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(100) < 10) {
-      lootings.push(new Ice_Coat());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Ice_Coat(), this.mob.level));
     }
     if (getRandomInt(100) < 5) {
       lootings.push(new Ring_ColdResistance());
@@ -14811,19 +14879,19 @@
   Ice_Dragon.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(10) < 3) {
-      lootings.push(new Flesh(this.mob, 500, 100, 'FRESH'));
+      lootings.push(new Flesh(this.mob, 500, 100, 'FLESH'));
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Dragon_Tooth());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Dragon_Tooth(), this.mob.level));
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Dragon_Claw());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Dragon_Claw(), this.mob.level));
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Dragon_Skin());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Dragon_Skin(), this.mob.level));
     }
     if (getRandomInt(100) < 25) {
-      lootings.push(new Dragon_Bone());
+      lootings.push(ItemUtils.adjustEquipByLevel(new Dragon_Bone(), this.mob.level));
     }
 
     for (var id in lootings) {
@@ -14862,6 +14930,7 @@
       new SkillData('Skill_AdaptWater', 3)
     ]
   }
+  Selina.isBoss = true;
 
   Selina.prototype.initialize = function (x, y, fromData, targetLevel) {
     Game_Mob.adjustMobAbility(Selina, targetLevel);
@@ -14929,7 +14998,7 @@
     var lootings = [];
     // TODO: implements looting
     // if (getRandomInt(10) < 3) {
-    //   lootings.push(new Flesh(this.mob, 500, 100, 'FRESH'));
+    //   lootings.push(new Flesh(this.mob, 500, 100, 'FLESH'));
     // }
     // if (getRandomInt(100) < 25) {
     //   lootings.push(new Dragon_Tooth());
@@ -15808,7 +15877,7 @@
         var func = function (item) {
           TimeUtils.afterPlayerMoved(10 * $gameVariables[0].gameTimeAmp);
           let msg = String.format(Message.display('eatingDone'), item.name);
-          if (item.status == 'FRESH' || item.status == 'PERMANENT') {
+          if (item.status == 'FLESH' || item.status == 'PERMANENT') {
             $gameActors.actor(1).nutrition += item.nutrition;
           } else {
             if ($gameParty.hasSoul(Soul_EatRot)) {
@@ -16746,6 +16815,8 @@
       for (let id in this._materialStack) {
         $gameParty.loseItem(this._materialStack[id], 1);
       }
+      // apply materials attribute
+      this._item.applyMaterials(this._materialStack);
       $gameParty.gainItem(this._item, 1);
       this.popScene();
       var func = function(item) {
