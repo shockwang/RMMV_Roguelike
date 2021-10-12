@@ -511,6 +511,15 @@
       doorClosed: '這扇門已經是關上的了.',
       doorLocked: '這扇門是鎖著的.',
       doorStucked: '這扇門被什麼卡住了, 關不起來.',
+      kickSelf: '你無法踹向自己!',
+      kickEnemy: '你一腳踹向{0}, 造成{1}點傷害!',
+      kickVisibleDoor: '你踹開了一道門!',
+      kickInvisibleDoor: '你踹開了一道隱藏門!',
+      kickWall: '你一腳踹向牆壁, 受到了{0}點傷害!',
+      kickAir: '你一腳踹在空中, 感覺十分難受!',
+      legWounded: '你的腿受傷了!',
+      tryKickWhenLegWounded: '你的腿受傷了, 無法進行這個動作.',
+      recoverFromLegWounded: '你的腿感覺好多了.',
       strUp: '你的肌肉變得更強壯了!',
       strDown: '你的肌肉軟化了...',
       vitUp: '你的身體變得更結實了!',
@@ -646,6 +655,10 @@
       tutorialSecretDoor2:
         '當迷宮中找不到出路的時候, 就肯定在哪邊的牆壁存在隱藏門, '
       + '這時後就需要耐心沿著牆壁找找看了.',
+      tutorialSecretDoor3:
+        '使用指令"k"可以嘗試踹向一面牆, 檢查是否存在隱藏門, 但是'
+      + '若猜錯的話, 不但會受傷, 還有可能進入腳傷的狀態. 腳傷時'
+      + '會大幅減低行動速度, 因此踹牆前需小心評估.',
       tutorialTrap1:
         '陷阱在地圖上是隱藏的, 一直到有生物踩到它之後才會顯示出來. '
       + '陷阱有著多樣性的負面效果, 有的會讓角色受傷, 也有的會讓角'
@@ -753,7 +766,7 @@
         + 'o: 開門         c: 關門         w: 穿脫裝備\n'
         + 'e: 吃東西        /: 查看紀錄     r: 閱讀卷軸\n'
         + 'q: 飲用藥水      M: 合成物品     s: 搜尋隱藏門、陷阱\n'
-        + 'S: 存檔頁面      h/?: 開啟此頁面\n'
+        + 'S: 存檔頁面      k: 用腳踹       h/?: 開啟此頁面\n'
         + 'x/Esc/數字小鍵盤0: 取消動作/開啟主菜單\n\n'
         + '技能快捷鍵:\n'
         + '鍵盤左側數字0~9'
@@ -826,6 +839,7 @@
       breakArmorEffect: new StatusEffect(),
       wetEffect: new StatusEffect(),
       auraFireEffect: new StatusEffect(),
+      legWoundedEffect: new StatusEffect(),
       groundHoleTrapped: false,
       skillEffect: [],
       bellyStatus: 'NORMAL', // FAINT, WEAK, HUNGRY, NORMAL, FULL
@@ -939,6 +953,9 @@
             case 'wetEffect':
               LogUtils.addLog(String.format(Message.display('recoverFromWet')
                 , LogUtils.getCharName(target)));
+              break;
+            case 'legWoundedEffect':
+              LogUtils.addLog(Message.display('recoverFromLegWounded'));
               break;
           }
         }
@@ -1137,6 +1154,22 @@
     return result;
   }
 
+  CharUtils.calcMobSpawnLevel = function(mobClass) {
+    let dungeonType = 0; // EARTH
+    for(let i = 1; i < CharUtils.mobTemplates.length; i++) {
+      if (CharUtils.mobTemplates[i].includes(mobClass)) {
+        dungeonType = i;
+        break;
+      }
+    }
+    let delta = 0;
+    if (dungeonType != 0) {
+      // minus 4 because sub-dungeon mobs level start from 5 for now, and the next level will be 5
+      delta = $gameVariables[0].dungeonEntranceLevel[dungeonType] - 4;
+    }
+    return mobClass.mobInitData.level + delta;
+  }
+
   CharUtils.getMobPools = function(mapId) {
     let mapType = $gameVariables[mapId].mapType;
     let dungeonLevel = $gameVariables[mapId].dungeonLevel;
@@ -1153,7 +1186,7 @@
       }
       for (let id in CharUtils.mobTemplates[mobTypeIndicator]) {
         let mobClass = CharUtils.mobTemplates[mobTypeIndicator][id];
-        let spawnPercentage = CharUtils.calcMobAppearPercentage(mobClass.mobInitData.level, dungeonLevel);
+        let spawnPercentage = CharUtils.calcMobAppearPercentage(CharUtils.calcMobSpawnLevel(mobClass), dungeonLevel);
         if (spawnPercentage > 0) {
           pool.push(new spawnMobData(mobClass, spawnPercentage));
         }
@@ -1162,7 +1195,7 @@
         // recalculate: use local dungeon creature
         for (let id in CharUtils.mobTemplates[mapTypeIndex]) {
           let mobClass = CharUtils.mobTemplates[mapTypeIndex][id];
-          let spawnPercentage = CharUtils.calcMobAppearPercentage(mobClass.mobInitData.level, dungeonLevel);
+          let spawnPercentage = CharUtils.calcMobAppearPercentage(CharUtils.calcMobSpawnLevel(mobClass), dungeonLevel);
           if (spawnPercentage > 0) {
             pool.push(new spawnMobData(mobClass, spawnPercentage));
           }
@@ -1607,15 +1640,20 @@
     $gameVariables[dungeonDepth].stairToList.push(dungeonDepth - 1);
     $gameVariables[dungeonDepth].stairDownNum = 0;
 
-    let iceEntranceLevel = getRandomIntRange(4, dungeonDepth);
-    $gameVariables[iceEntranceLevel].stairDownNum++;
-    $gameVariables[iceEntranceLevel].stairToList.push(11);
-    $gameVariables[11].stairToList.push(iceEntranceLevel);
+    // initialize sub-dungeon levels
+    // 0: earth, 1: ice
+    $gameVariables[0] = {};
+    $gameVariables[0].dungeonEntranceLevel = [0, 0];
+    // generate ice entrance
+    $gameVariables[0].dungeonEntranceLevel[1] = getRandomIntRange(4, dungeonDepth);
+    $gameVariables[$gameVariables[0].dungeonEntranceLevel[1]].stairDownNum++;
+    $gameVariables[$gameVariables[0].dungeonEntranceLevel[1]].stairToList.push(11);
+    $gameVariables[11].stairToList.push($gameVariables[0].dungeonEntranceLevel[1]);
     for (let i = 11; i < 16; i++) {
       $gameVariables[i].stairToList.push(i - 1);
       $gameVariables[i].stairToList.push(i + 1);
       $gameVariables[i].mapType = 'ICE';
-      $gameVariables[i].dungeonLevel = i - 10 + iceEntranceLevel;
+      $gameVariables[i].dungeonLevel = i - 10 + $gameVariables[0].dungeonEntranceLevel[1];
     }
     $gameVariables[11].stairToList.splice(1, 1);
     $gameVariables[15].stairToList.pop();
@@ -1637,7 +1675,6 @@
     // $gameVariables[25].stairDownNum = 0;
 
     // initialize $gameVariables[0] for multiple usage
-    $gameVariables[0] = {};
     $gameVariables[0].transferInfo = null;
     $gameVariables[0].directionalAction = null;
     $gameVariables[0].directionalFlag = false;
@@ -5883,7 +5920,7 @@
         }
         switch (event.key) {
           case 'Enter': case '>': case '<': case 'g': case 'o': case 'c': case 'w': case 'e': case 'f':
-          case 'q': case 'r': case 's': case 'W': case 'C': case 'M': case 'z': case 'Z': case ' ':
+          case 'q': case 'r': case 's': case 'W': case 'C': case 'M': case 'z': case 'Z': case ' ': case 'k':
             moveStatus = 1;
             break;
         }
@@ -5898,6 +5935,7 @@
         }
         switch (event.key) {
           case 'o': case 'c': case 'f': case 's': case 'W': case 'C': case 'z': case 'Z': case ' ': case 'Enter':
+          case 'k':
             moveStatus = 2;
             break;
         }
@@ -6045,6 +6083,97 @@
             break;
           case 'c': // close a door
             $gameVariables[0].directionalAction = Game_Door.prototype.closeDoor;
+            $gameVariables[0].directionalFlag = true;
+            MapUtils.displayMessage(Message.display('askDirection'));
+            break;
+          case 'k': // kick a direction (only performed by player)
+            if ($gameActors.actor(1).status.legWoundedEffect.turns > 0) {
+              MapUtils.displayMessage(Message.display('tryKickWhenLegWounded'));
+              break;
+            }
+            if ($gameActors.actor(1)._tp < attackTpCost) {
+              MapUtils.displayMessage(Message.display('noEnergy'));
+              break;
+            }
+            $gameVariables[0].directionalAction = function(character, x, y) {
+              if ($gamePlayer.pos(x, y)) {
+                MapUtils.displayMessage(Message.display('kickSelf'));
+                return false;
+              }
+              let kickDone = false;
+              let realSrc = BattleUtils.getRealTarget(character);
+              CharUtils.decreaseTp(realSrc, attackTpCost);
+              realSrc.attacked = true;
+              let originalTile = $gameVariables[$gameMap.mapId()].mapData[x][y].originalTile;
+              if (originalTile == WALL) {
+                let damage = dice(1, 4);
+                realSrc._hp -= damage;
+                LogUtils.addLog(String.format(Message.display('kickWall'), damage));
+                // TODO: add SE
+                TimeUtils.animeQueue.push(new AnimeObject(character, 'POP_UP', damage * -1));
+                if (Math.random() < 0.33) {
+                  LogUtils.addLog(Message.display('legWounded'));
+                  realSrc.status.legWoundedEffect.turns = 10;
+                  TimeUtils.eventScheduler.addStatusEffect($gamePlayer, 'legWoundedEffect');
+                }
+                BattleUtils.checkTargetAlive(realSrc, realSrc, character);
+                kickDone = true;
+              } else if (originalTile == DOOR) {
+                let doorEvt = $gameMap.eventsXy(x, y).filter(function(evt) {
+                  return evt.type == 'DOOR';
+                })[0];
+                // visible door
+                if (doorEvt) {
+                  if (doorEvt.status == 1) {
+                    // TODO: add SE
+                    doorEvt.status = 2;
+                    doorEvt.lastStatus = 2;
+                    $gameSelfSwitches.setValue([$gameMap.mapId(), doorEvt._eventId, 'A'], true);
+                    doorEvt.updateDataMap();
+                    LogUtils.addLog(Message.display('kickVisibleDoor'));
+                    kickDone = true;
+                  }
+                } else {
+                  // kick into hidden door
+                  // TODO: add SE
+                  $gameVariables[$gameMap._mapId]
+                    .secretBlocks[MapUtils.getTileIndex(x, y)].isRevealed = true;
+                  MapUtils.updateAdjacentTiles(x, y);
+                  doorEvt = new Game_Door(x, y);
+                  doorEvt.status = 2;
+                  doorEvt.lastStatus = 2;
+                  $gameSelfSwitches.setValue([$gameMap.mapId(), doorEvt._eventId, 'A'], true);
+                  doorEvt.updateDataMap();
+                  LogUtils.addLog(Message.display('kickInvisibleDoor'));
+                  kickDone = true;
+                }
+              } else {
+                let mobEvt = $gameMap.eventsXy(x, y).filter(function(evt) {
+                  return evt.type == 'MOB';
+                })[0];
+                if (mobEvt) {
+                  let realTarget = BattleUtils.getRealTarget(mobEvt);
+                  let damage = dice(1, 4);
+                  // TODO: add SE
+                  TimeUtils.animeQueue.push(new AnimeObject(mobEvt, 'POP_UP', damage * -1));
+                  LogUtils.addLog(String.format(Message.display('kickEnemy')
+                    , LogUtils.getCharName(realTarget), damage));
+                  CharUtils.decreaseHp(realTarget, damage);
+                  BattleUtils.checkTargetAlive(realSrc, realTarget, mobEvt);
+                  kickDone = true;
+                }
+              }
+              // check if kicked on something
+              if (kickDone) {
+                CharUtils.playerGainStrExp(1);
+              } else {
+                LogUtils.addLog(Message.display('kickAir'));
+                LogUtils.addLog(Message.display('legWounded'));
+                realSrc.status.legWoundedEffect.turns = 10;
+                TimeUtils.eventScheduler.addStatusEffect($gamePlayer, 'legWoundedEffect');
+              }
+              return true;
+            }
             $gameVariables[0].directionalFlag = true;
             MapUtils.displayMessage(Message.display('askDirection'));
             break;
@@ -15375,6 +15504,9 @@
             && !SkillUtils.getSkillInstance(this, Skill_AdaptWater)) {
             modifier *= 0.66;
           }
+          if (this.status.legWoundedEffect.turns > 0 && this.moveType != 2) {
+            modifier *= 0.5;
+          }
           switch (this.carryStatus) {
             case 1:
               modifier *= 0.75;
@@ -17149,6 +17281,7 @@
     this.addCommand('丟下物品', 'drop', true);
     this.addCommand('開門', 'open', true);
     this.addCommand('關門', 'close', true);
+    this.addCommand('用腳踹', 'kick', true);
     this.addCommand('穿脫裝備', 'wear', true);
     this.addCommand('吃東西', 'eat', true);
     this.addCommand('查看紀錄', 'log', true);
@@ -17227,6 +17360,7 @@
     this._controlWindow.setHandler('drop', this.onDrop.bind(this));
     this._controlWindow.setHandler('open', this.onOpen.bind(this));
     this._controlWindow.setHandler('close', this.onClose.bind(this));
+    this._controlWindow.setHandler('kick', this.onKick.bind(this));
     this._controlWindow.setHandler('wear', this.onWear.bind(this));
     this._controlWindow.setHandler('eat', this.onEat.bind(this));
     this._controlWindow.setHandler('log', this.onLog.bind(this));
@@ -17252,140 +17386,147 @@
   }
 
   Scene_Menu.prototype.onWar = function() {
-    SceneManager.pop();   
+    SceneManager.pop();
     setTimeout(function() {
       Input._onKeyDown(Scene_Menu.createKeyEvent('W'));
     }, controlCommandDelay);
   }
 
   Scene_Menu.prototype.onMagic = function() {
-    SceneManager.pop();   
+    SceneManager.pop();
     setTimeout(function() {
       Input._onKeyDown(Scene_Menu.createKeyEvent('C'));
     }, controlCommandDelay);
   }
 
   Scene_Menu.prototype.onFire = function() {
-    SceneManager.pop();   
+    SceneManager.pop();
     setTimeout(function() {
       Input._onKeyDown(Scene_Menu.createKeyEvent('f'));
     }, controlCommandDelay);
   }
 
   Scene_Menu.prototype.onSetFire = function() {
-    SceneManager.pop();   
+    SceneManager.pop();
     setTimeout(function() {
       Input._onKeyDown(Scene_Menu.createKeyEvent('Q'));
     }, controlCommandDelay);
   }
 
   Scene_Menu.prototype.onWalkDown = function() {
-    SceneManager.pop();   
+    SceneManager.pop();
     setTimeout(function() {
       Input._onKeyDown(Scene_Menu.createKeyEvent('>'));
     }, controlCommandDelay);
   }
 
   Scene_Menu.prototype.onWalkUp = function() {
-    SceneManager.pop();   
+    SceneManager.pop();
     setTimeout(function() {
       Input._onKeyDown(Scene_Menu.createKeyEvent('<'));
     }, controlCommandDelay);
   }
 
   Scene_Menu.prototype.onInventory = function() {
-    SceneManager.pop();   
+    SceneManager.pop();
     setTimeout(function() {
       Input._onKeyDown(Scene_Menu.createKeyEvent('i'));
     }, controlCommandDelay);
   }
 
   Scene_Menu.prototype.onGet = function() {
-    SceneManager.pop();   
+    SceneManager.pop();
     setTimeout(function() {
       Input._onKeyDown(Scene_Menu.createKeyEvent('g'));
     }, controlCommandDelay);
   }
 
   Scene_Menu.prototype.onDrop = function() {
-    SceneManager.pop();   
+    SceneManager.pop();
     setTimeout(function() {
       Input._onKeyDown(Scene_Menu.createKeyEvent('d'));
     }, controlCommandDelay);
   }
 
   Scene_Menu.prototype.onOpen = function() {
-    SceneManager.pop();   
+    SceneManager.pop();
     setTimeout(function() {
       Input._onKeyDown(Scene_Menu.createKeyEvent('o'));
     }, controlCommandDelay);
   }
 
   Scene_Menu.prototype.onClose = function() {
-    SceneManager.pop();   
+    SceneManager.pop();
     setTimeout(function() {
       Input._onKeyDown(Scene_Menu.createKeyEvent('c'));
     }, controlCommandDelay);
   }
 
+  Scene_Menu.prototype.onKick = function() {
+    SceneManager.pop();
+    setTimeout(function() {
+      Input._onKeyDown(Scene_Menu.createKeyEvent('k'));
+    }, controlCommandDelay);
+  }
+
   Scene_Menu.prototype.onWear = function() {
-    SceneManager.pop();   
+    SceneManager.pop();
     setTimeout(function() {
       Input._onKeyDown(Scene_Menu.createKeyEvent('w'));
     }, controlCommandDelay);
   }
 
   Scene_Menu.prototype.onEat = function() {
-    SceneManager.pop();   
+    SceneManager.pop();
     setTimeout(function() {
       Input._onKeyDown(Scene_Menu.createKeyEvent('e'));
     }, controlCommandDelay);
   }
 
   Scene_Menu.prototype.onLog = function() {
-    SceneManager.pop();   
+    SceneManager.pop();
     setTimeout(function() {
       Input._onKeyDown(Scene_Menu.createKeyEvent('/'));
     }, controlCommandDelay);
   }
 
   Scene_Menu.prototype.onRead = function() {
-    SceneManager.pop();   
+    SceneManager.pop();
     setTimeout(function() {
       Input._onKeyDown(Scene_Menu.createKeyEvent('r'));
     }, controlCommandDelay);
   }
 
   Scene_Menu.prototype.onQuaff = function() {
-    SceneManager.pop();   
+    SceneManager.pop();
     setTimeout(function() {
       Input._onKeyDown(Scene_Menu.createKeyEvent('q'));
     }, controlCommandDelay);
   }
 
   Scene_Menu.prototype.onMix = function() {
-    SceneManager.pop();   
+    SceneManager.pop();
     setTimeout(function() {
       Input._onKeyDown(Scene_Menu.createKeyEvent('M'));
     }, controlCommandDelay);
   }
 
   Scene_Menu.prototype.onSearch = function() {
-    SceneManager.pop();   
+    SceneManager.pop();
     setTimeout(function() {
       Input._onKeyDown(Scene_Menu.createKeyEvent('s'));
     }, controlCommandDelay);
   }
 
   Scene_Menu.prototype.onSave = function() {
-    SceneManager.pop();   
+    SceneManager.pop();
     setTimeout(function() {
       Input._onKeyDown(Scene_Menu.createKeyEvent('S'));
     }, controlCommandDelay);
   }
 
   Scene_Menu.prototype.onHelp = function() {
-    SceneManager.pop();   
+    SceneManager.pop();
     setTimeout(function() {
       Input._onKeyDown(Scene_Menu.createKeyEvent('h'));
     }, controlCommandDelay);

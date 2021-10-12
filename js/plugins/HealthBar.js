@@ -217,6 +217,10 @@
                         status = '濡濕';
                         color = debuffColor;
                         break;
+                    case 'legWoundedEffect':
+                        status = '腿傷';
+                        color = debuffColor;
+                        break;
                 }
                 status += ' ';
                 width = this.textWidth(status);
