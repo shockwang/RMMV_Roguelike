@@ -1931,6 +1931,36 @@
     return result;
   }
 
+  // use for initialize mob
+  MapUtils.loadMob = function() {
+    let str = MapUtils.loadFile('data/MobData.txt');
+    let all = str.split('\n');
+    for (let i = 0; i < all.length; i++) {
+      if (all[i].includes('//') || all[i].length < 2) {
+        // comments, skip it
+        continue;
+      }
+      let mobData = all[i].split(',');
+      let mobClass = window[mobData[0]];
+      let mobInitData = {};
+      mobInitData.name = mobData[1];
+      mobInitData.params = [1, 1, parseInt(mobData[2]), parseInt(mobData[3]), parseInt(mobData[4])
+        , parseInt(mobData[5]), parseInt(mobData[6]), parseInt(mobData[7])];
+      mobInitData.xparams = [parseInt(mobData[8]), parseInt(mobData[9]), mobData[10]];
+      mobInitData.level = parseInt(mobData[11]);
+      mobInitData.moveType = parseInt(mobData[12]);
+      mobInitData.skills = [];
+      if (mobData[13].length > 2) {
+        let skillList = mobData[13].split(';');
+        for (let j = 0; j < skillList.length; j++) {
+          let skillData = skillList[j].split('.');
+          mobInitData.skills.push(new SkillData(skillData[0], parseInt(skillData[1])));
+        }
+      }
+      mobClass.mobInitData = mobInitData;
+    }
+  }
+
   MapUtils.dataToMap = function(dungeonName) {
     let str = MapUtils.loadFile('data/MapData.txt');
     let all = str.split('\n');
@@ -6109,7 +6139,7 @@
                 let damage = dice(1, 4);
                 realSrc._hp -= damage;
                 LogUtils.addLog(String.format(Message.display('kickWall'), damage));
-                // TODO: add SE
+                TimeUtils.animeQueue.push(new AnimeObject(character, 'ANIME', 1));
                 TimeUtils.animeQueue.push(new AnimeObject(character, 'POP_UP', damage * -1));
                 if (Math.random() < 0.33) {
                   LogUtils.addLog(Message.display('legWounded'));
@@ -6125,7 +6155,7 @@
                 // visible door
                 if (doorEvt) {
                   if (doorEvt.status == 1) {
-                    // TODO: add SE
+                    TimeUtils.animeQueue.push(new AnimeObject(doorEvt, 'ANIME', 11));
                     doorEvt.status = 2;
                     doorEvt.lastStatus = 2;
                     $gameSelfSwitches.setValue([$gameMap.mapId(), doorEvt._eventId, 'A'], true);
@@ -6135,7 +6165,6 @@
                   }
                 } else {
                   // kick into hidden door
-                  // TODO: add SE
                   $gameVariables[$gameMap._mapId]
                     .secretBlocks[MapUtils.getTileIndex(x, y)].isRevealed = true;
                   MapUtils.updateAdjacentTiles(x, y);
@@ -6145,6 +6174,7 @@
                   $gameSelfSwitches.setValue([$gameMap.mapId(), doorEvt._eventId, 'A'], true);
                   doorEvt.updateDataMap();
                   LogUtils.addLog(Message.display('kickInvisibleDoor'));
+                  TimeUtils.animeQueue.push(new AnimeObject(doorEvt, 'ANIME', 11));
                   kickDone = true;
                 }
               } else {
@@ -6154,7 +6184,7 @@
                 if (mobEvt) {
                   let realTarget = BattleUtils.getRealTarget(mobEvt);
                   let damage = dice(1, 4);
-                  // TODO: add SE
+                  TimeUtils.animeQueue.push(new AnimeObject(mobEvt, 'ANIME', 1));
                   TimeUtils.animeQueue.push(new AnimeObject(mobEvt, 'POP_UP', damage * -1));
                   LogUtils.addLog(String.format(Message.display('kickEnemy')
                     , LogUtils.getCharName(realTarget), damage));
@@ -6167,6 +6197,7 @@
               if (kickDone) {
                 CharUtils.playerGainStrExp(1);
               } else {
+                AudioManager.playSe({name: 'Jump1', pan: 0, pitch: 100, volume: 100});
                 LogUtils.addLog(Message.display('kickAir'));
                 LogUtils.addLog(Message.display('legWounded'));
                 realSrc.status.legWoundedEffect.turns = 10;
@@ -7878,6 +7909,14 @@
       this.bucState = 1;
     }
   };
+
+  EquipTemplate.prototype.onWear = function(realTarget) {
+    // implemented by each equips
+  }
+
+  EquipTemplate.prototype.onRemove = function(realTarget) {
+    // implemented by each equips
+  }
 
   // combine materials attribute
   EquipTemplate.prototype.applyMaterials = function(materials) {
@@ -11068,6 +11107,7 @@
         msg = String.format(Message.display('scrollDestroyArmorRead'), equip.name);
         for (let id in $gameActors.actor(1)._equips) {
           if ($gameActors.actor(1)._equips[id]._item == equip) {
+            equip.onRemove($gameActors.actor(1));
             $gameActors.actor(1)._equips[id] = new Game_Item();
             break;
           }
@@ -13943,15 +13983,6 @@
   Chick.prototype = Object.create(Game_Mob.prototype);
   Chick.prototype.constructor = Chick;
 
-  Chick.mobInitData = {
-    name: '小雞',
-    params: [1, 1, 6, 1, 5, 1, 3, 5],
-    xparams: [0, 0, 0],
-    level: 1,
-    moveType: 0, // 0: walk, 1: swim, 2: float
-    skills: []
-  }
-
   Chick.prototype.initialize = function (x, y, fromData, targetLevel) {
     Game_Mob.adjustMobAbility(Chick, targetLevel);
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
@@ -13985,17 +14016,6 @@
 
   Dog.prototype = Object.create(Game_Mob.prototype);
   Dog.prototype.constructor = Dog;
-
-  Dog.mobInitData = {
-    name: '小狗',
-    params: [1, 1, 6, 5, 6, 6, 5, 5],
-    xparams: [0, 0, '1d3'],
-    level: 2,
-    moveType: 0,
-    skills: [
-      new SkillData('Skill_Bite', 1)
-    ]
-  }
 
   Dog.prototype.initialize = function (x, y, fromData, targetLevel) {
     Game_Mob.adjustMobAbility(Dog, targetLevel);
@@ -14048,17 +14068,6 @@
   Bee.prototype = Object.create(Game_Mob.prototype);
   Bee.prototype.constructor = Bee;
 
-  Bee.mobInitData = {
-    name: '蜜蜂',
-    params: [1, 1, 4, 3, 0, 0, 13, 5],
-    xparams: [0, 0, '1d2'],
-    level: 2,
-    moveType: 2,
-    skills: [
-      new SkillData('Skill_Pierce', 1)
-    ]
-  }
-
   Bee.prototype.initialize = function (x, y, fromData, targetLevel) {
     Game_Mob.adjustMobAbility(Bee, targetLevel);
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
@@ -14107,15 +14116,6 @@
   Rooster.prototype = Object.create(Game_Mob.prototype);
   Rooster.prototype.constructor = Rooster;
 
-  Rooster.mobInitData = {
-    name: '公雞',
-    params: [1, 1, 8, 6, 1, 5, 9, 3],
-    xparams: [0, 0, '1d4'],
-    level: 3,
-    moveType: 0,
-    skills: []
-  }
-
   Rooster.prototype.initialize = function (x, y, fromData, targetLevel) {
     Game_Mob.adjustMobAbility(Rooster, targetLevel);
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
@@ -14158,17 +14158,6 @@
 
   Rat.prototype = Object.create(Game_Mob.prototype);
   Rat.prototype.constructor = Rat;
-
-  Rat.mobInitData = {
-    name: '老鼠',
-    params: [1, 1, 10, 5, 0, 0, 15, 10],
-    xparams: [0, 0, 0],
-    level: 4,
-    moveType: 0,
-    skills: [
-      new SkillData('Skill_Hide', 1)
-    ]
-  }
 
   Rat.prototype.initialize = function (x, y, fromData, targetLevel) {
     Game_Mob.adjustMobAbility(Rat, targetLevel);
@@ -14220,18 +14209,6 @@
 
   Cat.prototype = Object.create(Game_Mob.prototype);
   Cat.prototype.constructor = Cat;
-
-  Cat.mobInitData = {
-    name: '貓',
-    params: [1, 1, 6, 6, 15, 15, 15, 5],
-    xparams: [0, 0, '1d5'],
-    level: 4,
-    moveType: 0,
-    skills: [
-      new SkillData('Skill_Clever', 1),
-      new SkillData('Skill_FireBall', 1)
-    ]
-  }
 
   Cat.prototype.initialize = function (x, y, fromData, targetLevel) {
     Game_Mob.adjustMobAbility(Cat, targetLevel);
@@ -14298,17 +14275,6 @@
   Boar.prototype = Object.create(Game_Mob.prototype);
   Boar.prototype.constructor = Boar;
 
-  Boar.mobInitData = {
-    name: '野豬',
-    params: [1, 1, 12, 15, 0, 0, 8, 5],
-    xparams: [0, 0, '1d5'],
-    level: 5,
-    moveType: 0,
-    skills: [
-      new SkillData('Skill_Charge', 1)
-    ]
-  }
-
   Boar.prototype.initialize = function (x, y, fromData, targetLevel) {
     Game_Mob.adjustMobAbility(Boar, targetLevel);
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
@@ -14356,18 +14322,6 @@
 
   Wolf.prototype = Object.create(Game_Mob.prototype);
   Wolf.prototype.constructor = Wolf;
-
-  Wolf.mobInitData = {
-    name: '狼',
-    params: [1, 1, 14, 10, 10, 10, 10, 3],
-    xparams: [0, 0, '1d6'],
-    level: 6,
-    moveType: 0,
-    skills: [
-      new SkillData('Skill_Scud', 1),
-      new SkillData('Skill_Bite', 2)
-    ]
-  }
 
   Wolf.prototype.initialize = function (x, y, fromData, targetLevel) {
     Game_Mob.adjustMobAbility(Wolf, targetLevel);
@@ -14433,17 +14387,6 @@
   Turtle.prototype = Object.create(Game_Mob.prototype);
   Turtle.prototype.constructor = Turtle;
 
-  Turtle.mobInitData = {
-    name: '烏龜',
-    params: [1, 1, 10, 30, 30, 30, 5, 10],
-    xparams: [3, 3, 0],
-    level: 6,
-    moveType: 0,
-    skills: [
-      new SkillData('Skill_Shield', 1)
-    ]
-  }
-
   Turtle.prototype.initialize = function (x, y, fromData, targetLevel) {
     Game_Mob.adjustMobAbility(Turtle, targetLevel);
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
@@ -14496,17 +14439,6 @@
   Bear.prototype = Object.create(Game_Mob.prototype);
   Bear.prototype.constructor = Bear;
 
-  Bear.mobInitData = {
-    name: '熊',
-    params: [1, 1, 14, 20, 10, 10, 8, 5],
-    xparams: [0, 0, '2d3+2'],
-    level: 6,
-    moveType: 0,
-    skills: [
-      new SkillData('Skill_Bash', 1)
-    ]
-  }
-
   Bear.prototype.initialize = function (x, y, fromData, targetLevel) {
     Game_Mob.adjustMobAbility(Bear, targetLevel);
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
@@ -14557,17 +14489,6 @@
 
   Lion.prototype = Object.create(Game_Mob.prototype);
   Lion.prototype.constructor = Lion;
-
-  Lion.mobInitData = {
-    name: '獅子',
-    params: [1, 1, 16, 20, 10, 10, 18, 5],
-    xparams: [0, 0, '1d7'],
-    level: 8,
-    moveType: 0,
-    skills: [
-      new SkillData('Skill_Roar', 1)
-    ]
-  }
 
   Lion.prototype.initialize = function (x, y, fromData, targetLevel) {
     Game_Mob.adjustMobAbility(Lion, targetLevel);
@@ -14624,17 +14545,6 @@
   Buffalo.prototype = Object.create(Game_Mob.prototype);
   Buffalo.prototype.constructor = Buffalo;
 
-  Buffalo.mobInitData = {
-    name: '水牛',
-    params: [1, 1, 15, 25, 10, 10, 15, 5],
-    xparams: [0, 0, '1d6'],
-    level: 7,
-    moveType: 0,
-    skills: [
-      new SkillData('Skill_Tough', 1)
-    ]
-  }
-
   Buffalo.prototype.initialize = function (x, y, fromData, targetLevel) {
     Game_Mob.adjustMobAbility(Buffalo, targetLevel);
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
@@ -14690,18 +14600,6 @@
   Shark.prototype = Object.create(Game_Mob.prototype);
   Shark.prototype.constructor = Shark;
 
-  Shark.mobInitData = {
-    name: '鯊魚',
-    params: [1, 1, 16, 15, 10, 10, 15, 5],
-    xparams: [0, 0, '1d8'],
-    level: 8,
-    moveType: 1,
-    skills: [
-      new SkillData('Skill_Bite', 3),
-      new SkillData('Skill_AdaptWater', 3)
-    ]
-  }
-
   Shark.prototype.initialize = function (x, y, fromData, targetLevel) {
     Game_Mob.adjustMobAbility(Shark, targetLevel);
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
@@ -14747,18 +14645,6 @@
   Slime.prototype = Object.create(Game_Mob.prototype);
   Slime.prototype.constructor = Slime;
 
-  Slime.mobInitData = {
-    name: '史萊姆',
-    params: [1, 1, 10, 10, 15, 15, 10, 5],
-    xparams: [5, 0, 0],
-    level: 5,
-    moveType: 0,
-    skills: [
-      new SkillData('Skill_Acid', 1),
-      new SkillData('Skill_AdaptWater', 3)
-    ]
-  }
-
   Slime.prototype.initialize = function (x, y, fromData, targetLevel) {
     Game_Mob.adjustMobAbility(Slime, targetLevel);
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
@@ -14803,18 +14689,6 @@
 
   Jellyfish.prototype = Object.create(Game_Mob.prototype);
   Jellyfish.prototype.constructor = Jellyfish;
-
-  Jellyfish.mobInitData = {
-    name: '水母',
-    params: [1, 1, 6, 10, 30, 10, 10, 5],
-    xparams: [0, 5, 0],
-    level: 6,
-    moveType: 1,
-    skills: [
-      new SkillData('Skill_Discharge', 1),
-      new SkillData('Skill_AdaptWater', 3)
-    ]
-  }
 
   Jellyfish.prototype.initialize = function (x, y, fromData, targetLevel) {
     Game_Mob.adjustMobAbility(Jellyfish, targetLevel);
@@ -14863,18 +14737,6 @@
 
   Ice_Spirit.prototype = Object.create(Game_Mob.prototype);
   Ice_Spirit.prototype.constructor = Ice_Spirit;
-
-  Ice_Spirit.mobInitData = {
-    name: '冰精靈',
-    params: [1, 1, 10, 8, 20, 20, 20, 5],
-    xparams: [4, 6, 0],
-    level: 7,
-    moveType: 2,
-    skills: [
-      new SkillData('Skill_Barrier', 1),
-      new SkillData('Skill_IceBolt', 1)
-    ]
-  }
 
   Ice_Spirit.prototype.initialize = function (x, y, fromData, targetLevel) {
     Game_Mob.adjustMobAbility(Ice_Spirit, targetLevel);
@@ -14939,20 +14801,6 @@
 
   Ice_Dragon.prototype = Object.create(Game_Mob.prototype);
   Ice_Dragon.prototype.constructor = Ice_Dragon;
-
-  Ice_Dragon.mobInitData = {
-    name: '冰龍',
-    params: [1, 1, 18, 18, 18, 18, 10, 5],
-    xparams: [8, 8, '1d9'],
-    level: 10,
-    moveType: 2,
-    skills: [
-      new SkillData('Skill_Barrier', 1),
-      new SkillData('Skill_Bash', 1),
-      new SkillData('Skill_IceBolt', 1),
-      new SkillData('Skill_IceBreath', 1)
-    ]
-  }
 
   Ice_Dragon.prototype.initialize = function (x, y, fromData, targetLevel) {
     Game_Mob.adjustMobAbility(Ice_Dragon, targetLevel);
@@ -15041,21 +14889,6 @@
   Selina.prototype = Object.create(Game_Mob.prototype);
   Selina.prototype.constructor = Selina;
 
-  Selina.mobInitData = {
-    name: '瑟蓮娜',
-    params: [1, 1, 15, 20, 20, 20, 20, 5],
-    xparams: [10, 10, '1d5'],
-    level: 12,
-    moveType: 0,
-    fleeAtLowHp: true,
-    skills: [
-      new SkillData('Skill_Barrier', 2),
-      new SkillData('Skill_IceBolt', 2),
-      new SkillData('Skill_IceBreath', 2),
-      new SkillData('Skill_IceBolder', 2),
-      new SkillData('Skill_AdaptWater', 3)
-    ]
-  }
   Selina.isBoss = true;
 
   Selina.prototype.initialize = function (x, y, fromData, targetLevel) {
@@ -17006,9 +16839,7 @@
     let msg = '';
     if (this.equips()[slotId]) {
       msg += String.format(Message.display('removeEquip'), this.equips()[slotId].name);
-      if (this.equips()[slotId].onRemove) {
-        this.equips()[slotId].onRemove(this);
-      }
+      this.equips()[slotId].onRemove(this);
     }
     if (this.tradeItemWithParty(item, this.equips()[slotId])
       && (!item || this.equipSlots()[slotId] === item.etypeId)) {
@@ -17017,9 +16848,7 @@
     }
     if (item) {
       msg += String.format(Message.display('wearEquip'), item.name);
-      if (item.onWear) {
-        item.onWear(this);
-      }
+      item.onWear(this);
     }
     LogUtils.addLog(msg);
     return true;
@@ -17640,7 +17469,7 @@
   Window_HelpCommand.list[5] = ['tutorialEquip1', 'tutorialEquip2', 'tutorialEquip3'];
   Window_HelpCommand.list[6] = ['tutorialSoul1', 'tutorialSoul2', 'tutorialSoul3', 'tutorialSoul4', 'tutorialSoul5'];
   Window_HelpCommand.list[7] = ['tutorialDoor1', 'tutorialDoor2'];
-  Window_HelpCommand.list[8] = ['tutorialSecretDoor1', 'tutorialSecretDoor2'];
+  Window_HelpCommand.list[8] = ['tutorialSecretDoor1', 'tutorialSecretDoor2', 'tutorialSecretDoor3'];
   Window_HelpCommand.list[9] = ['tutorialTrap1', 'tutorialTrap2'];
   Window_HelpCommand.list[10] = ['tutorialLog1', 'tutorialLog2'];
   Window_HelpCommand.list[11] = ['tutorialScroll1', 'tutorialScroll2'];
