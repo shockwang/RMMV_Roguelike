@@ -138,8 +138,13 @@
   }
 
   // can not serialize
-  var spawnMobData = function(mobClass, percentage) {
+  var SpawnMobData = function(mobClass, percentage) {
     this.mobClass = mobClass;
+    this.percentage = percentage;
+  }
+
+  var LootingData = function(itemClassName, percentage) {
+    this.itemClassName = itemClassName;
     this.percentage = percentage;
   }
 
@@ -1149,8 +1154,14 @@
   }
 
   CharUtils.calcMobAppearPercentage = function(mobLevel, dungeonLevel) {
-    let result = 1 - Math.abs(dungeonLevel - mobLevel) * 10 / 100;
-    result = Math.pow(result, 4); // try to create a gaussian-like distribution
+    let result = 0;
+    if (mobLevel > dungeonLevel) {
+      if (mobLevel - dungeonLevel <= 3) {
+        result = Math.pow(0.5, mobLevel - dungeonLevel);
+      }
+    } else {
+      result = 1 - (dungeonLevel - mobLevel) * 10 / 100;
+    }
     return result;
   }
 
@@ -1188,7 +1199,7 @@
         let mobClass = CharUtils.mobTemplates[mobTypeIndicator][id];
         let spawnPercentage = CharUtils.calcMobAppearPercentage(CharUtils.calcMobSpawnLevel(mobClass), dungeonLevel);
         if (spawnPercentage > 0) {
-          pool.push(new spawnMobData(mobClass, spawnPercentage));
+          pool.push(new SpawnMobData(mobClass, spawnPercentage));
         }
       }
       if (pool.length == 0 && mobTypeIndicator != mapTypeIndex) {
@@ -1197,7 +1208,7 @@
           let mobClass = CharUtils.mobTemplates[mapTypeIndex][id];
           let spawnPercentage = CharUtils.calcMobAppearPercentage(CharUtils.calcMobSpawnLevel(mobClass), dungeonLevel);
           if (spawnPercentage > 0) {
-            pool.push(new spawnMobData(mobClass, spawnPercentage));
+            pool.push(new SpawnMobData(mobClass, spawnPercentage));
           }
         }
       }
@@ -1260,7 +1271,7 @@
           }
         }
         if (location) {
-          let spawnLevel = $gameVariables[mapId].dungeonLevel;
+          let spawnLevel = CharUtils.calcMobSpawnLevel(mobClass);
           if (mobClass.isBoss) {
             spawnLevel += 3;
           }
@@ -1299,12 +1310,13 @@
         }
       }
     } while (candidates.length == 0);
-    return new candidates[getRandomInt(candidates.length)](x, y, null, $gameVariables[mapId].dungeonLevel);
+    let mobClass = getRandomInt(candidates.length);
+    return new mobClass(x, y, null, CharUtils.calcMobSpawnLevel(mobClass));
   }
 
   CharUtils.spawnMobNearPlayer = function(mobType, xOffset, yOffset) {
     return new mobType($gamePlayer._x + xOffset, $gamePlayer._y + yOffset, null
-      , $gameVariables[$gameMap.mapId()].dungeonLevel);
+      , CharUtils.calcMobSpawnLevel(mobType));
   }
 
   // for distance attack
@@ -1675,6 +1687,7 @@
     // $gameVariables[25].stairDownNum = 0;
 
     // initialize $gameVariables[0] for multiple usage
+    MapUtils.loadMob();
     $gameVariables[0].transferInfo = null;
     $gameVariables[0].directionalAction = null;
     $gameVariables[0].directionalFlag = false;
@@ -1950,6 +1963,7 @@
       mobInitData.level = parseInt(mobData[11]);
       mobInitData.moveType = parseInt(mobData[12]);
       mobInitData.skills = [];
+      // read skills
       if (mobData[13].length > 2) {
         let skillList = mobData[13].split(';');
         for (let j = 0; j < skillList.length; j++) {
@@ -1958,6 +1972,18 @@
         }
       }
       mobClass.mobInitData = mobInitData;
+      // read lootings
+      mobClass.lootings = [];
+      if (mobData[14].length > 2) {
+        let itemSpawnLevel = CharUtils.calcMobSpawnLevel(mobClass);
+        let lootingList = mobData[14].split(';');
+        for (let j = 0; j < lootingList.length; j++) {
+          let lootingData = lootingList[j].split('.');
+          // setup mob related material to mob level
+          window[lootingData[0]].spawnLevel = itemSpawnLevel;
+          mobClass.lootings.push(new LootingData(lootingData[0], parseInt(lootingData[1])));
+        }
+      }
     }
   }
 
@@ -7767,13 +7793,10 @@
         for (let id in newItemClass.material) {
           let materialType = newItemClass.material[id];
           for (let i = 0; i < materialType.amount; i++) {
-            let obj = ItemUtils.adjustEquipByLevel(new materialType.itemClass(), dungeonLevel);
-            materials.push(obj);
+            materials.push(new materialType.itemClass());
           }
         }
         newItem.applyMaterials(materials);
-      } else {
-        ItemUtils.adjustEquipByLevel(newItem, $gameVariables[mapId].dungeonLevel);
       }
     }
     return newItem;
@@ -7843,7 +7866,7 @@
     let delta = level - window[equip.constructor.name].spawnLevel;
     if (delta > 0) {
       // get higher is more difficult
-      delta /= 3;
+      delta = Math.round(delta / 3);
     }
     // update def & mdef
     for (let i = 0; i < 2; i++) {
@@ -13930,7 +13953,22 @@
   };
 
   Game_Mob.prototype.looting = function () {
-    // implement in mob instances
+    // implements default mechanism
+    let lootings = [];
+    let mobClass = window[this.constructor.name];
+    if (mobClass.lootings) {
+      for (let i = 0; i < mobClass.lootings.length; i++) {
+        let lootData = mobClass.lootings[i];
+        if (getRandomInt(100) < lootData.percentage) {
+          let item = new window[lootData.itemClassName]();
+          if (item instanceof EquipTemplate) {
+            ItemUtils.adjustEquipByLevel(item, this.mob.level);
+          }
+          lootings.push(item);
+        }
+      }
+    }
+    return lootings;
   }
 
   Game_Mob.prototype.initAttribute = function() {
@@ -13993,7 +14031,7 @@
   }
 
   Chick.prototype.looting = function () {
-    var lootings = [];
+    var lootings = Game_Mob.prototype.looting.call(this);
     if (getRandomInt(10) < 3) {
       lootings.push(new Flesh(this.mob, 250, 100, 'FLESH'));
     }
@@ -14035,18 +14073,9 @@
   }
 
   Dog.prototype.looting = function () {
-    var lootings = [];
+    var lootings = Game_Mob.prototype.looting.call(this);
     if (getRandomInt(10) < 3) {
       lootings.push(new Flesh(this.mob, 250, 100, 'FLESH'));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Dog_Skin(), this.mob.level));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Dog_Tooth(), this.mob.level));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Dog_Bone(), this.mob.level));
     }
 
     for (var id in lootings) {
@@ -14086,15 +14115,9 @@
   }
 
   Bee.prototype.looting = function () {
-    var lootings = [];
+    var lootings = Game_Mob.prototype.looting.call(this);
     if (getRandomInt(10) < 3) {
       lootings.push(new Flesh(this.mob, 100, 100, 'FLESH'));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Honey());
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Bee_Sting(), this.mob.level));
     }
 
     for (var id in lootings) {
@@ -14126,18 +14149,9 @@
   }
 
   Rooster.prototype.looting = function () {
-    var lootings = [];
+    var lootings = Game_Mob.prototype.looting.call(this);
     if (getRandomInt(10) < 3) {
       lootings.push(new Flesh(this.mob, 250, 100, 'FLESH'));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Rooster_Tooth(), this.mob.level));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Rooster_Claw(), this.mob.level));
-    }
-    if (getRandomInt(100) < 50) {
-      lootings.push(new Feather());
     }
 
     for (var id in lootings) {
@@ -14180,15 +14194,9 @@
   }
 
   Rat.prototype.looting = function () {
-    var lootings = [];
+    var lootings = Game_Mob.prototype.looting.call(this);
     if (getRandomInt(10) < 3) {
       lootings.push(new Flesh(this.mob, 100, 100, 'FLESH'));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Cheese());
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Rat_Tail());
     }
 
     for (var id in lootings) {
@@ -14239,21 +14247,9 @@
   }
 
   Cat.prototype.looting = function () {
-    var lootings = [];
+    var lootings = Game_Mob.prototype.looting.call(this);
     if (getRandomInt(10) < 3) {
       lootings.push(new Flesh(this.mob, 250, 100, 'FLESH'));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Cat_Tooth(), this.mob.level));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Cat_Claw(), this.mob.level));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Cat_Skin(), this.mob.level));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Cat_Bone(), this.mob.level));
     }
 
     for (var id in lootings) {
@@ -14296,12 +14292,9 @@
   }
 
   Boar.prototype.looting = function () {
-    var lootings = [];
+    var lootings = Game_Mob.prototype.looting.call(this);
     if (getRandomInt(10) < 30) {
       lootings.push(new Flesh(this.mob, 300, 100, 'FLESH'));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Boar_Tooth(), this.mob.level));
     }
 
     for (var id in lootings) {
@@ -14351,19 +14344,7 @@
   }
 
   Wolf.prototype.looting = function () {
-    var lootings = [];
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Wolf_Tooth(), this.mob.level));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Wolf_Skin(), this.mob.level));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Wolf_Claw(), this.mob.level));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Wolf_Bone(), this.mob.level));
-    }
+    var lootings = Game_Mob.prototype.looting.call(this);
     if (getRandomInt(100) < 30) {
       lootings.push(new Flesh(this.mob, 300, 100, 'FLESH'));
     }
@@ -14412,10 +14393,7 @@
   }
 
   Turtle.prototype.looting = function () {
-    var lootings = [];
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Turtle_Shell(), this.mob.level));
-    }
+    var lootings = Game_Mob.prototype.looting.call(this);
     if (getRandomInt(100) < 30) {
       lootings.push(new Flesh(this.mob, 300, 100, 'FLESH'));
     }
@@ -14457,16 +14435,7 @@
   }
 
   Bear.prototype.looting = function () {
-    var lootings = [];
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Bear_Skin(), this.mob.level));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Bear_Claw(), this.mob.level));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Bear_Bone(), this.mob.level));
-    }
+    var lootings = Game_Mob.prototype.looting.call(this);
     if (getRandomInt(100) < 30) {
       lootings.push(new Flesh(this.mob, 300, 100, 'FLESH'));
     }
@@ -14515,13 +14484,7 @@
   }
 
   Lion.prototype.looting = function () {
-    var lootings = [];
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Lion_Tooth(), this.mob.level));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Lion_Claw(), this.mob.level));
-    }
+    var lootings = Game_Mob.prototype.looting.call(this);
     if (getRandomInt(100) < 30) {
       lootings.push(new Flesh(this.mob, 300, 100, 'FLESH'));
     }
@@ -14570,13 +14533,7 @@
   }
 
   Buffalo.prototype.looting = function () {
-    var lootings = [];
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Buffalo_Horn());
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Buffalo_Bone(), this.mob.level));
-    }
+    var lootings = Game_Mob.prototype.looting.call(this);
     if (getRandomInt(100) < 30) {
       lootings.push(new Flesh(this.mob, 300, 100, 'FLESH'));
     }
@@ -14618,10 +14575,7 @@
   }
 
   Shark.prototype.looting = function () {
-    var lootings = [];
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Shark_Tooth(), this.mob.level));
-    }
+    var lootings = Game_Mob.prototype.looting.call(this);
     if (getRandomInt(100) < 30) {
       lootings.push(new Flesh(this.mob, 300, 100, 'FLESH'));
     }
@@ -14663,13 +14617,7 @@
   }
 
   Slime.prototype.looting = function () {
-    var lootings = [];
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Mucus());
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Blue_Crystal());
-    }
+    var lootings = Game_Mob.prototype.looting.call(this);
 
     for (var id in lootings) {
       ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
@@ -14708,13 +14656,7 @@
   }
 
   Jellyfish.prototype.looting = function () {
-    var lootings = [];
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Glue());
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(new Tentacle());
-    }
+    var lootings = Game_Mob.prototype.looting.call(this);
     if (getRandomInt(100) < 30) {
       lootings.push(new Flesh(this.mob, 200, 100, 'FLESH'));
     }
@@ -14775,13 +14717,7 @@
   }
 
   Ice_Spirit.prototype.looting = function () {
-    var lootings = [];
-    if (getRandomInt(100) < 10) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Ice_Coat(), this.mob.level));
-    }
-    if (getRandomInt(100) < 5) {
-      lootings.push(new Ring_ColdResistance());
-    }
+    var lootings = Game_Mob.prototype.looting.call(this);
 
     for (var id in lootings) {
       ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
@@ -14851,21 +14787,9 @@
   }
 
   Ice_Dragon.prototype.looting = function () {
-    var lootings = [];
+    var lootings = Game_Mob.prototype.looting.call(this);
     if (getRandomInt(10) < 3) {
       lootings.push(new Flesh(this.mob, 500, 100, 'FLESH'));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Dragon_Tooth(), this.mob.level));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Dragon_Claw(), this.mob.level));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Dragon_Skin(), this.mob.level));
-    }
-    if (getRandomInt(100) < 25) {
-      lootings.push(ItemUtils.adjustEquipByLevel(new Dragon_Bone(), this.mob.level));
     }
 
     for (var id in lootings) {
@@ -14954,23 +14878,8 @@
   }
 
   Selina.prototype.looting = function () {
-    var lootings = [];
+    var lootings = Game_Mob.prototype.looting.call(this);
     // TODO: implements looting
-    // if (getRandomInt(10) < 3) {
-    //   lootings.push(new Flesh(this.mob, 500, 100, 'FLESH'));
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Dragon_Tooth());
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Dragon_Claw());
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Dragon_Skin());
-    // }
-    // if (getRandomInt(100) < 25) {
-    //   lootings.push(new Dragon_Bone());
-    // }
 
     for (var id in lootings) {
       ItemUtils.addItemToItemPile(this.x, this.y, lootings[id]);
@@ -15672,6 +15581,21 @@
       this.makeEmptyMap();
     }
   };
+
+  // resume mob data from file
+  DataManager.loadGameWithoutRescue = function(savefileId) {
+    var globalInfo = this.loadGlobalInfo();
+    if (this.isThisGameFile(savefileId)) {
+      var json = StorageManager.load(savefileId);
+      this.createGameObjects();
+      this.extractSaveContents(JsonEx.parse(json));
+      this._lastAccessedId = savefileId;
+      MapUtils.loadMob();
+      return true;
+    } else {
+      return false;
+    }
+};
 
   //-----------------------------------------------------------------------------
   // Window_Base
