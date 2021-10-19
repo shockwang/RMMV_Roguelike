@@ -153,6 +153,26 @@
     this.percentage = percentage;
   }
 
+  var ResistanceData = function() {
+    this.state = {
+      blind: 0, // actually boolean, use integer to prevent multiple effects
+      paralyze: 0,
+      sleep: 0,
+      poison: 0,
+      afraid: 0,
+      bleeding: 0,
+      faint: 0,
+      breakArmor: 0,
+      wet: 0,
+      acid: 0
+    }
+    this.elemental = {
+      // percentage, 0~1
+      cold: 0,
+      fire: 0
+    }
+  }
+
   var FLOOR = '□';
   var WALL = '■';
   var DOOR = 'Ｄ';
@@ -194,6 +214,7 @@
   var pressFloor = 1654;
 
   var dungeonDepth = 9;
+  var subDungeonDepth = 6;
 
   // door figures
   var doorClosedIcon = 512;
@@ -362,7 +383,7 @@
   }
 
   // Language related data
-  var Message = {
+  Message = {
     language: 'chinese',
     chinese: {
       meleeAttack: '{0}對{1}造成了{2}點傷害.',
@@ -458,6 +479,14 @@
       breakArmor: '{0}的護甲被穿透了!',
       breakArmorRecovered: '{0}的護甲強度恢復了.',
       skillEffectEnd: '{0}身上{1}的效果消失了.',
+      stateBlind: '失明',
+      stateParalyze: '麻痺',
+      stateSleep: '昏睡',
+      statePoison: '中毒',
+      stateBleeding: '出血',
+      stateBreakArmor: '破甲',
+      stateWet: '濡濕',
+      stateAcid: '酸蝕',
       attackOutOfEnergy: '{0}想發動攻擊, 但是沒有足夠的體力!',
       askDirection: '往哪個方向?',
       attackAir: '{0}對空氣發動了{1}.',
@@ -853,19 +882,7 @@
       groundHoleTrapped: false,
       skillEffect: [],
       bellyStatus: 'NORMAL', // FAINT, WEAK, HUNGRY, NORMAL, FULL
-      resistance: {
-        blind: 0, // actually boolean, use integer to prevent multiple effects
-        paralyze: 0,
-        sleep: 0,
-        poison: 0,
-        afraid: 0,
-        bleeding: 0,
-        faint: 0,
-        breakArmor: 0,
-        wet: 0,
-        acid: 0,
-        cold: 0 // percentage, 0~1
-      }
+      resistance: new ResistanceData()
     }
     return result;
   }
@@ -1180,8 +1197,8 @@
     }
     let delta = 0;
     if (dungeonType != 0) {
-      // minus 4 because sub-dungeon mobs level start from 5 for now, and the next level will be 5
-      delta = $gameVariables[0].dungeonEntranceLevel[dungeonType] - 4;
+      // minus 5 because sub dungeon mobs level start from 5 for now
+      delta = $gameVariables[0].dungeonEntranceLevel[dungeonType] - 5;
     }
     return mobClass.mobInitData.level + delta;
   }
@@ -1666,11 +1683,12 @@
     $gameVariables[$gameVariables[0].dungeonEntranceLevel[1]].stairDownNum++;
     $gameVariables[$gameVariables[0].dungeonEntranceLevel[1]].stairToList.push(11);
     $gameVariables[11].stairToList.push($gameVariables[0].dungeonEntranceLevel[1]);
-    for (let i = 11; i < 16; i++) {
+    let dungeonStart = 11;
+    for (let i = dungeonStart; i < dungeonStart + subDungeonDepth; i++) {
       $gameVariables[i].stairToList.push(i - 1);
       $gameVariables[i].stairToList.push(i + 1);
       $gameVariables[i].mapType = 'ICE';
-      $gameVariables[i].dungeonLevel = i - 11 + $gameVariables[0].dungeonEntranceLevel[1];
+      $gameVariables[i].dungeonLevel = i - dungeonStart + $gameVariables[0].dungeonEntranceLevel[1];
     }
     $gameVariables[11].stairToList.splice(1, 1);
     $gameVariables[15].stairToList.pop();
@@ -1927,7 +1945,10 @@
     // $gameParty.gainItem(new Potion_Heal(), 1);
     // $gameParty.gainItem(new Potion_Heal(), 1);
     // $gameParty.gainItem(new Ring_Protection(), 1);
-    // $gameParty.gainItem(new Ring_ColdResistance(), 1);
+    $gameParty.gainItem(new Ring_ColdResistance(), 1);
+    $gameParty.gainItem(new Ring_AcidResistance(), 1);
+    $gameParty.gainItem(new Ring_ParalyzeResistance(), 1);
+    $gameParty.gainItem(new Potion_Blind(), 1);
     $gameParty.gainItem(new Cheese(), 1);
     $gameParty.gainItem(new Cheese(), 1);
     // for (let i = 0; i < 6; i++) {
@@ -7546,6 +7567,53 @@
         }
       }
     }
+    // show elemental resistance
+    for (let id in item.resistance.elemental) {
+      if (item.resistance.elemental[id] != 0) {
+        switch (id) {
+          case 'cold':
+            result += '耐寒';
+            break;
+          case 'fire':
+            result += '耐火';
+            break;
+        }
+        result += ItemUtils.showNumberWithSign(item.resistance.elemental[id] * 100) + '% ';
+      }
+    }
+    // show abnormal state resistance (now only deal with positive effects)
+    for (let id in item.resistance.state) {
+      if (item.resistance.state[id] > 0) {
+        result += '\\c[24]免疫';
+        switch (id) {
+          case 'blind':
+            result += Message.display('stateBlind');
+            break;
+          case 'paralyze':
+            result += Message.display('stateParalyze');
+            break;
+          case 'sleep':
+            result += Message.display('stateSleep');
+            break;
+          case 'poison':
+            result += Message.display('statePoison');
+            break;
+          case 'bleeding':
+            result += Message.display('stateBleeding');
+            break;
+          case 'breakArmor':
+            result += Message.display('stateBreakArmor');
+            break;
+          case 'wet':
+            result += Message.display('stateWet');
+            break;
+          case 'acid':
+            result += Message.display('stateAcid');
+            break;
+        }
+        result += '\\c[0] ';
+      }
+    }
     item.description = item.description.split('\n')[0] + result;
   }
 
@@ -7941,14 +8009,26 @@
     } else if (rng < 15) {
       this.bucState = 1;
     }
+    // initialize resistance
+    this.resistance = new ResistanceData();
   };
 
   EquipTemplate.prototype.onWear = function(realTarget) {
-    // implemented by each equips
+    for (let id in this.resistance.state) {
+      realTarget.status.resistance.state[id] += this.resistance.state[id];
+    }
+    for (let id in this.resistance.elemental) {
+      realTarget.status.resistance.elemental[id] += this.resistance.elemental[id];
+    }
   }
 
   EquipTemplate.prototype.onRemove = function(realTarget) {
-    // implemented by each equips
+    for (let id in this.resistance.state) {
+      realTarget.status.resistance.state[id] -= this.resistance.state[id];
+    }
+    for (let id in this.resistance.elemental) {
+      realTarget.status.resistance.elemental[id] -= this.resistance.elemental[id];
+    }
   }
 
   // combine materials attribute
@@ -10273,7 +10353,7 @@
   Ring_ParalyzeResistance.spawnLevel = 7;
 
   Ring_ParalyzeResistance.itemName = '抗麻戒指';
-  Ring_ParalyzeResistance.itemDescription = '免疫麻痺';
+  Ring_ParalyzeResistance.itemDescription = '橡膠觸感的戒指';
   Ring_ParalyzeResistance.material = [{itemClass: Glue, amount: 4}, {itemClass: Rat_Tail, amount: 1}];
 
   Ring_ParalyzeResistance.prototype = Object.create(EquipTemplate.prototype);
@@ -10288,17 +10368,10 @@
     this.templateName = this.name;
     this.weight = 2;
     ItemUtils.updateEquipName(this);
+    this.resistance.state.paralyze = 1;
     // randomize attributes
     ItemUtils.updateEquipDescription(this);
   };
-
-  Ring_ParalyzeResistance.prototype.onWear = function(realTarget) {
-    realTarget.status.resistance.paralyze++;
-  }
-
-  Ring_ParalyzeResistance.prototype.onRemove = function(realTarget) {
-    realTarget.status.resistance.paralyze--;
-  }
   ItemUtils.recipes.push(Ring_ParalyzeResistance);
 
   //-----------------------------------------------------------------------------------
@@ -10327,17 +10400,10 @@
     this.templateName = this.name;
     this.weight = 2;
     ItemUtils.updateEquipName(this);
+    this.resistance.state.acid = 1;
     // randomize attributes
     ItemUtils.updateEquipDescription(this);
   };
-
-  Ring_AcidResistance.prototype.onWear = function(realTarget) {
-    realTarget.status.resistance.acid++;
-  }
-
-  Ring_AcidResistance.prototype.onRemove = function(realTarget) {
-    realTarget.status.resistance.acid--;
-  }
   ItemUtils.recipes.push(Ring_AcidResistance);
 
   //-----------------------------------------------------------------------------------
@@ -10365,17 +10431,10 @@
     this.templateName = this.name;
     this.weight = 2;
     ItemUtils.updateEquipName(this);
+    this.resistance.elemental.cold = 0.5;
     // randomize attributes
     ItemUtils.updateEquipDescription(this);
   };
-
-  Ring_ColdResistance.prototype.onWear = function(realTarget) {
-    realTarget.status.resistance.cold += 0.5;
-  }
-
-  Ring_ColdResistance.prototype.onRemove = function(realTarget) {
-    realTarget.status.resistance.cold -= 0.5;
-  }
   ItemUtils.recipes.push(Ring_ColdResistance);
 
   //-----------------------------------------------------------------------------------
@@ -10510,7 +10569,7 @@
 
   Potion_Paralyze.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
-    if (realUser.status.resistance.paralyze == 0) {
+    if (realUser.status.resistance.state.paralyze == 0) {
       realUser.status.paralyzeEffect.turns = 5;
       TimeUtils.eventScheduler.addStatusEffect(user, 'paralyzeEffect');
       if (CharUtils.playerCanSeeChar(user)) {
@@ -10776,13 +10835,13 @@
   Potion_Acid.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
     let damage = 30;
-    if (realUser.status.resistance.acid > 0) {
+    if (realUser.status.resistance.state.acid > 0) {
       damage /= 2;
     }
     CharUtils.decreaseHp(realUser, damage);
     let msg = String.format(Message.display('acidDamage'), LogUtils.getCharName(realUser), damage);
     // damage armor/weapon
-    if (realUser.status.resistance.acid == 0) {
+    if (realUser.status.resistance.state.acid == 0) {
       Skill_Acid.damageEquip(user, realUser);
     }
 
@@ -12386,7 +12445,7 @@
       let index = this.lv - 1;
       let atkValue = prop.effect[index].baseDamage + realSrc.param(4) / 3;
       let value = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
-      if (realTarget.status.resistance.acid > 0) {
+      if (realTarget.status.resistance.state.acid > 0) {
         value = Math.round(value / 2);
       }
       TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 39));
@@ -12395,7 +12454,7 @@
         , LogUtils.getPerformedTargetName(realSrc, realTarget), this.name, value));
       CharUtils.decreaseHp(realTarget, value);
       // check if causes bleeding
-      if (Math.random() < prop.effect[index].acidPercentage && realTarget.status.resistance.acid == 0) {
+      if (Math.random() < prop.effect[index].acidPercentage && realTarget.status.resistance.state.acid == 0) {
         // damage armor/weapon
         Skill_Acid.damageEquip(target, realTarget);
       }
@@ -12453,7 +12512,7 @@
       let index = this.lv - 1;
       let atkValue = prop.effect[index].baseDamage + realSrc.param(4) / 3;
       let value = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
-      value = Math.round(value * (1 - realTarget.status.resistance.cold));
+      value = Math.round(value * (1 - realTarget.status.resistance.elemental.cold));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 77));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
       LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)
@@ -12461,7 +12520,7 @@
       CharUtils.decreaseHp(realTarget, value);
       // check if causes paralysis
       if (Math.random() < prop.effect[index].paralyzePercentage) {
-        if (realTarget.status.resistance.paralyze == 0) {
+        if (realTarget.status.resistance.state.paralyze == 0) {
           realTarget.status.paralyzeEffect.turns += dice(1, prop.effect[index].paralyzeTurnMax);
           TimeUtils.eventScheduler.addStatusEffect(target, 'paralyzeEffect');
           TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '麻痺'));
@@ -13237,7 +13296,7 @@
       let atkValue = window[this.skill.constructor.name].prop.effect[this.skill.lv - 1].baseDamage
         + realSrc.param(4) / 3;
       let damage = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
-      damage = Math.round(damage * (1 - realTarget.status.resistance.cold));
+      damage = Math.round(damage * (1 - realTarget.status.resistance.elemental.cold));
       CharUtils.decreaseHp(realTarget, damage);
       if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
         TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
@@ -13302,7 +13361,7 @@
       let atkValue = window[this.skill.constructor.name].prop.effect[this.skill.lv - 1].baseDamage
         + realSrc.param(4) / 3;
       let damage = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
-      damage = Math.round(damage * (1 - realTarget.status.resistance.cold));
+      damage = Math.round(damage * (1 - realTarget.status.resistance.elemental.cold));
       CharUtils.decreaseHp(realTarget, damage);
       if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
         TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 71));
@@ -13367,7 +13426,7 @@
       let atkValue = window[this.skill.constructor.name].prop.effect[this.skill.lv - 1].baseDamage
         + realSrc.param(4) / 3;
       let damage = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
-      damage = Math.round(damage * (1 - realTarget.status.resistance.cold));
+      damage = Math.round(damage * (1 - realTarget.status.resistance.elemental.cold));
       CharUtils.decreaseHp(realTarget, damage);
       if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
         TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 71));
@@ -13438,7 +13497,7 @@
       let realTarget = BattleUtils.getRealTarget(target);
       let atkValue = prop.effect[index].baseDamage + realSrc.param(4) / 3;
       let value = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
-      value = Math.round(value * (1 - realTarget.status.resistance.cold));
+      value = Math.round(value * (1 - realTarget.status.resistance.elemental.cold));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 4));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
       LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)

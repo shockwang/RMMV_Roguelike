@@ -190,31 +190,31 @@
                         color = buffColor;
                         break;
                     case 'blindEffect':
-                        status = '失明';
+                        status = Message.display('stateBlind');
                         color = debuffColor;
                         break;
                     case 'paralyzeEffect':
-                        status = '麻痺';
+                        status = Message.display('stateParalyze');
                         color = debuffColor;
                         break;
                     case 'sleepEffect':
-                        status = '昏睡';
+                        status = Message.display('stateSleep');
                         color = debuffColor;
                         break;
                     case 'poisonEffect':
-                        status = '中毒';
+                        status = Message.display('statePoison');
                         color = debuffColor;
                         break;
                     case 'bleedingEffect':
-                        status = '出血';
+                        status = Message.display('stateBleeding');
                         color = debuffColor;
                         break;
                     case 'breakArmorEffect':
-                        status = '破甲';
+                        status = Message.display('stateBreakArmor');
                         color = debuffColor;
                         break;
                     case 'wetEffect':
-                        status = '濡濕';
+                        status = Message.display('stateWet');
                         color = debuffColor;
                         break;
                     case 'legWoundedEffect':
