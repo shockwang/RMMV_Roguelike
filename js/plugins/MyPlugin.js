@@ -243,6 +243,7 @@
   var mobFleeHpPercentage = 0.3;
   var carryObjectMaxNum = 52;
   var controlCommandDelay = 50;
+  var skillLevelMax = 10;
 
   // word attached
   var groundWord = '(地上)';
@@ -1921,10 +1922,10 @@
     // Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
     // Soul_Obtained_Action.learnSkill(Skill_IceBolt);
     // Soul_Obtained_Action.learnSkill(Skill_IceBreath);
-    // Soul_Obtained_Action.learnSkill(Skill_Charge);
+    Soul_Obtained_Action.learnSkill(Skill_Charge);
     // Soul_Obtained_Action.learnSkill(Skill_IceBolder);
-    // Soul_Obtained_Action.learnSkill(Skill_Bash);
-    // Soul_Obtained_Action.learnSkill(Skill_Pierce);
+    Soul_Obtained_Action.learnSkill(Skill_Bash);
+    Soul_Obtained_Action.learnSkill(Skill_Pierce);
     // Soul_Obtained_Action.learnSkill(Skill_Barrier);
     // Soul_Obtained_Action.learnSkill(Skill_Shield);
     // Soul_Obtained_Action.learnSkill(Skill_Clever);
@@ -11655,10 +11656,10 @@
     return true;
   }
 
-  SkillUtils.gainSkillExp = function(realSrc, skill, index, prop) {
+  SkillUtils.gainSkillExp = function(realSrc, skill, lvUpExp) {
     if (realSrc == $gameActors.actor(1)) {
       skill.exp += Soul_Chick.expAfterAmplify(1);
-      if (prop.effect[index].levelUp != -1 && skill.exp >= prop.effect[index].levelUp) {
+      if (lvUpExp != -1 && skill.exp >= lvUpExp) {
         let msg = String.format(Message.display('skillLevelUp'), skill.name)
         TimeUtils.tutorialHandler.msg += msg + '\n';
         LogUtils.addLog(msg);
@@ -11745,6 +11746,20 @@
       }
     }
     return null;
+  }
+
+  SkillUtils.getWarSkillLevelUpExp = function(skillLv) {
+    if (skillLv == skillLevelMax) {
+      return -1;
+    }
+    return 50 * skillLv;
+  }
+
+  SkillUtils.getMagicSkillLevelUpExp = function(skillLv) {
+    if (skillLv == skillLevelMax) {
+      return -1;
+    }
+    return 10 * skillLv;
   }
 
   //-----------------------------------------------------------------------------------
@@ -12012,14 +12027,7 @@
   Skill_Bite.prop = {
     type: "SKILL",
     subType: "DIRECTIONAL",
-    damageType: "MELEE",
-    effect: [
-      {lv: 1, baseDamage: 6, bleedPercentage: 0.1, maxBleedTurn: 3, levelUp: 50},
-      {lv: 2, baseDamage: 8, bleedPercentage: 0.2, maxBleedTurn: 5, levelUp: 150},
-      {lv: 3, baseDamage: 10, bleedPercentage: 0.3, maxBleedTurn: 7, levelUp: 300},
-      {lv: 4, baseDamage: 12, bleedPercentage: 0.4, maxBleedTurn: 9, levelUp: 450},
-      {lv: 5, baseDamage: 14, bleedPercentage: 0.5, maxBleedTurn: 11, levelUp: -1}
-    ]
+    damageType: "MELEE"
   }
 
   Skill_Bite.prototype.action = function(src, target) {
@@ -12029,9 +12037,7 @@
 
     if (target) {
       let realTarget = BattleUtils.getRealTarget(target);
-      let prop = Skill_Bite.prop;
-      let index = this.lv - 1;
-      let atkValue = prop.effect[index].baseDamage + realSrc.param(2) / 3;
+      let atkValue = 4 + this.lv * 2 + realSrc.param(2) / 3;
       let value = BattleUtils.calcPhysicalDamage(realSrc, realTarget, atkValue);
       TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 12));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
@@ -12039,13 +12045,13 @@
         , LogUtils.getPerformedTargetName(realSrc, realTarget), this.name, value));
       CharUtils.decreaseHp(realTarget, value);
       // check if causes bleeding
-      if (Math.random() < prop.effect[index].bleedPercentage) {
-        realTarget.status.bleedingEffect.turns += dice(1, prop.effect[index].maxBleedTurn);
+      if (Math.random() < this.lv / 15) {
+        realTarget.status.bleedingEffect.turns += dice(1, 1 + this.lv * 2);
         TimeUtils.eventScheduler.addStatusEffect(target, 'bleedingEffect');
         TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '出血'));
         LogUtils.addLog(String.format(Message.display('bleeding'), LogUtils.getCharName(realTarget)));
       }
-      SkillUtils.gainSkillExp(realSrc, this, index, prop);
+      SkillUtils.gainSkillExp(realSrc, this, SkillUtils.getWarSkillLevelUpExp(this.lv));
       BattleUtils.checkTargetAlive(realSrc, realTarget, target);
     } else {
       LogUtils.addLog(String.format(Message.display('attackAir'), LogUtils.getCharName(realSrc)
@@ -12078,14 +12084,7 @@
   Skill_Bash.prop = {
     type: "SKILL",
     subType: "DIRECTIONAL",
-    damageType: "MELEE",
-    effect: [
-      {lv: 1, baseDamage: 6, faintPercentage: 0.1, faintTurnMax: 2, levelUp: 50},
-      {lv: 2, baseDamage: 8, faintPercentage: 0.2, faintTurnMax: 3, levelUp: 150},
-      {lv: 3, baseDamage: 10, faintPercentage: 0.3, faintTurnMax: 4, levelUp: 300},
-      {lv: 4, baseDamage: 12, faintPercentage: 0.4, faintTurnMax: 5, levelUp: 450},
-      {lv: 5, baseDamage: 14, faintPercentage: 0.5, faintTurnMax: 6, levelUp: -1}
-    ]
+    damageType: "MELEE"
   }
 
   Skill_Bash.prototype.action = function(src, target) {
@@ -12095,9 +12094,7 @@
 
     if (target) {
       let realTarget = BattleUtils.getRealTarget(target);
-      let prop = Skill_Bash.prop;
-      let index = this.lv - 1;
-      let atkValue = prop.effect[index].baseDamage + realSrc.param(2) / 3;
+      let atkValue = 4 + this.lv * 2 + realSrc.param(2) / 3;
       let value = BattleUtils.calcPhysicalDamage(realSrc, realTarget, atkValue);
       TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 1));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
@@ -12105,13 +12102,13 @@
         , LogUtils.getPerformedTargetName(realSrc, realTarget), this.name, value));
       CharUtils.decreaseHp(realTarget, value);
       // check if causes faint
-      if (Math.random() < prop.effect[index].faintPercentage) {
-        realTarget.status.faintEffect.turns += dice(1, prop.effect[index].faintTurnMax);
+      if (Math.random() < this.lv / 15) {
+        realTarget.status.faintEffect.turns += dice(1, 1 + this.lv);
         TimeUtils.eventScheduler.addStatusEffect(target, 'faintEffect');
         TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '昏迷'));
         LogUtils.addLog(String.format(Message.display('faint'), LogUtils.getCharName(realTarget)));
       }
-      SkillUtils.gainSkillExp(realSrc, this, index, prop);
+      SkillUtils.gainSkillExp(realSrc, this, SkillUtils.getWarSkillLevelUpExp(this.lv));
       BattleUtils.checkTargetAlive(realSrc, realTarget, target);
     } else {
       LogUtils.addLog(String.format(Message.display('attackAir'), LogUtils.getCharName(realSrc)
@@ -12144,14 +12141,7 @@
   Skill_Pierce.prop = {
     type: "SKILL",
     subType: "DIRECTIONAL",
-    damageType: "MELEE",
-    effect: [
-      {lv: 1, baseDamage: 6, breakArmorPercentage: 0.1, breakArmorTurnMax: 5, levelUp: 50},
-      {lv: 2, baseDamage: 8, breakArmorPercentage: 0.2, breakArmorTurnMax: 7, levelUp: 150},
-      {lv: 3, baseDamage: 10, breakArmorPercentage: 0.3, breakArmorTurnMax: 9, levelUp: 300},
-      {lv: 4, baseDamage: 12, breakArmorPercentage: 0.4, breakArmorTurnMax: 11, levelUp: 450},
-      {lv: 5, baseDamage: 14, breakArmorPercentage: 0.5, breakArmorTurnMax: 13, levelUp: -1}
-    ]
+    damageType: "MELEE"
   }
 
   Skill_Pierce.prototype.action = function(src, target) {
@@ -12161,9 +12151,7 @@
 
     if (target) {
       let realTarget = BattleUtils.getRealTarget(target);
-      let prop = Skill_Pierce.prop;
-      let index = this.lv - 1;
-      let atkValue = prop.effect[index].baseDamage + realSrc.param(2) / 3;
+      let atkValue = 4 + this.lv * 2 + realSrc.param(2) / 3;
       let value = BattleUtils.calcPhysicalDamage(realSrc, realTarget, atkValue);
       TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 11));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
@@ -12171,13 +12159,13 @@
         , LogUtils.getPerformedTargetName(realSrc, realTarget), this.name, value));
       CharUtils.decreaseHp(realTarget, value);
       // check if causes break armor
-      if (Math.random() < prop.effect[index].breakArmorPercentage) {
-        realTarget.status.breakArmorEffect.turns += dice(1, prop.effect[index].breakArmorTurnMax);
+      if (Math.random() < this.lv / 15) {
+        realTarget.status.breakArmorEffect.turns += dice(1, 3 + this.lv * 2);
         TimeUtils.eventScheduler.addStatusEffect(target, 'breakArmorEffect');
         TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '破甲'));
         LogUtils.addLog(String.format(Message.display('breakArmor'), LogUtils.getCharName(realTarget)));
       }
-      SkillUtils.gainSkillExp(realSrc, this, index, prop);
+      SkillUtils.gainSkillExp(realSrc, this, SkillUtils.getWarSkillLevelUpExp(this.lv));
       BattleUtils.checkTargetAlive(realSrc, realTarget, target);
     } else {
       LogUtils.addLog(String.format(Message.display('attackAir'), LogUtils.getCharName(realSrc)
@@ -12210,14 +12198,7 @@
   Skill_Charge.prop = {
     type: "SKILL",
     subType: "PROJECTILE",
-    damageType: "MELEE",
-    effect: [
-      {lv: 1, baseDamage: 6, knockBackPercentage: 0.1, levelUp: 50},
-      {lv: 2, baseDamage: 8, knockBackPercentage: 0.2, levelUp: 150},
-      {lv: 3, baseDamage: 10, knockBackPercentage: 0.3, levelUp: 300},
-      {lv: 4, baseDamage: 12, knockBackPercentage: 0.4, levelUp: 450},
-      {lv: 5, baseDamage: 14, knockBackPercentage: 0.5, levelUp: -1}
-    ]
+    damageType: "MELEE"
   }
 
   Skill_Charge.data = {
@@ -12300,9 +12281,7 @@
           let target = MapUtils.getCharXy(checkX, checkY);
           if (target) {
             let realTarget = BattleUtils.getRealTarget(target);
-            let prop = Skill_Charge.prop;
-            let index = data.skill.lv - 1;
-            let atkValue = prop.effect[index].baseDamage + realSrc.param(2) / 3;
+            let atkValue = 6 + data.skill.lv * 2 + realSrc.param(2) / 3;
             let value = BattleUtils.calcPhysicalDamage(realSrc, realTarget, atkValue);
             TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 2));
             TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
@@ -12310,7 +12289,7 @@
               , LogUtils.getPerformedTargetName(realSrc, realTarget), data.skill.name, value));
             CharUtils.decreaseHp(realTarget, value);
             // check if causes knock back
-            if (Math.random() < prop.effect[index].knockBackPercentage) {
+            if (Math.random() < data.skill.lv / 15) {
               // check if target able to be knocked back
               if ((data.moveData.moveFunc == 'moveStraight' && target.canPass(target._x, target._y, data.moveData.param1))
                 || (data.moveData.moveFunc == 'moveDiagonally'
@@ -12324,7 +12303,7 @@
                 LogUtils.addLog(String.format(Message.display('bumpKnockFaint'), LogUtils.getCharName(realTarget)));
               }
             }
-            SkillUtils.gainSkillExp(realSrc, data.skill, index, prop);
+            SkillUtils.gainSkillExp(realSrc, data.skill, SkillUtils.getWarSkillLevelUpExp(data.skill.lv));
             BattleUtils.checkTargetAlive(realSrc, realTarget, target);
             data.nowDistance = 100;
           } else {
