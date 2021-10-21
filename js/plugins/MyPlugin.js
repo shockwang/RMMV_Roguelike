@@ -388,6 +388,7 @@
     language: 'chinese',
     chinese: {
       meleeAttack: '{0}對{1}造成了{2}點傷害.',
+      meleeAttackAir: '{0}對空氣發動攻擊.',
       shootProjectile: '{0}發射了{1}!',
       projectileAttack: '{0}的{1}對{2}造成了{3}點傷害.',
       targetKilled: '{0}被{1}殺死了!',
@@ -1767,7 +1768,7 @@
       // temp setup
       skillObtainedHint: $dataMap.events[31]
     }
-    $gameVariables[0].skillObtainedHintFlag = false;
+    $gameVariables[0].skillObtainedHintFlag = true; // set to true for debug purpose
     // tutorial
     $gameVariables[0].tutorialOn = true;
     $gameVariables[0].tutorialEvents = {
@@ -1953,6 +1954,8 @@
     // $gameParty.gainItem(new Ring_ColdResistance(), 1);
     // $gameParty.gainItem(new Ring_AcidResistance(), 1);
     // $gameParty.gainItem(new Ring_ParalyzeResistance(), 1);
+    $gameParty.gainItem(new Dog_Scimitar(), 1);
+    $gameParty.gainItem(new Dog_Spear(), 1);
     $gameParty.gainItem(new Cheese(), 1);
     $gameParty.gainItem(new Cheese(), 1);
     // for (let i = 0; i < 6; i++) {
@@ -6307,6 +6310,11 @@
               SceneManager.push(Scene_FireProjectile);
             }
             break;
+          case 'F': // melee attack
+            $gameVariables[0].directionalAction = BattleUtils.checkMeleeAttack;
+            $gameVariables[0].directionalFlag = true;
+            MapUtils.displayMessage(Message.display('askDirection'));
+          break;
           case 'q': // quaff potion
             SceneManager.push(Scene_QuaffPotion);
             break;
@@ -7128,6 +7136,15 @@
       let prop = JSON.parse($dataWeapons[realSrc._equips[0].itemId()].note);
       // TODO: implement weapon types
       switch (prop.subType) {
+        case 'SCIMITAR':
+          skillClass = Skill_Scimitar;
+          break;
+        case 'SPEAR':
+          skillClass = Skill_Spear;
+          break;
+        case 'STAFF':
+          skillClass = Skill_Staff;
+          break;
         default:
           skillClass = Skill_MartialArt;
           break;
@@ -7149,9 +7166,8 @@
     return null;
   }
 
-  BattleUtils.meleeAttack = function (src, target) {
+  BattleUtils.meleeAttack = function (src, target, fromCmd) {
     var realSrc = BattleUtils.getRealTarget(src);
-    var realTarget = BattleUtils.getRealTarget(target);
     if (realSrc._tp < attackTpCost) {
       if (src == $gamePlayer) {
         MapUtils.displayMessage(Message.display('noEnergy'));
@@ -7159,18 +7175,25 @@
       return false;
     } else {
       CharUtils.decreaseTp(realSrc, attackTpCost);
+      realSrc.attacked = true;
     }
+    // check if target exists
+    if (!target) {
+      LogUtils.addLog(String.format(Message.display('meleeAttackAir'), LogUtils.getCharName(realSrc)));
+      return true;
+    }
+    var realTarget = BattleUtils.getRealTarget(target);
 
     // calculate the damage
     let weaponBonus = 0;
+    let weaponSkill = new Skill_MartialArt();
     if (realSrc == $gameActors.actor(1)) {
-      let weaponSkill = BattleUtils.getWeaponSkill(realSrc);
+      weaponSkill = BattleUtils.getWeaponSkill(realSrc);
       if (weaponSkill) {
-        let prop = window[weaponSkill.constructor.name].prop;
-        let index = weaponSkill.lv;
-        weaponBonus = prop.effect[index].atk;
+        weaponBonus = weaponSkill.getDamage();
         weaponSkill.exp += Soul_Chick.expAfterAmplify(1);
-        if (prop.effect[index].levelUp != -1 && weaponSkill.exp >= prop.effect[index].levelUp) {
+        let lvUpExp = SkillUtils.getWeaponSkillLevelUpExp(weaponSkill.lv);
+        if (lvUpExp != -1 && weaponSkill.exp >= lvUpExp) {
           let msg = String.format(Message.display('skillLevelUp'), weaponSkill.name);
           TimeUtils.tutorialHandler.msg += msg + '\n';
           LogUtils.addLog(msg);
@@ -7179,10 +7202,10 @@
         }
       } else {
         let skillClass = BattleUtils.getWeaponClass(realSrc);
-        let newWeaponSkill = new skillClass();
-        realSrc._skills.push(newWeaponSkill);
-        newWeaponSkill.lv = 0;
-        newWeaponSkill.exp = 1;
+        weaponSkill = new skillClass();
+        realSrc._skills.push(weaponSkill);
+        weaponSkill.lv = 0;
+        weaponSkill.exp = Soul_Chick.expAfterAmplify(1);
       }
     }
 
@@ -7192,14 +7215,48 @@
       , LogUtils.getCharName(realTarget), value));
     CharUtils.decreaseHp(realTarget, value);
     CharUtils.updatesleepEffectWhenHit(realTarget);
-    // hit animation
-    TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 16));
+    // hit animation (depends on weapon class)
+    switch (window[weaponSkill.constructor.name]) {
+      case Skill_MartialArt:
+        animeId = 16;
+        // check if knock back
+        if (getRandomInt(100) < weaponSkill.knockBackPercentage()) {
+          let moveData = MapUtils.getDisplacementData(src._x, src._y, target._x, target._y);
+          Skill_Charge.prepareData(src, target._x, target._y, moveData);
+          Skill_Charge.knockBack(target, realTarget, Skill_Charge.data);
+        }
+        break;
+      case Skill_Scimitar:
+        animeId = 6;
+        // check if bleeding
+        if (getRandomInt(100) < weaponSkill.bleedingPercentage()) {
+          Skill_Bite.bleeding(target, realTarget, weaponSkill.lv);
+        }
+        break;
+      case Skill_Spear:
+        animeId = 11;
+        // check if break armor
+        if (getRandomInt(100) < weaponSkill.breakArmorPercentage()) {
+          Skill_Pierce.breakArmor(target, realTarget, weaponSkill.lv);
+        }
+        break;
+      case Skill_Staff:
+        animeId = 1;
+        break;
+    }
+    TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', animeId));
     BattleUtils.checkTargetAlive(realSrc, realTarget, target);
-    if (src == $gamePlayer) {
-      $gameActors.actor(1).attacked = true;
+    if (src == $gamePlayer && !fromCmd) {
       TimeUtils.afterPlayerMoved();
     }
     return true;
+  }
+
+  BattleUtils.checkMeleeAttack = function(src, x, y) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    let weaponClass = BattleUtils.getWeaponClass(realSrc);
+    let mobEvt = MapUtils.getCharXy(x, y);
+    return BattleUtils.meleeAttack(src, mobEvt, true);
   }
 
   // for throwing projectile to enemy
@@ -7219,11 +7276,10 @@
         }
       }
       if (weaponSkill) {
-        let prop = window[weaponSkill.constructor.name].prop;
-        let index = weaponSkill.lv;
-        weaponBonus = prop.effect[index].atk;
+        weaponBonus = weaponSkill.getDamage();
         weaponSkill.exp += Soul_Chick.expAfterAmplify(1);
-        if (prop.effect[index].levelUp != -1 && weaponSkill.exp >= prop.effect[index].levelUp) {
+        let lvUpExp = SkillUtils.getWeaponSkillLevelUpExp(weaponSkill.lv);
+        if (lvUpExp != -1 && weaponSkill.exp >= lvUpExp) {
           let msg = String.format(Message.display('skillLevelUp'), weaponSkill.name);
           TimeUtils.tutorialHandler.msg += msg + '\n';
           LogUtils.addLog(msg);
@@ -7234,7 +7290,7 @@
         let newWeaponSkill = new skillClass();
         realSrc._skills.push(newWeaponSkill);
         newWeaponSkill.lv = 0;
-        newWeaponSkill.exp = 1;
+        newWeaponSkill.exp = Soul_Chick.expAfterAmplify(1);
       }
     }
 
@@ -7298,7 +7354,8 @@
       gloves: [],
       shoes: [],
       shield: [],
-      coat: []
+      coat: [],
+      weapon: []
     }
   }
   ItemUtils.recipes = [];
@@ -7662,6 +7719,15 @@
           break;
         case 'CLAW':
           imageData = new ImageData('Collections3', 0, 0, 6);
+          break;
+        case 'SCIMITAR':
+          imageData = new ImageData('Collections1', 5, 1, 6);
+          break;
+        case 'SPEAR':
+          imageData = new ImageData('Collections2', 0, 2, 2);
+          break;
+        case 'STAFF':
+          imageData = new ImageData('Collections2', 3, 0, 4);
           break;
       }
     } else if (DataManager.isArmor(obj)) {
@@ -10442,6 +10508,82 @@
   ItemUtils.recipes.push(Ring_ColdResistance);
 
   //-----------------------------------------------------------------------------------
+  // Dog_Scimitar
+  //
+  // weapon type: SCIMITAR
+
+  Dog_Scimitar = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dog_Scimitar.spawnLevel = 2;
+
+  Dog_Scimitar.itemName = '骨刃(犬)';
+  Dog_Scimitar.itemDescription = '輕薄的長刀';
+  Dog_Scimitar.material = [{itemClass: Dog_Bone, amount: 2}, {itemClass: Rooster_Claw, amount: 4}];
+
+  Dog_Scimitar.prototype = Object.create(EquipTemplate.prototype);
+  Dog_Scimitar.prototype.constructor = Dog_Scimitar;
+
+  Dog_Scimitar.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[14]);
+    this.name = Dog_Scimitar.itemName;
+    this.description = Dog_Scimitar.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(0, 3);
+    modifier += this.bucState;
+    this.traits[2].value = '3d2';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Dog_Scimitar);
+  ItemUtils.equipTemplates[0].weapon.push(Dog_Scimitar);
+
+  //-----------------------------------------------------------------------------------
+  // Dog_Spear
+  //
+  // weapon type: SPEAR
+
+  Dog_Spear = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dog_Spear.spawnLevel = 2;
+
+  Dog_Spear.itemName = '骨矛(犬)';
+  Dog_Spear.itemDescription = '輕薄的長矛';
+  Dog_Spear.material = [{itemClass: Dog_Bone, amount: 2}, {itemClass: Dog_Tooth, amount: 4}];
+
+  Dog_Spear.prototype = Object.create(EquipTemplate.prototype);
+  Dog_Spear.prototype.constructor = Dog_Spear;
+
+  Dog_Spear.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[15]);
+    this.name = Dog_Spear.itemName;
+    this.description = Dog_Spear.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = 0;
+    modifier += this.bucState;
+    this.traits[2].value = '2d3';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Dog_Spear);
+  ItemUtils.equipTemplates[0].weapon.push(Dog_Spear);
+
+  //-----------------------------------------------------------------------------------
   // Potion_Heal
   //
   // item id 31
@@ -11755,14 +11897,21 @@
     if (skillLv == skillLevelMax) {
       return -1;
     }
-    return 50 * skillLv;
+    return 25 * skillLv;
   }
 
   SkillUtils.getMagicSkillLevelUpExp = function(skillLv) {
     if (skillLv == skillLevelMax) {
       return -1;
     }
-    return 10 * skillLv;
+    return 5 * skillLv;
+  }
+
+  SkillUtils.getWeaponSkillLevelUpExp = function(skillLv) {
+    if (skillLv == skillLevelMax) {
+      return -1;
+    }
+    return 40 * (skillLv + 1);
   }
 
   //-----------------------------------------------------------------------------------
@@ -11786,20 +11935,15 @@
 
   Skill_MartialArt.prop = {
     type: "SKILL",
-    subType:"PASSIVE",
-    effect: [
-      {lv: 0, atk: 0, levelUp: 20},
-      {lv: 1, atk: 1, levelUp: 20},
-      {lv: 2, atk: 2, levelUp: 40},
-      {lv: 3, atk: 3, levelUp: 60},
-      {lv: 4, atk: 4, levelUp: 80},
-      {lv: 5, atk: 5, levelUp: 100},
-      {lv: 6, atk: 6, levelUp: 150},
-      {lv: 7, atk: 7, levelUp: 300},
-      {lv: 8, atk: 8, levelUp: 450},
-      {lv: 9, atk: 9, levelUp: 500},
-      {lv: 10, atk: 10, levelUp: -1}
-    ]
+    subType:"PASSIVE"
+  }
+
+  Skill_MartialArt.prototype.getDamage = function() {
+    return this.lv;
+  }
+
+  Skill_MartialArt.prototype.knockBackPercentage = function() {
+    return this.lv * 8;
   }
 
   //-----------------------------------------------------------------------------------
@@ -11823,20 +11967,15 @@
 
   Skill_Scimitar.prop = {
     type: "SKILL",
-    subType:"PASSIVE",
-    effect: [
-      {lv: 0, atk: 0, levelUp: 20},
-      {lv: 1, atk: 1, levelUp: 20},
-      {lv: 2, atk: 2, levelUp: 40},
-      {lv: 3, atk: 3, levelUp: 60},
-      {lv: 4, atk: 4, levelUp: 80},
-      {lv: 5, atk: 5, levelUp: 100},
-      {lv: 6, atk: 6, levelUp: 150},
-      {lv: 7, atk: 7, levelUp: 300},
-      {lv: 8, atk: 8, levelUp: 450},
-      {lv: 9, atk: 9, levelUp: 500},
-      {lv: 10, atk: 10, levelUp: -1}
-    ]
+    subType:"PASSIVE"
+  }
+
+  Skill_Scimitar.prototype.getDamage = function() {
+    return this.lv;
+  }
+
+  Skill_Scimitar.prototype.bleedingPercentage = function() {
+    return this.lv * 8;
   }
 
   //-----------------------------------------------------------------------------------
@@ -11860,20 +11999,15 @@
 
   Skill_Spear.prop = {
     type: "SKILL",
-    subType:"PASSIVE",
-    effect: [
-      {lv: 0, atk: 0, levelUp: 20},
-      {lv: 1, atk: 1, levelUp: 20},
-      {lv: 2, atk: 2, levelUp: 40},
-      {lv: 3, atk: 3, levelUp: 60},
-      {lv: 4, atk: 4, levelUp: 80},
-      {lv: 5, atk: 5, levelUp: 100},
-      {lv: 6, atk: 6, levelUp: 150},
-      {lv: 7, atk: 7, levelUp: 300},
-      {lv: 8, atk: 8, levelUp: 450},
-      {lv: 9, atk: 9, levelUp: 500},
-      {lv: 10, atk: 10, levelUp: -1}
-    ]
+    subType:"PASSIVE"
+  }
+
+  Skill_Spear.prototype.getDamage = function() {
+    return this.lv;
+  }
+
+  Skill_Spear.prototype.breakArmorPercentage = function() {
+    return this.lv * 8;
   }
 
   //-----------------------------------------------------------------------------------
@@ -11897,20 +12031,11 @@
 
   Skill_Staff.prop = {
     type: "SKILL",
-    subType:"PASSIVE",
-    effect: [
-      {lv: 0, atk: 0, levelUp: 20},
-      {lv: 1, atk: 1, levelUp: 20},
-      {lv: 2, atk: 2, levelUp: 40},
-      {lv: 3, atk: 3, levelUp: 60},
-      {lv: 4, atk: 4, levelUp: 80},
-      {lv: 5, atk: 5, levelUp: 100},
-      {lv: 6, atk: 6, levelUp: 150},
-      {lv: 7, atk: 7, levelUp: 300},
-      {lv: 8, atk: 8, levelUp: 450},
-      {lv: 9, atk: 9, levelUp: 500},
-      {lv: 10, atk: 10, levelUp: -1}
-    ]
+    subType:"PASSIVE"
+  }
+
+  Skill_Staff.prototype.manaReducedPercentage = function() {
+    return 10 + this.lv * 7;
   }
 
   //-----------------------------------------------------------------------------------
@@ -11934,20 +12059,11 @@
 
   Skill_Throwing.prop = {
     type: "SKILL",
-    subType:"PASSIVE",
-    effect: [
-      {lv: 0, atk: 0, levelUp: 20},
-      {lv: 1, atk: 2, levelUp: 20},
-      {lv: 2, atk: 5, levelUp: 40},
-      {lv: 3, atk: 8, levelUp: 60},
-      {lv: 4, atk: 10, levelUp: 80},
-      {lv: 5, atk: 12, levelUp: 100},
-      {lv: 6, atk: 15, levelUp: 150},
-      {lv: 7, atk: 20, levelUp: 300},
-      {lv: 8, atk: 28, levelUp: 450},
-      {lv: 9, atk: 35, levelUp: 500},
-      {lv: 10, atk: 40, levelUp: -1}
-    ]
+    subType:"PASSIVE"
+  }
+
+  Skill_Throwing.prototype.getDamage = function() {
+    return this.lv * 3;
   }
 
   //-----------------------------------------------------------------------------------
@@ -12033,6 +12149,13 @@
     damageType: "MELEE"
   }
 
+  Skill_Bite.bleeding = function(target, realTarget, skillLv) {
+    realTarget.status.bleedingEffect.turns += dice(1, 1 + skillLv * 2);
+    TimeUtils.eventScheduler.addStatusEffect(target, 'bleedingEffect');
+    TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '出血'));
+    LogUtils.addLog(String.format(Message.display('bleeding'), LogUtils.getCharName(realTarget)));
+  }
+
   Skill_Bite.prototype.action = function(src, target) {
     let realSrc = BattleUtils.getRealTarget(src);
     CharUtils.decreaseMp(realSrc, this.mpCost);
@@ -12049,10 +12172,7 @@
       CharUtils.decreaseHp(realTarget, value);
       // check if causes bleeding
       if (Math.random() < this.lv / 15) {
-        realTarget.status.bleedingEffect.turns += dice(1, 1 + this.lv * 2);
-        TimeUtils.eventScheduler.addStatusEffect(target, 'bleedingEffect');
-        TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '出血'));
-        LogUtils.addLog(String.format(Message.display('bleeding'), LogUtils.getCharName(realTarget)));
+        Skill_Bite.bleeding(target, realTarget, this.lv);
       }
       SkillUtils.gainSkillExp(realSrc, this, SkillUtils.getWarSkillLevelUpExp(this.lv));
       BattleUtils.checkTargetAlive(realSrc, realTarget, target);
@@ -12147,6 +12267,13 @@
     damageType: "MELEE"
   }
 
+  Skill_Pierce.breakArmor = function(target, realTarget, skillLv) {
+    realTarget.status.breakArmorEffect.turns += dice(1, 3 + skillLv * 2);
+    TimeUtils.eventScheduler.addStatusEffect(target, 'breakArmorEffect');
+    TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '破甲'));
+    LogUtils.addLog(String.format(Message.display('breakArmor'), LogUtils.getCharName(realTarget)));
+  }
+
   Skill_Pierce.prototype.action = function(src, target) {
     let realSrc = BattleUtils.getRealTarget(src);
     CharUtils.decreaseMp(realSrc, this.mpCost);
@@ -12163,10 +12290,7 @@
       CharUtils.decreaseHp(realTarget, value);
       // check if causes break armor
       if (Math.random() < this.lv / 15) {
-        realTarget.status.breakArmorEffect.turns += dice(1, 3 + this.lv * 2);
-        TimeUtils.eventScheduler.addStatusEffect(target, 'breakArmorEffect');
-        TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '破甲'));
-        LogUtils.addLog(String.format(Message.display('breakArmor'), LogUtils.getCharName(realTarget)));
+        Skill_Pierce.breakArmor(target, realTarget, this.lv);
       }
       SkillUtils.gainSkillExp(realSrc, this, SkillUtils.getWarSkillLevelUpExp(this.lv));
       BattleUtils.checkTargetAlive(realSrc, realTarget, target);
@@ -12214,6 +12338,42 @@
     moveData: null
   }
 
+  Skill_Charge.prepareData = function(src, targetX, targetY, moveData, skill) {
+    Skill_Charge.data.moveData = moveData;
+    Skill_Charge.data.skill = skill;
+    if (targetX == src._x) {
+      Skill_Charge.data.directionX = 0;
+    } else if (targetX > src._x) {
+      Skill_Charge.data.directionX = 1;
+    } else {
+      Skill_Charge.data.directionX = -1;
+    }
+
+    if (targetY == src._y) {
+      Skill_Charge.data.directionY = 0;
+    } else if (targetY > src._y) {
+      Skill_Charge.data.directionY = 1;
+    } else {
+      Skill_Charge.data.directionY = -1;
+    }
+    Skill_Charge.data.nowDistance = 0;
+  }
+
+  Skill_Charge.knockBack = function(target, realTarget, data) {
+    // check if target able to be knocked back
+    if ((data.moveData.moveFunc == 'moveStraight' && target.canPass(target._x, target._y, data.moveData.param1))
+      || (data.moveData.moveFunc == 'moveDiagonally'
+      && target.canPassDiagonally(target._x, target._y, data.moveData.param1, data.moveData.param2))) {
+      TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '擊退'));
+      target.setPosition(target._x + data.directionX, target._y + data.directionY);
+      LogUtils.addLog(String.format(Message.display('bumpKnockBack'), LogUtils.getCharName(realTarget)));
+    } else {
+      TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '昏迷'));
+      realTarget.status.faintEffect.turns++;
+      LogUtils.addLog(String.format(Message.display('bumpKnockFaint'), LogUtils.getCharName(realTarget)));
+    }
+  }
+
   Skill_Charge.prototype.action = function(src, x, y) {
     if (src._x == x && src._y == y) {
       MapUtils.displayMessage('你不能向原地發起衝鋒.');
@@ -12229,24 +12389,7 @@
     src.setDirection(moveData.param1);
     AudioManager.playSe({name: "Evasion1", pan: 0, pitch: 100, volume: 100});
     // initialize params
-    Skill_Charge.data.moveData = moveData;
-    Skill_Charge.data.skill = this;
-    if (x == src._x) {
-      Skill_Charge.data.directionX = 0;
-    } else if (x > src._x) {
-      Skill_Charge.data.directionX = 1;
-    } else {
-      Skill_Charge.data.directionX = -1;
-    }
-
-    if (y == src._y) {
-      Skill_Charge.data.directionY = 0;
-    } else if (y > src._y) {
-      Skill_Charge.data.directionY = 1;
-    } else {
-      Skill_Charge.data.directionY = -1;
-    }
-    Skill_Charge.data.nowDistance = 0;
+    Skill_Charge.prepareData(src, x, y, moveData, this);
 
     TimeUtils.actionDone = false;
     let func = function() {
@@ -12293,18 +12436,7 @@
             CharUtils.decreaseHp(realTarget, value);
             // check if causes knock back
             if (Math.random() < data.skill.lv / 15) {
-              // check if target able to be knocked back
-              if ((data.moveData.moveFunc == 'moveStraight' && target.canPass(target._x, target._y, data.moveData.param1))
-                || (data.moveData.moveFunc == 'moveDiagonally'
-                && target.canPassDiagonally(target._x, target._y, data.moveData.param1, data.moveData.param2))) {
-                TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '擊退'));
-                target.setPosition(target._x + data.directionX, target._y + data.directionY);
-                LogUtils.addLog(String.format(Message.display('bumpKnockBack'), LogUtils.getCharName(realTarget)));
-              } else {
-                TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '昏迷'));
-                realTarget.status.faintEffect.turns++;
-                LogUtils.addLog(String.format(Message.display('bumpKnockFaint'), LogUtils.getCharName(realTarget)));
-              }
+              Skill_Charge.knockBack(target, realTarget, data);
             }
             SkillUtils.gainSkillExp(realSrc, data.skill, SkillUtils.getWarSkillLevelUpExp(data.skill.lv));
             BattleUtils.checkTargetAlive(realSrc, realTarget, target);
