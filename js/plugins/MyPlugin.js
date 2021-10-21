@@ -1015,6 +1015,7 @@
           CharUtils.decreaseTp(realSrc, skill.tpCost);
           skillEffect.auraEffect();
         }
+        SkillUtils.gainSkillExp(realSrc, skill, SkillUtils.getWarSkillLevelUpExp(skill.lv));
       } else {
         // update skill effects
         skillEffect.effectCount--;
@@ -1922,16 +1923,19 @@
     // Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
     // Soul_Obtained_Action.learnSkill(Skill_IceBolt);
     // Soul_Obtained_Action.learnSkill(Skill_IceBreath);
-    Soul_Obtained_Action.learnSkill(Skill_Charge);
+    // Soul_Obtained_Action.learnSkill(Skill_Charge);
     // Soul_Obtained_Action.learnSkill(Skill_IceBolder);
-    Soul_Obtained_Action.learnSkill(Skill_Bash);
-    Soul_Obtained_Action.learnSkill(Skill_Pierce);
+    // Soul_Obtained_Action.learnSkill(Skill_Bash);
+    // Soul_Obtained_Action.learnSkill(Skill_Pierce);
     // Soul_Obtained_Action.learnSkill(Skill_Barrier);
     // Soul_Obtained_Action.learnSkill(Skill_Shield);
+    // Soul_Obtained_Action.learnSkill(Skill_Acid);
+    // Soul_Obtained_Action.learnSkill(Skill_Discharge);
     // Soul_Obtained_Action.learnSkill(Skill_Clever);
     // Soul_Obtained_Action.learnSkill(Skill_Scud);
     // Soul_Obtained_Action.learnSkill(Skill_Roar);
     // Soul_Obtained_Action.learnSkill(Skill_Tough);
+    // Soul_Obtained_Action.learnSkill(Skill_Hide);
 
     // modify actor status
     // let player = $gameActors.actor(1);
@@ -1946,10 +1950,9 @@
     // $gameParty.gainItem(new Potion_Heal(), 1);
     // $gameParty.gainItem(new Potion_Heal(), 1);
     // $gameParty.gainItem(new Ring_Protection(), 1);
-    $gameParty.gainItem(new Ring_ColdResistance(), 1);
-    $gameParty.gainItem(new Ring_AcidResistance(), 1);
-    $gameParty.gainItem(new Ring_ParalyzeResistance(), 1);
-    $gameParty.gainItem(new Potion_Blind(), 1);
+    // $gameParty.gainItem(new Ring_ColdResistance(), 1);
+    // $gameParty.gainItem(new Ring_AcidResistance(), 1);
+    // $gameParty.gainItem(new Ring_ParalyzeResistance(), 1);
     $gameParty.gainItem(new Cheese(), 1);
     $gameParty.gainItem(new Cheese(), 1);
     // for (let i = 0; i < 6; i++) {
@@ -5442,7 +5445,7 @@
       if (skill) {
         let index = skill.lv - 1;
         let prop = window[skill.constructor.name].prop;
-        SkillUtils.gainSkillExp(realTarget, skill, index, prop);
+        SkillUtils.gainSkillExp(realTarget, skill, prop.effect[index].levelUp);
       }
     }
     // check if target in the lava
@@ -12018,7 +12021,7 @@
     this.name = '噬咬';
     this.description = '噬咬一名敵人, 機率出血';
     this.iconIndex = 5;
-    this.mpCost = 2;
+    this.mpCost = 0;
     this.tpCost = 10;
     this.lv = 1;
     this.exp = 0;
@@ -12075,7 +12078,7 @@
     this.name = '猛擊';
     this.description = '猛擊一名敵人, 機率昏迷';
     this.iconIndex = 5;
-    this.mpCost = 2;
+    this.mpCost = 0;
     this.tpCost = 10;
     this.lv = 1;
     this.exp = 0;
@@ -12132,7 +12135,7 @@
     this.name = '穿刺';
     this.description = '穿刺一名敵人, 機率破甲';
     this.iconIndex = 5;
-    this.mpCost = 2;
+    this.mpCost = 0;
     this.tpCost = 10;
     this.lv = 1;
     this.exp = 0;
@@ -12189,7 +12192,7 @@
     this.name = '衝鋒';
     this.description = '向一名敵人發起衝鋒, 機率擊退';
     this.iconIndex = 5;
-    this.mpCost = 5;
+    this.mpCost = 0;
     this.tpCost = 40;
     this.lv = 1;
     this.exp = 0;
@@ -12362,7 +12365,7 @@
     this.name = '酸蝕';
     this.description = '對一名敵人噴出酸液, 機率損傷護甲';
     this.iconIndex = 2;
-    this.mpCost = 15;
+    this.mpCost = 10;
     this.tpCost = 0;
     this.lv = 1;
     this.exp = 0;
@@ -12371,14 +12374,7 @@
   Skill_Acid.prop = {
     type: "SKILL",
     subType: "DIRECTIONAL",
-    damageType: "MAGIC",
-    effect: [
-      {lv: 1, baseDamage: 6, acidPercentage: 0.3, levelUp: 50},
-      {lv: 2, baseDamage: 8, acidPercentage: 0.4, levelUp: 150},
-      {lv: 3, baseDamage: 10, acidPercentage: 0.5, levelUp: 300},
-      {lv: 4, baseDamage: 12, acidPercentage: 0.6, levelUp: 450},
-      {lv: 5, baseDamage: 14, acidPercentage: 0.7, levelUp: -1}
-    ]
+    damageType: "MAGIC"
   }
 
   Skill_Acid.damageEquip = function(target, realTarget) {
@@ -12420,9 +12416,7 @@
 
     if (target) {
       let realTarget = BattleUtils.getRealTarget(target);
-      let prop = Skill_Acid.prop;
-      let index = this.lv - 1;
-      let atkValue = prop.effect[index].baseDamage + realSrc.param(4) / 3;
+      let atkValue = 4 + this.lv * 2 + realSrc.param(4) / 3;
       let value = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
       if (realTarget.status.resistance.state.acid > 0) {
         value = Math.round(value / 2);
@@ -12433,11 +12427,11 @@
         , LogUtils.getPerformedTargetName(realSrc, realTarget), this.name, value));
       CharUtils.decreaseHp(realTarget, value);
       // check if causes bleeding
-      if (Math.random() < prop.effect[index].acidPercentage && realTarget.status.resistance.state.acid == 0) {
+      if (Math.random() < (0.2 + this.lv / 2) && realTarget.status.resistance.state.acid == 0) {
         // damage armor/weapon
         Skill_Acid.damageEquip(target, realTarget);
       }
-      SkillUtils.gainSkillExp(realSrc, this, index, prop);
+      SkillUtils.gainSkillExp(realSrc, this, SkillUtils.getMagicSkillLevelUpExp(this.lv));
       BattleUtils.checkTargetAlive(realSrc, realTarget, target);
     } else {
       LogUtils.addLog(String.format(Message.display('attackAir'), LogUtils.getCharName(realSrc)
@@ -12461,7 +12455,7 @@
     this.name = '放電';
     this.description = '對一名敵人釋放電擊, 機率麻痺';
     this.iconIndex = 67;
-    this.mpCost = 15;
+    this.mpCost = 10;
     this.tpCost = 0;
     this.lv = 1;
     this.exp = 0;
@@ -12470,14 +12464,7 @@
   Skill_Discharge.prop = {
     type: "SKILL",
     subType: "DIRECTIONAL",
-    damageType: "MAGIC",
-    effect: [
-      {lv: 1, baseDamage: 6, paralyzePercentage: 0.3, paralyzeTurnMax: 4, levelUp: 50},
-      {lv: 2, baseDamage: 8, paralyzePercentage: 0.4, paralyzeTurnMax: 5, levelUp: 150},
-      {lv: 3, baseDamage: 10, paralyzePercentage: 0.5, paralyzeTurnMax: 6, levelUp: 300},
-      {lv: 4, baseDamage: 12, paralyzePercentage: 0.6, paralyzeTurnMax: 7, levelUp: 450},
-      {lv: 5, baseDamage: 14, paralyzePercentage: 0.7, paralyzeTurnMax: 8, levelUp: -1}
-    ]
+    damageType: "MAGIC"
   }
 
   Skill_Discharge.prototype.action = function(src, target) {
@@ -12487,9 +12474,7 @@
 
     if (target) {
       let realTarget = BattleUtils.getRealTarget(target);
-      let prop = Skill_Discharge.prop;
-      let index = this.lv - 1;
-      let atkValue = prop.effect[index].baseDamage + realSrc.param(4) / 3;
+      let atkValue = 4 + this.lv * 2 + realSrc.param(4) / 3;
       let value = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
       value = Math.round(value * (1 - realTarget.status.resistance.elemental.cold));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 77));
@@ -12498,9 +12483,9 @@
         , LogUtils.getPerformedTargetName(realSrc, realTarget), this.name, value));
       CharUtils.decreaseHp(realTarget, value);
       // check if causes paralysis
-      if (Math.random() < prop.effect[index].paralyzePercentage) {
+      if (Math.random() < 0.2 + this.lv / 2) {
         if (realTarget.status.resistance.state.paralyze == 0) {
-          realTarget.status.paralyzeEffect.turns += dice(1, prop.effect[index].paralyzeTurnMax);
+          realTarget.status.paralyzeEffect.turns += dice(1, 3 + this.lv);
           TimeUtils.eventScheduler.addStatusEffect(target, 'paralyzeEffect');
           TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '麻痺'));
           LogUtils.addLog(String.format(Message.display('paralyze'), LogUtils.getCharName(realTarget)));
@@ -12508,7 +12493,7 @@
           LogUtils.addLog(String.format(Message.display('paralyzeResisted'), LogUtils.getCharName(realTarget)));
         }
       }
-      SkillUtils.gainSkillExp(realSrc, this, index, prop);
+      SkillUtils.gainSkillExp(realSrc, this, SkillUtils.getMagicSkillLevelUpExp(this.lv));
       BattleUtils.checkTargetAlive(realSrc, realTarget, target);
     } else {
       LogUtils.addLog(String.format(Message.display('attackAir'), LogUtils.getCharName(realSrc)
@@ -12532,7 +12517,7 @@
     this.name = '狡詐';
     this.description = '暫時智力提升';
     this.iconIndex = 79;
-    this.mpCost = 10;
+    this.mpCost = 6;
     this.lv = 1;
     this.exp = 0;
     // buff or debuf
@@ -12541,14 +12526,7 @@
 
   Skill_Clever.prop = {
     type: "SKILL",
-    subType: "RANGE",
-    effect: [
-      {lv: 1, buffPercentage: 0.1, turns: 20, levelUp: 50},
-      {lv: 2, buffPercentage: 0.2, turns: 30,levelUp: 150},
-      {lv: 3, buffPercentage: 0.3, turns: 40,levelUp: 300},
-      {lv: 4, buffPercentage: 0.4, turns: 50,levelUp: 450},
-      {lv: 5, buffPercentage: 0.5, turns: 60,levelUp: -1}
-    ]
+    subType: "RANGE"
   }
 
   Skill_Clever.prototype.action = function(src) {
@@ -12556,7 +12534,6 @@
     CharUtils.decreaseMp(realSrc, this.mpCost);
     CharUtils.decreaseTp(realSrc, this.tpCost);
 
-    let prop = window[this.constructor.name].prop;
     let effect = CharUtils.getTargetEffect(realSrc, Skill_Clever);
     if (effect) {
       effect.effectEnd();
@@ -12570,13 +12547,12 @@
       LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
         , LogUtils.getCharName(realSrc), this.name));
     }
-    let index = this.lv - 1;
-    let buffAmount = Math.round(10 + 5 * index + realSrc.param(4) * 0.1);
+    let buffAmount = Math.round(10 + this.lv + realSrc.param(4) * this.lv / 10);
     realSrc._buffs[4] += buffAmount;
-    let newEffect = new SkillEffect_Clever(realSrc, this, prop.effect[index].turns, buffAmount);
+    let newEffect = new SkillEffect_Clever(realSrc, this, 15 + this.lv * 5, buffAmount);
     realSrc.status.skillEffect.push(newEffect);
     TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
-    SkillUtils.gainSkillExp(realSrc, this, index, prop);
+    SkillUtils.gainSkillExp(realSrc, this, SkillUtils.getMagicSkillLevelUpExp(this.lv));
     return true;
   }
 
@@ -12604,14 +12580,7 @@
 
   Skill_Scud.prop = {
     type: "SKILL",
-    subType: "RANGE",
-    effect: [
-      {lv: 1, buffPercentage: 0.1, turns: 20, levelUp: 50},
-      {lv: 2, buffPercentage: 0.2, turns: 30, levelUp: 150},
-      {lv: 3, buffPercentage: 0.3, turns: 40, levelUp: 300},
-      {lv: 4, buffPercentage: 0.4, turns: 50, levelUp: 450},
-      {lv: 5, buffPercentage: 0.5, turns: 60, levelUp: -1}
-    ]
+    subType: "RANGE"
   }
 
   Skill_Scud.prototype.action = function(src) {
@@ -12619,7 +12588,6 @@
     CharUtils.decreaseMp(realSrc, this.mpCost);
     CharUtils.decreaseTp(realSrc, this.tpCost);
 
-    let prop = window[this.constructor.name].prop;
     let effect = CharUtils.getTargetEffect(realSrc, Skill_Scud);
     if (effect) {
       effect.effectEnd();
@@ -12633,13 +12601,12 @@
       LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
         , LogUtils.getCharName(realSrc), this.name));
     }
-    let index = this.lv - 1;
-    let buffAmount = Math.round(10 + 5 * index + realSrc.param(6) * prop.effect[index].buffPercentage);
+    let buffAmount = Math.round(10 + this.lv + realSrc.param(6) * this.lv / 10);
     realSrc._buffs[6] += buffAmount;
-    let newEffect = new SkillEffect_Scud(realSrc, this, prop.effect[index].turns, buffAmount);
+    let newEffect = new SkillEffect_Scud(realSrc, this, 15 + this.lv * 5, buffAmount);
     realSrc.status.skillEffect.push(newEffect);
     TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
-    SkillUtils.gainSkillExp(realSrc, this, index, prop);
+    SkillUtils.gainSkillExp(realSrc, this, SkillUtils.getMagicSkillLevelUpExp(this.lv));
     return true;
   }
 
@@ -12658,7 +12625,7 @@
     this.name = '鐵壁';
     this.description = '暫時護甲強度提升';
     this.iconIndex = 81;
-    this.mpCost = 10;
+    this.mpCost = 6;
     this.lv = 1;
     this.exp = 0;
     // buff or debuf
@@ -12667,14 +12634,7 @@
 
   Skill_Shield.prop = {
     type: "SKILL",
-    subType: "RANGE",
-    effect: [
-      {lv: 1, buffPercentage: 0.1, turns: 20, levelUp: 50},
-      {lv: 2, buffPercentage: 0.2, turns: 30, levelUp: 150},
-      {lv: 3, buffPercentage: 0.3, turns: 40, levelUp: 300},
-      {lv: 4, buffPercentage: 0.4, turns: 50, levelUp: 450},
-      {lv: 5, buffPercentage: 0.5, turns: 60, levelUp: -1}
-    ]
+    subType: "RANGE"
   }
 
   Skill_Shield.prototype.action = function(src) {
@@ -12682,7 +12642,6 @@
     CharUtils.decreaseMp(realSrc, this.mpCost);
     CharUtils.decreaseTp(realSrc, this.tpCost);
 
-    let prop = window[this.constructor.name].prop;
     let effect = CharUtils.getTargetEffect(realSrc, Skill_Shield);
     if (effect) {
       effect.effectEnd();
@@ -12696,12 +12655,11 @@
       LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
         , LogUtils.getCharName(realSrc), this.name));
     }
-    let index = this.lv - 1;
-    let buffAmount = Math.round(5 + 2 * index + realSrc.param(4) * prop.effect[index].buffPercentage);
-    let newEffect = new SkillEffect_Shield(realSrc, this, prop.effect[index].turns, buffAmount);
+    let buffAmount = Math.round(10 + 2 * this.lv + realSrc.param(4) * this.lv / 10);
+    let newEffect = new SkillEffect_Shield(realSrc, this, 15 + this.lv * 5, buffAmount);
     realSrc.status.skillEffect.push(newEffect);
     TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
-    SkillUtils.gainSkillExp(realSrc, this, index, prop);
+    SkillUtils.gainSkillExp(realSrc, this, SkillUtils.getMagicSkillLevelUpExp(this.lv));
     return true;
   }
 
@@ -12720,7 +12678,7 @@
     this.name = '光盾';
     this.description = '暫時魔法抗性提升';
     this.iconIndex = 81;
-    this.mpCost = 10;
+    this.mpCost = 6;
     this.lv = 1;
     this.exp = 0;
     // buff or debuf
@@ -12729,14 +12687,7 @@
 
   Skill_Barrier.prop = {
     type: "SKILL",
-    subType: "RANGE",
-    effect: [
-      {lv: 1, buffPercentage: 0.1, turns: 20, levelUp: 50},
-      {lv: 2, buffPercentage: 0.2, turns: 30, levelUp: 150},
-      {lv: 3, buffPercentage: 0.3, turns: 40, levelUp: 300},
-      {lv: 4, buffPercentage: 0.4, turns: 50, levelUp: 450},
-      {lv: 5, buffPercentage: 0.5, turns: 60, levelUp: -1}
-    ]
+    subType: "RANGE"
   }
 
   Skill_Barrier.prototype.action = function(src) {
@@ -12744,7 +12695,6 @@
     CharUtils.decreaseMp(realSrc, this.mpCost);
     CharUtils.decreaseTp(realSrc, this.tpCost);
 
-    let prop = window[this.constructor.name].prop;
     let effect = CharUtils.getTargetEffect(realSrc, Skill_Barrier);
     if (effect) {
       effect.effectEnd();
@@ -12758,12 +12708,11 @@
       LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
         , LogUtils.getCharName(realSrc), this.name));
     }
-    let index = this.lv - 1;
-    let buffAmount = Math.round(5 + 2 * index + realSrc.param(4) * prop.effect[index].buffPercentage);
-    let newEffect = new SkillEffect_Barrier(realSrc, this, prop.effect[index].turns, buffAmount);
+    let buffAmount = Math.round(10 + 2 * this.lv + realSrc.param(4) * this.lv / 10);
+    let newEffect = new SkillEffect_Barrier(realSrc, this, 15 + this.lv * 5, buffAmount);
     realSrc.status.skillEffect.push(newEffect);
     TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
-    SkillUtils.gainSkillExp(realSrc, this, index, prop);
+    SkillUtils.gainSkillExp(realSrc, this, SkillUtils.getMagicSkillLevelUpExp(this.lv));
     return true;
   }
 
@@ -12783,7 +12732,7 @@
     this.description = '暫時力量提升';
     this.iconIndex = 64;
     this.tpCost = 30;
-    this.mpCost = 5;
+    this.mpCost = 0;
     this.lv = 1;
     this.exp = 0;
     // buff or debuf
@@ -12792,14 +12741,7 @@
 
   Skill_Roar.prop = {
     type: "SKILL",
-    subType: "RANGE",
-    effect: [
-      {lv: 1, buffPercentage: 0.1, turns: 20, levelUp: 50},
-      {lv: 2, buffPercentage: 0.2, turns: 30,levelUp: 150},
-      {lv: 3, buffPercentage: 0.3, turns: 40,levelUp: 300},
-      {lv: 4, buffPercentage: 0.4, turns: 50,levelUp: 450},
-      {lv: 5, buffPercentage: 0.5, turns: 60,levelUp: -1}
-    ]
+    subType: "RANGE"
   }
 
   Skill_Roar.prototype.action = function(src) {
@@ -12807,7 +12749,6 @@
     CharUtils.decreaseMp(realSrc, this.mpCost);
     CharUtils.decreaseTp(realSrc, this.tpCost);
 
-    let prop = window[this.constructor.name].prop;
     let effect = CharUtils.getTargetEffect(realSrc, Skill_Roar);
     if (effect) {
       effect.effectEnd();
@@ -12821,13 +12762,12 @@
       LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
         , LogUtils.getCharName(realSrc), this.name));
     }
-    let index = this.lv - 1;
-    let buffAmount = Math.round(5 + 5 * index + realSrc.param(2) * 0.1);
+    let buffAmount = Math.round(5 + this.lv + realSrc.param(2) * this.lv / 10);
     realSrc._buffs[2] += buffAmount;
-    let newEffect = new SkillEffect_Roar(realSrc, this, prop.effect[index].turns, buffAmount);
+    let newEffect = new SkillEffect_Roar(realSrc, this, 15 + this.lv * 5, buffAmount);
     realSrc.status.skillEffect.push(newEffect);
     TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
-    SkillUtils.gainSkillExp(realSrc, this, index, prop);
+    SkillUtils.gainSkillExp(realSrc, this, SkillUtils.getWarSkillLevelUpExp(this.lv));
     return true;
   }
 
@@ -12847,7 +12787,7 @@
     this.description = '暫時體格提升';
     this.iconIndex = 68;
     this.tpCost = 30;
-    this.mpCost = 5;
+    this.mpCost = 0;
     this.lv = 1;
     this.exp = 0;
     // buff or debuf
@@ -12856,14 +12796,7 @@
 
   Skill_Tough.prop = {
     type: "SKILL",
-    subType: "RANGE",
-    effect: [
-      {lv: 1, buffPercentage: 0.1, turns: 20, levelUp: 50},
-      {lv: 2, buffPercentage: 0.2, turns: 30,levelUp: 150},
-      {lv: 3, buffPercentage: 0.3, turns: 40,levelUp: 300},
-      {lv: 4, buffPercentage: 0.4, turns: 50,levelUp: 450},
-      {lv: 5, buffPercentage: 0.5, turns: 60,levelUp: -1}
-    ]
+    subType: "RANGE"
   }
 
   Skill_Tough.prototype.action = function(src) {
@@ -12871,7 +12804,6 @@
     CharUtils.decreaseMp(realSrc, this.mpCost);
     CharUtils.decreaseTp(realSrc, this.tpCost);
 
-    let prop = window[this.constructor.name].prop;
     let effect = CharUtils.getTargetEffect(realSrc, Skill_Tough);
     if (effect) {
       effect.effectEnd();
@@ -12885,13 +12817,12 @@
       LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
         , LogUtils.getCharName(realSrc), this.name));
     }
-    let index = this.lv - 1;
-    let buffAmount = Math.round(5 + 5 * index + realSrc.param(3) * 0.1);
+    let buffAmount = Math.round(5 + this.lv + realSrc.param(3) * this.lv / 10);
     realSrc._buffs[3] += buffAmount;
-    let newEffect = new SkillEffect_Tough(realSrc, this, prop.effect[index].turns, buffAmount);
+    let newEffect = new SkillEffect_Tough(realSrc, this, 15 + this.lv * 5, buffAmount);
     realSrc.status.skillEffect.push(newEffect);
     TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
-    SkillUtils.gainSkillExp(realSrc, this, index, prop);
+    SkillUtils.gainSkillExp(realSrc, this, SkillUtils.getWarSkillLevelUpExp(this.lv));
     return true;
   }
 
@@ -12909,7 +12840,7 @@
     ItemTemplate.prototype.initialize.call(this, $dataSkills[12]);
     this.name = '隱匿';
     this.description = '隱藏自己的身影一段時間';
-    this.mpCost = 5;
+    this.mpCost = 0;
     this.tpCost = 50;
     this.lv = 1;
     this.exp = 0;
@@ -12917,14 +12848,7 @@
 
   Skill_Hide.prop = {
     type: "SKILL",
-    subType: "RANGE",
-    effect: [
-      {lv: 1, turn: 5, levelUp: 50},
-      {lv: 2, turn: 6, levelUp: 150},
-      {lv: 3, turn: 7, levelUp: 300},
-      {lv: 4, turn: 8, levelUp: 450},
-      {lv: 5, turn: 10, levelUp: -1}
-    ]
+    subType: "RANGE"
   }
 
   Skill_Hide.prototype.action = function(src) {
@@ -12941,12 +12865,12 @@
       LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
         , LogUtils.getCharName(realSrc), this.name));
     }
-    let index = this.lv - 1;
-    if (realSrc.status.invisibleEffect.turns < Skill_Hide.prop.effect[index].turn) {
-      realSrc.status.invisibleEffect.turns = Skill_Hide.prop.effect[index].turn;
+    let invisibleTurns = 4 + this.lv;
+    if (realSrc.status.invisibleEffect.turns < invisibleTurns) {
+      realSrc.status.invisibleEffect.turns = invisibleTurns;
       TimeUtils.eventScheduler.addStatusEffect(src, 'invisibleEffect');
     }
-    SkillUtils.gainSkillExp(realSrc, this, index, Skill_Hide.prop);
+    SkillUtils.gainSkillExp(realSrc, this, SkillUtils.getWarSkillLevelUpExp(this.lv));
     return true;
   }
 
@@ -12965,7 +12889,7 @@
     this.name = '超速再生';
     this.description = '一段時間內迅速回復生命力，但會迅速降低飽食度';
     this.iconIndex = 64;
-    this.mpCost = 10;
+    this.mpCost = 6;
     this.lv = 1;
     this.exp = 0;
     // buff or debuf
@@ -12974,14 +12898,7 @@
 
   Skill_SuperRegen.prop = {
     type: "SKILL",
-    subType: "RANGE",
-    effect: [
-      {lv: 1, turns: 10, levelUp: 50},
-      {lv: 2, turns: 15, levelUp: 150},
-      {lv: 3, turns: 20, levelUp: 300},
-      {lv: 4, turns: 25, levelUp: 450},
-      {lv: 5, turns: 30, levelUp: -1}
-    ]
+    subType: "RANGE"
   }
 
   Skill_SuperRegen.prototype.action = function(src) {
@@ -12989,7 +12906,6 @@
     CharUtils.decreaseMp(realSrc, this.mpCost);
     CharUtils.decreaseTp(realSrc, this.tpCost);
 
-    let prop = window[this.constructor.name].prop;
     let effect = CharUtils.getTargetEffect(realSrc, Skill_SuperRegen);
     if (effect) {
       effect.effectEnd();
@@ -13003,11 +12919,10 @@
       LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
         , LogUtils.getCharName(realSrc), this.name));
     }
-    let index = this.lv - 1;
-    let newEffect = new SkillEffect_SuperRegen(realSrc, this, prop.effect[index].turns);
+    let newEffect = new SkillEffect_SuperRegen(realSrc, this, 8 + this.lv * 2);
     realSrc.status.skillEffect.push(newEffect);
     TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
-    SkillUtils.gainSkillExp(realSrc, this, index, prop);
+    SkillUtils.gainSkillExp(realSrc, this, SkillUtils.getMagicSkillLevelUpExp(this.lv));
     return true;
   }
 
@@ -13036,14 +12951,7 @@
 
   Skill_AuraFire.prop = {
     type: "SKILL",
-    subType: "RANGE",
-    effect: [
-      {lv: 1, baseDamage: 1, levelUp: 50},
-      {lv: 2, baseDamage: 2, levelUp: 150},
-      {lv: 3, baseDamage: 3, levelUp: 300},
-      {lv: 4, baseDamage: 4, levelUp: 450},
-      {lv: 5, baseDamage: 5, levelUp: -1}
-    ]
+    subType: "RANGE"
   }
 
   Skill_AuraFire.prototype.action = function(src) {
@@ -13096,14 +13004,7 @@
 
   Skill_FirePath.prop = {
     type: "SKILL",
-    subType: "RANGE",
-    effect: [
-      {lv: 1, baseDamage: 1, duration: 100, levelUp: 50},
-      {lv: 2, baseDamage: 2, duration: 120, levelUp: 150},
-      {lv: 3, baseDamage: 3, duration: 140, levelUp: 300},
-      {lv: 4, baseDamage: 4, duration: 160, levelUp: 450},
-      {lv: 5, baseDamage: 5, duration: 180, levelUp: -1}
-    ]
+    subType: "RANGE"
   }
 
   Skill_FirePath.prototype.action = function(src) {
@@ -13177,7 +13078,7 @@
     this.name = '火球';
     this.description = '直線射出一顆火球, 魔法傷害';
     this.iconIndex = 64;
-    this.mpCost = 15;
+    this.mpCost = 10;
     this.lv = 1;
     this.exp = 0;
   }
@@ -13185,14 +13086,7 @@
   Skill_FireBall.prop = {
     type: "SKILL",
     subType: "PROJECTILE",
-    damageType: "MAGIC",
-    effect: [
-      {lv: 1, baseDamage: 6, distance: 5, levelUp: 50},
-      {lv: 2, baseDamage: 8, distance: 5, levelUp: 150},
-      {lv: 3, baseDamage: 10, distance: 6, levelUp: 300},
-      {lv: 4, baseDamage: 12, distance: 6, levelUp: 450},
-      {lv: 5, baseDamage: 14, distance: 7, levelUp: -1}
-    ]
+    damageType: "MAGIC"
   }
 
   Skill_FireBall.prototype.action = function(src, x, y) {
@@ -13204,13 +13098,9 @@
     let hitCharFunc = function(vm, target) {
       let realSrc = BattleUtils.getRealTarget(vm.src);
       let realTarget = BattleUtils.getRealTarget(target);
-      // player get exp
-      if (realSrc == $gameActors.actor(1)) {
-        CharUtils.playerGainIntExp(1);
-      }
-      let damage = window[this.skill.constructor.name].prop.effect[this.skill.lv - 1].baseDamage
-        + Math.floor(realSrc.param(4) / 5) - realTarget.param(9);
-      damage = BattleUtils.getFinalDamage(damage);
+
+      let atkValue = 4 + this.skill.lv * 2 + realSrc.param(4) / 3;
+      let damage = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
       CharUtils.decreaseHp(realTarget, damage);
       if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
         TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
@@ -13219,15 +13109,19 @@
           , this.skill.name, LogUtils.getCharName(realTarget), damage));
       }
       BattleUtils.checkTargetAlive(realSrc, realTarget, target);
+      SkillUtils.gainSkillExp(realSrc, this.skill, SkillUtils.getMagicSkillLevelUpExp(this.skill.lv));
     }
     if (CharUtils.playerCanSeeBlock(src._x, src._y)) {
       LogUtils.addLog(String.format(Message.display('shootProjectile'), LogUtils.getCharName(realSrc), this.name));
     }
     let imageData = new ImageData('!Flame', 4, 1, 2);
-    let data = new ProjectileData(this, imageData
-      , window[this.constructor.name].prop.effect[this.lv - 1].distance, hitCharFunc);
+    let data = new ProjectileData(this, imageData, this.getDistance(), hitCharFunc);
     new Projectile_SingleTarget(src, x, y, data);
     return true;
+  }
+
+  Skill_FireBall.prototype.getDistance = function() {
+    return 5 + Math.floor(this.lv / 2);
   }
 
   //-----------------------------------------------------------------------------------
@@ -13245,7 +13139,7 @@
     this.name = '火焰吐息';
     this.description = '直線吐出灼熱的火焰, 魔法貫穿傷害';
     this.iconIndex = 64;
-    this.mpCost = 30;
+    this.mpCost = 20;
     this.lv = 1;
     this.exp = 0;
   }
@@ -13253,14 +13147,7 @@
   Skill_FireBreath.prop = {
     type: "SKILL",
     subType: "PROJECTILE",
-    damageType: "MAGIC",
-    effect: [
-      {lv: 1, baseDamage: 10, distance: 5, levelUp: 50},
-      {lv: 2, baseDamage: 12, distance: 5, levelUp: 150},
-      {lv: 3, baseDamage: 14, distance: 6, levelUp: 300},
-      {lv: 4, baseDamage: 16, distance: 6, levelUp: 450},
-      {lv: 5, baseDamage: 18, distance: 7, levelUp: -1}
-    ]
+    damageType: "MAGIC"
   }
 
   Skill_FireBreath.prototype.action = function(src, x, y) {
@@ -13272,8 +13159,7 @@
     let hitCharFunc = function(vm, target) {
       let realSrc = BattleUtils.getRealTarget(vm.src);
       let realTarget = BattleUtils.getRealTarget(target);
-      let atkValue = window[this.skill.constructor.name].prop.effect[this.skill.lv - 1].baseDamage
-        + realSrc.param(4) / 3;
+      let atkValue = 8 + this.skill.lv * 2 + realSrc.param(4) / 3;
       let damage = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
       damage = Math.round(damage * (1 - realTarget.status.resistance.elemental.cold));
       CharUtils.decreaseHp(realTarget, damage);
@@ -13284,15 +13170,19 @@
           , this.skill.name, LogUtils.getCharName(realTarget), damage));
       }
       BattleUtils.checkTargetAlive(realSrc, realTarget, target);
+      SkillUtils.gainSkillExp(realSrc, this.skill, SkillUtils.getMagicSkillLevelUpExp(this.skill.lv));
     }
     if (CharUtils.playerCanSeeBlock(src._x, src._y)) {
       LogUtils.addLog(String.format(Message.display('shootProjectile'), LogUtils.getCharName(realSrc), this.name));
     }
     let imageData = new ImageData('Collections3', 4, 2, 2);
-    let data = new ProjectileData(this, imageData
-      , window[this.constructor.name].prop.effect[this.lv - 1].distance, hitCharFunc);
+    let data = new ProjectileData(this, imageData, this.getDistance(), hitCharFunc);
     new Projectile_Ray(src, x, y, data);
     return true;
+  }
+
+  Skill_FireBreath.prototype.getDistance = function() {
+    return 5 + Math.floor(this.lv / 2);
   }
 
   //-----------------------------------------------------------------------------------
@@ -13310,7 +13200,7 @@
     this.name = '冰箭';
     this.description = '直線射出一根冰箭, 魔法傷害';
     this.iconIndex = 67;
-    this.mpCost = 15;
+    this.mpCost = 10;
     this.lv = 1;
     this.exp = 0;
   }
@@ -13318,14 +13208,7 @@
   Skill_IceBolt.prop = {
     type: "SKILL",
     subType: "PROJECTILE",
-    damageType: "MAGIC",
-    effect: [
-      {lv: 1, baseDamage: 6, distance: 5, levelUp: 50},
-      {lv: 2, baseDamage: 8, distance: 5, levelUp: 150},
-      {lv: 3, baseDamage: 10, distance: 6, levelUp: 300},
-      {lv: 4, baseDamage: 12, distance: 6, levelUp: 450},
-      {lv: 5, baseDamage: 14, distance: 7, levelUp: -1}
-    ]
+    damageType: "MAGIC"
   }
 
   Skill_IceBolt.prototype.action = function(src, x, y) {
@@ -13337,8 +13220,7 @@
     let hitCharFunc = function(vm, target) {
       let realSrc = BattleUtils.getRealTarget(vm.src);
       let realTarget = BattleUtils.getRealTarget(target);
-      let atkValue = window[this.skill.constructor.name].prop.effect[this.skill.lv - 1].baseDamage
-        + realSrc.param(4) / 3;
+      let atkValue = 4 + this.skill.lv + realSrc.param(4) / 3;
       let damage = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
       damage = Math.round(damage * (1 - realTarget.status.resistance.elemental.cold));
       CharUtils.decreaseHp(realTarget, damage);
@@ -13349,15 +13231,19 @@
           , this.skill.name, LogUtils.getCharName(realTarget), damage));
       }
       BattleUtils.checkTargetAlive(realSrc, realTarget, target);
+      SkillUtils.gainSkillExp(realSrc, this.skill, SkillUtils.getMagicSkillLevelUpExp(this.skill.lv));
     }
     if (CharUtils.playerCanSeeBlock(src._x, src._y)) {
       LogUtils.addLog(String.format(Message.display('shootProjectile'), LogUtils.getCharName(realSrc), this.name));
     }
     let imageData = new ImageData('Collections3', 6, 2, 8);
-    let data = new ProjectileData(this, imageData
-      , window[this.constructor.name].prop.effect[this.lv - 1].distance, hitCharFunc);
+    let data = new ProjectileData(this, imageData, this.getDistance(), hitCharFunc);
     new Projectile_SingleTarget(src, x, y, data);
     return true;
+  }
+
+  Skill_IceBolt.prototype.getDistance = function() {
+    return 5 + Math.floor(this.lv / 2);
   }
 
   //-----------------------------------------------------------------------------------
@@ -13375,7 +13261,7 @@
     this.name = '冰之吐息';
     this.description = '直線吐出冰之氣息, 魔法貫穿傷害';
     this.iconIndex = 67;
-    this.mpCost = 30;
+    this.mpCost = 20;
     this.lv = 1;
     this.exp = 0;
   }
@@ -13383,14 +13269,7 @@
   Skill_IceBreath.prop = {
     type: "SKILL",
     subType: "PROJECTILE",
-    damageType: "MAGIC",
-    effect: [
-      {lv: 1, baseDamage: 10, distance: 5, levelUp: 50},
-      {lv: 2, baseDamage: 12, distance: 5, levelUp: 150},
-      {lv: 3, baseDamage: 14, distance: 6, levelUp: 300},
-      {lv: 4, baseDamage: 16, distance: 6, levelUp: 450},
-      {lv: 5, baseDamage: 18, distance: 7, levelUp: -1}
-    ]
+    damageType: "MAGIC"
   }
 
   Skill_IceBreath.prototype.action = function(src, x, y) {
@@ -13402,8 +13281,7 @@
     let hitCharFunc = function(vm, target) {
       let realSrc = BattleUtils.getRealTarget(vm.src);
       let realTarget = BattleUtils.getRealTarget(target);
-      let atkValue = window[this.skill.constructor.name].prop.effect[this.skill.lv - 1].baseDamage
-        + realSrc.param(4) / 3;
+      let atkValue = 8 + this.skill.lv * 2 + realSrc.param(4) / 3;
       let damage = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
       damage = Math.round(damage * (1 - realTarget.status.resistance.elemental.cold));
       CharUtils.decreaseHp(realTarget, damage);
@@ -13414,15 +13292,19 @@
           , this.skill.name, LogUtils.getCharName(realTarget), damage));
       }
       BattleUtils.checkTargetAlive(realSrc, realTarget, target);
+      SkillUtils.gainSkillExp(realSrc, this.skill, SkillUtils.getMagicSkillLevelUpExp(this.skill.lv));
     }
     if (CharUtils.playerCanSeeBlock(src._x, src._y)) {
       LogUtils.addLog(String.format(Message.display('shootProjectile'), LogUtils.getCharName(realSrc), this.name));
     }
     let imageData = new ImageData('Collections3', 7, 0, 8);
-    let data = new ProjectileData(this, imageData
-      , window[this.constructor.name].prop.effect[this.lv - 1].distance, hitCharFunc);
+    let data = new ProjectileData(this, imageData, this.getDistance(), hitCharFunc);
     new Projectile_Ray(src, x, y, data);
     return true;
+  }
+
+  Skill_IceBreath.prototype.getDistance = function() {
+    return 5 + Math.floor(this.lv / 2);
   }
 
   //-----------------------------------------------------------------------------------
@@ -13440,7 +13322,7 @@
     this.name = '冰岩';
     this.description = '召喚冰岩, 對敵人造成魔法傷害, 亦可作為障礙物';
     this.iconIndex = 67;
-    this.mpCost = 50;
+    this.mpCost = 30;
     this.tpCost = 0;
     this.lv = 1;
     this.exp = 0;
@@ -13449,14 +13331,7 @@
   Skill_IceBolder.prop = {
     type: "SKILL",
     subType: "PROJECTILE",
-    damageType: "MAGIC",
-    effect: [
-      {lv: 1, baseDamage: 20, sustainTime: 200, levelUp: 50},
-      {lv: 2, baseDamage: 25, sustainTime: 240, levelUp: 150},
-      {lv: 3, baseDamage: 30, sustainTime: 280, levelUp: 300},
-      {lv: 4, baseDamage: 35, sustainTime: 320, levelUp: 450},
-      {lv: 5, baseDamage: 40, sustainTime: 360, levelUp: -1}
-    ]
+    damageType: "MAGIC"
   }
 
   Skill_IceBolder.prototype.action = function(src, x, y) {
@@ -13466,15 +13341,13 @@
     LogUtils.addLog(String.format(Message.display('objectSummoned'), LogUtils.getCharName(realSrc), this.name));
     let bolder = new IceBolder(x, y);
     AudioManager.playSe({name: "Earth3", pan: 0, pitch: 100, volume: 100});
-    let prop = Skill_IceBolder.prop;
-    let index = this.lv - 1;
     TimeUtils.eventScheduler.insertEvent(new ScheduleEvent(bolder
-      , $gameVariables[0].gameTime + prop.effect[index].sustainTime));
+      , $gameVariables[0].gameTime + 160 + this.lv * 40));
 
     let target = MapUtils.getCharXy(x, y);
     if (target) {
       let realTarget = BattleUtils.getRealTarget(target);
-      let atkValue = prop.effect[index].baseDamage + realSrc.param(4) / 3;
+      let atkValue = 15 + this.lv * 5 + realSrc.param(4) / 3;
       let value = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
       value = Math.round(value * (1 - realTarget.status.resistance.elemental.cold));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 4));
@@ -13482,7 +13355,7 @@
       LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)
         , LogUtils.getPerformedTargetName(realSrc, realTarget), this.name, value));
       CharUtils.decreaseHp(realTarget, value);
-      SkillUtils.gainSkillExp(realSrc, this, index, prop);
+      SkillUtils.gainSkillExp(realSrc, this, SkillUtils.getMagicSkillLevelUpExp(this.lv));
       BattleUtils.checkTargetAlive(realSrc, realTarget, target);
     }
     // deal with tile/trap change
@@ -13689,8 +13562,6 @@
   }
 
   SkillEffect_AuraFire.prototype.auraEffect = function() {
-    let index = this.skill.lv - 1;
-    let prop = Skill_AuraFire.prop;
     let src = BattleUtils.getEventFromCharacter(this.realSrc);
     for (let i = 0; i < 8; i++) {
       let coordinate = MapUtils.getNearbyCoordinate(src._x, src._y, i);
@@ -13698,7 +13569,7 @@
       if (target) {
         let realTarget = BattleUtils.getRealTarget(target);
         if (!realTarget.checked) {
-          let damage = prop.effect[index].baseDamage;
+          let damage = this.skill.lv;
           CharUtils.decreaseHp(realTarget, damage);
           if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
             TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
@@ -13710,7 +13581,6 @@
         }
       }
     }
-    SkillUtils.gainSkillExp(this.realSrc, this.skill, index, prop);
   }
 
   //-----------------------------------------------------------------------------
@@ -13742,12 +13612,11 @@
       $dataMap.events[evts[0]._eventId] = null;
       MapUtils.refreshMap();
     }
-    let evt = new Terrain_Fire(src._x, src._y);
-    let effect = Skill_FirePath.prop.effect[this.skill.lv - 1];
-    evt.evt.damage = effect.baseDamage;
-    evt.evt.expire = $gameVariables[0].gameTime + effect.duration;
-    evt.updateDataMap();
-    TimeUtils.eventScheduler.insertEvent(new ScheduleEvent(evt, evt.evt.expire));
+    let terrainEvt = new Terrain_Fire(src._x, src._y);
+    terrainEvt.evt.damage = this.skill.lv;
+    terrainEvt.evt.expire = $gameVariables[0].gameTime + 80 + this.skill.lv * 20;
+    terrainEvt.updateDataMap();
+    TimeUtils.eventScheduler.insertEvent(new ScheduleEvent(terrainEvt, terrainEvt.evt.expire));
   }
 
   SkillEffect_FirePath.prototype.effectEnd = function() {
@@ -14359,8 +14228,7 @@
   Cat.prototype.projectileAction = function(x, y, distance) {
     if (getRandomInt(100) < 80) { // Skill_FireBall
       let skill = this.mob._skills[1];
-      if (distance <= window[skill.constructor.name].prop.effect[skill.lv - 1].distance
-        && SkillUtils.canPerform(this.mob, skill)) {
+      if (distance <= skill.getDistance() && SkillUtils.canPerform(this.mob, skill)) {
         skill.action(this, x, y);
         return true;
       }
@@ -14731,8 +14599,7 @@
   Ice_Spirit.prototype.projectileAction = function(x, y, distance) {
     if (getRandomInt(100) < 80) { // Skill_IceBolt
       let skill = this.mob._skills[1];
-      if (distance <= window[skill.constructor.name].prop.effect[skill.lv - 1].distance
-        && SkillUtils.canPerform(this.mob, skill)) {
+      if (distance <= skill.getDistance() && SkillUtils.canPerform(this.mob, skill)) {
         skill.action(this, x, y);
         return true;
       }
@@ -14780,8 +14647,7 @@
   Ice_Dragon.prototype.projectileAction = function(x, y, distance) {
     if (getRandomInt(100) < 80) {
       skill = this.mob._skills[2]; // Skill_IceBolt
-      if (distance <= window[skill.constructor.name].prop.effect[skill.lv - 1].distance
-        && SkillUtils.canPerform(this.mob, skill)) {
+      if (distance <= skill.getDistance() && SkillUtils.canPerform(this.mob, skill)) {
         skill.action(this, x, y);
         return true;
       }
@@ -14792,8 +14658,7 @@
   Ice_Dragon.prototype.penetrateAction = function(x, y, distance) {
     if (getRandomInt(100) < 80) {
       let skill = this.mob._skills[3]; // Skill_IceBreath
-      if (distance <= window[skill.constructor.name].prop.effect[skill.lv - 1].distance
-        && SkillUtils.canPerform(this.mob, skill)) {
+      if (distance <= skill.getDistance() && SkillUtils.canPerform(this.mob, skill)) {
         skill.action(this, x, y);
         return true;
       }
@@ -14859,8 +14724,7 @@
     }
     if (getRandomInt(100) < 80) {
       let skill = this.mob._skills[1]; // Skill_IceBolt
-      if (distance <= window[skill.constructor.name].prop.effect[skill.lv - 1].distance
-        && SkillUtils.canPerform(this.mob, skill)) {
+      if (distance <= skill.getDistance() && SkillUtils.canPerform(this.mob, skill)) {
         skill.action(this, x, y);
         return true;
       }
@@ -14871,8 +14735,7 @@
   Selina.prototype.penetrateAction = function(x, y, distance) {
     if (getRandomInt(100) < 80) {
       let skill = this.mob._skills[2]; // Skill_IceBreath
-      if (distance <= window[skill.constructor.name].prop.effect[skill.lv - 1].distance
-        && SkillUtils.canPerform(this.mob, skill)) {
+      if (distance <= skill.getDistance() && SkillUtils.canPerform(this.mob, skill)) {
         skill.action(this, x, y);
         return true;
       }
@@ -15780,7 +15643,7 @@
               let index = skill.lv - 1;
               $gameActors.actor(1).nutrition
                 += Math.floor(item.nutrition * Skill_EatRot.prop.effect[index].nutritionPercentage);
-              SkillUtils.gainSkillExp($gameActors.actor(1), skill, index, Skill_EatRot.prop);
+              SkillUtils.gainSkillExp($gameActors.actor(1), skill, Skill_EatRot.prop.effect[index].levelUp);
             } else {
               $gameActors.actor(1).nutrition += Math.floor(item.nutrition / 2);
               msg += '\n' + Message.display('eatRottenEffected');
