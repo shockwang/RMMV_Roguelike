@@ -388,6 +388,7 @@
     language: 'chinese',
     chinese: {
       meleeAttack: '{0}對{1}造成了{2}點傷害.',
+      meleeAttackWithWeapon: '{0}揮動{1}, 對{2}造成了{3}點傷害.',
       meleeAttackAir: '{0}對空氣發動攻擊.',
       shootProjectile: '{0}發射了{1}!',
       projectileAttack: '{0}的{1}對{2}造成了{3}點傷害.',
@@ -1012,8 +1013,7 @@
             }
           }
 
-          CharUtils.decreaseMp(realSrc, skill.mpCost);
-          CharUtils.decreaseTp(realSrc, skill.tpCost);
+          realSrc.paySkillCost(this);
           skillEffect.auraEffect();
         }
         SkillUtils.gainSkillExp(realSrc, skill, SkillUtils.getWarSkillLevelUpExp(skill.lv));
@@ -1874,6 +1874,12 @@
     // initialize player HP & MP
     CharUtils.updateHpMp($gameActors.actor(1));
 
+    // initialize player weapon skills
+    for (let i = 0; i < SkillUtils.weaponSkillList.length; i++) {
+      let skillClass = SkillUtils.weaponSkillList[i];
+      $gameActors.actor(1)._skills.push(new skillClass());
+    }
+
     // initialize hotkeys
     $gameVariables[0].hotkeys = [];
     for (let i = 0; i < 10; i++) {
@@ -1922,7 +1928,7 @@
     // Soul_Obtained_Action.learnSkill(Skill_FireBreath);
     // Soul_Obtained_Action.learnSkill(Skill_SuperRegen);
     // Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
-    // Soul_Obtained_Action.learnSkill(Skill_IceBolt);
+    Soul_Obtained_Action.learnSkill(Skill_IceBolt);
     // Soul_Obtained_Action.learnSkill(Skill_IceBreath);
     // Soul_Obtained_Action.learnSkill(Skill_Charge);
     // Soul_Obtained_Action.learnSkill(Skill_IceBolder);
@@ -1956,6 +1962,7 @@
     // $gameParty.gainItem(new Ring_ParalyzeResistance(), 1);
     $gameParty.gainItem(new Dog_Scimitar(), 1);
     $gameParty.gainItem(new Dog_Spear(), 1);
+    $gameParty.gainItem(new Dog_Staff(), 1);
     $gameParty.gainItem(new Cheese(), 1);
     $gameParty.gainItem(new Cheese(), 1);
     // for (let i = 0; i < 6; i++) {
@@ -6015,6 +6022,7 @@
         switch (event.key) {
           case 'Enter': case '>': case '<': case 'g': case 'o': case 'c': case 'w': case 'e': case 'f':
           case 'q': case 'r': case 's': case 'W': case 'C': case 'M': case 'z': case 'Z': case ' ': case 'k':
+          case 'F':
             moveStatus = 1;
             break;
         }
@@ -6029,7 +6037,7 @@
         }
         switch (event.key) {
           case 'o': case 'c': case 'f': case 's': case 'W': case 'C': case 'z': case 'Z': case ' ': case 'Enter':
-          case 'k':
+          case 'k': case 'F':
             moveStatus = 2;
             break;
         }
@@ -7189,30 +7197,27 @@
     let weaponSkill = new Skill_MartialArt();
     if (realSrc == $gameActors.actor(1)) {
       weaponSkill = BattleUtils.getWeaponSkill(realSrc);
-      if (weaponSkill) {
-        weaponBonus = weaponSkill.getDamage();
-        weaponSkill.exp += Soul_Chick.expAfterAmplify(1);
-        let lvUpExp = SkillUtils.getWeaponSkillLevelUpExp(weaponSkill.lv);
-        if (lvUpExp != -1 && weaponSkill.exp >= lvUpExp) {
-          let msg = String.format(Message.display('skillLevelUp'), weaponSkill.name);
-          TimeUtils.tutorialHandler.msg += msg + '\n';
-          LogUtils.addLog(msg);
-          weaponSkill.lv++;
-          weaponSkill.exp = 0;
-        }
-      } else {
-        let skillClass = BattleUtils.getWeaponClass(realSrc);
-        weaponSkill = new skillClass();
-        realSrc._skills.push(weaponSkill);
-        weaponSkill.lv = 0;
-        weaponSkill.exp = Soul_Chick.expAfterAmplify(1);
+      if (!weaponSkill) {
+        throw('player no weapon skill from weapon: ' + realSrc._equips[0].name);
       }
+      weaponBonus = weaponSkill.getDamage();      
     }
 
     let value = BattleUtils.calcMeleeDamage(realSrc, realTarget, weaponBonus);
     TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
-    LogUtils.addLog(String.format(Message.display('meleeAttack'), LogUtils.getCharName(realSrc)
+    let weapon;
+    if (src == $gamePlayer) {
+      weapon = $gameActors.actor(1).equips()[0];
+    }
+    if (weapon) {
+      LogUtils.addLog(String.format(Message.display('meleeAttackWithWeapon'), LogUtils.getCharName(realSrc)
+        , weapon.name, LogUtils.getCharName(realTarget), value));
+    } else {
+      LogUtils.addLog(String.format(Message.display('meleeAttack'), LogUtils.getCharName(realSrc)
       , LogUtils.getCharName(realTarget), value));
+    }
+    SkillUtils.gainSkillExp(realSrc, weaponSkill, SkillUtils.getWeaponSkillLevelUpExp(weaponSkill.lv));
+
     CharUtils.decreaseHp(realTarget, value);
     CharUtils.updatesleepEffectWhenHit(realTarget);
     // hit animation (depends on weapon class)
@@ -7254,8 +7259,27 @@
 
   BattleUtils.checkMeleeAttack = function(src, x, y) {
     let realSrc = BattleUtils.getRealTarget(src);
-    let weaponClass = BattleUtils.getWeaponClass(realSrc);
     let mobEvt = MapUtils.getCharXy(x, y);
+    let weaponClass = BattleUtils.getWeaponClass(realSrc);
+    if (!mobEvt && weaponClass == Skill_Spear) {
+      // check if next block contains mob
+      let x2, y2;
+      if (src._x > x) {
+        x2 = x - 1;
+      } else if (src._x < x) {
+        x2 = x + 1;
+      } else {
+        x2 = x;
+      }
+      if (src._y > y) {
+        y2 = y - 1;
+      } else if (src._y < y) {
+        y2 = y + 1;
+      } else {
+        y2 = y;
+      }
+      mobEvt = MapUtils.getCharXy(x2, y2);
+    }
     return BattleUtils.meleeAttack(src, mobEvt, true);
   }
 
@@ -10584,6 +10608,38 @@
   ItemUtils.equipTemplates[0].weapon.push(Dog_Spear);
 
   //-----------------------------------------------------------------------------------
+  // Dog_Staff
+  //
+  // weapon type: STAFF
+
+  Dog_Staff = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dog_Staff.spawnLevel = 2;
+
+  Dog_Staff.itemName = '骨杖(犬)';
+  Dog_Staff.itemDescription = '輕薄的法杖';
+  Dog_Staff.material = [{itemClass: Dog_Bone, amount: 4}];
+
+  Dog_Staff.prototype = Object.create(EquipTemplate.prototype);
+  Dog_Staff.prototype.constructor = Dog_Staff;
+
+  Dog_Staff.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[16]);
+    this.name = Dog_Staff.itemName;
+    this.description = Dog_Staff.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    this.traits[2].value = '1';
+    this.params[4] = 3;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Dog_Staff);
+  ItemUtils.equipTemplates[0].weapon.push(Dog_Staff);
+
+  //-----------------------------------------------------------------------------------
   // Potion_Heal
   //
   // item id 31
@@ -11779,18 +11835,17 @@
   SkillUtils = function() {
     throw new Error('This is a static class');
   }
-
-  SkillUtils.skillList = []; // save all skills
+  SkillUtils.weaponSkillList = [];
 
   SkillUtils.canPerform = function(realSrc, skill) {
-    if (realSrc._tp < skill.tpCost) {
+    if (realSrc._tp < realSrc.skillTpCost(skill)) {
       if (realSrc == $gameActors.actor(1)) {
         setTimeout(function() {
           MapUtils.displayMessage(Message.display('noEnergy'));
         }, 100);
       }
       return false;
-    } else if (realSrc._mp < skill.mpCost) {
+    } else if (realSrc._mp < realSrc.skillMpCost(skill)) {
       if (realSrc == $gameActors.actor(1)) {
         setTimeout(function() {
           MapUtils.displayMessage(Message.display('noMana'));
@@ -11801,9 +11856,10 @@
     return true;
   }
 
-  SkillUtils.gainSkillExp = function(realSrc, skill, lvUpExp) {
+  SkillUtils.gainSkillExp = function(realSrc, skill, lvUpExp, amount) {
     if (realSrc == $gameActors.actor(1)) {
-      skill.exp += Soul_Chick.expAfterAmplify(1);
+      amount = (!amount) ? 1 : amount;
+      skill.exp += Soul_Chick.expAfterAmplify(amount);
       if (lvUpExp != -1 && skill.exp >= lvUpExp) {
         let msg = String.format(Message.display('skillLevelUp'), skill.name)
         TimeUtils.tutorialHandler.msg += msg + '\n';
@@ -11945,6 +12001,7 @@
   Skill_MartialArt.prototype.knockBackPercentage = function() {
     return this.lv * 8;
   }
+  SkillUtils.weaponSkillList.push(Skill_MartialArt);
 
   //-----------------------------------------------------------------------------------
   // Skill_Scimitar
@@ -11977,6 +12034,7 @@
   Skill_Scimitar.prototype.bleedingPercentage = function() {
     return this.lv * 8;
   }
+  SkillUtils.weaponSkillList.push(Skill_Scimitar);
 
   //-----------------------------------------------------------------------------------
   // Skill_Spear
@@ -12009,6 +12067,7 @@
   Skill_Spear.prototype.breakArmorPercentage = function() {
     return this.lv * 8;
   }
+  SkillUtils.weaponSkillList.push(Skill_Spear);
 
   //-----------------------------------------------------------------------------------
   // Skill_Staff
@@ -12034,9 +12093,14 @@
     subType:"PASSIVE"
   }
 
+  Skill_Staff.prototype.getDamage = function() {
+    return 0;
+  }
+
   Skill_Staff.prototype.manaReducedPercentage = function() {
     return 10 + this.lv * 7;
   }
+  SkillUtils.weaponSkillList.push(Skill_Staff);
 
   //-----------------------------------------------------------------------------------
   // Skill_Throwing
@@ -12065,6 +12129,7 @@
   Skill_Throwing.prototype.getDamage = function() {
     return this.lv * 3;
   }
+  SkillUtils.weaponSkillList.push(Skill_Throwing);
 
   //-----------------------------------------------------------------------------------
   // Skill_Chick
@@ -12158,8 +12223,7 @@
 
   Skill_Bite.prototype.action = function(src, target) {
     let realSrc = BattleUtils.getRealTarget(src);
-    CharUtils.decreaseMp(realSrc, this.mpCost);
-    CharUtils.decreaseTp(realSrc, this.tpCost);
+    realSrc.paySkillCost(this);
 
     if (target) {
       let realTarget = BattleUtils.getRealTarget(target);
@@ -12212,8 +12276,7 @@
 
   Skill_Bash.prototype.action = function(src, target) {
     let realSrc = BattleUtils.getRealTarget(src);
-    CharUtils.decreaseMp(realSrc, this.mpCost);
-    CharUtils.decreaseTp(realSrc, this.tpCost);
+    realSrc.paySkillCost(this);
 
     if (target) {
       let realTarget = BattleUtils.getRealTarget(target);
@@ -12276,8 +12339,7 @@
 
   Skill_Pierce.prototype.action = function(src, target) {
     let realSrc = BattleUtils.getRealTarget(src);
-    CharUtils.decreaseMp(realSrc, this.mpCost);
-    CharUtils.decreaseTp(realSrc, this.tpCost);
+    realSrc.paySkillCost(this);
 
     if (target) {
       let realTarget = BattleUtils.getRealTarget(target);
@@ -12380,8 +12442,7 @@
       return false;
     }
     let realSrc = BattleUtils.getRealTarget(src);
-    CharUtils.decreaseMp(realSrc, this.mpCost);
-    CharUtils.decreaseTp(realSrc, this.tpCost);
+    realSrc.paySkillCost(this);
 
     LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
       , LogUtils.getCharName(realSrc), this.name));
@@ -12543,8 +12604,7 @@
 
   Skill_Acid.prototype.action = function(src, target) {
     let realSrc = BattleUtils.getRealTarget(src);
-    CharUtils.decreaseMp(realSrc, this.mpCost);
-    CharUtils.decreaseTp(realSrc, this.tpCost);
+    realSrc.paySkillCost(this);
 
     if (target) {
       let realTarget = BattleUtils.getRealTarget(target);
@@ -12601,8 +12661,7 @@
 
   Skill_Discharge.prototype.action = function(src, target) {
     let realSrc = BattleUtils.getRealTarget(src);
-    CharUtils.decreaseMp(realSrc, this.mpCost);
-    CharUtils.decreaseTp(realSrc, this.tpCost);
+    realSrc.paySkillCost(this);
 
     if (target) {
       let realTarget = BattleUtils.getRealTarget(target);
@@ -12663,8 +12722,7 @@
 
   Skill_Clever.prototype.action = function(src) {
     let realSrc = BattleUtils.getRealTarget(src);
-    CharUtils.decreaseMp(realSrc, this.mpCost);
-    CharUtils.decreaseTp(realSrc, this.tpCost);
+    realSrc.paySkillCost(this);
 
     let effect = CharUtils.getTargetEffect(realSrc, Skill_Clever);
     if (effect) {
@@ -12717,8 +12775,7 @@
 
   Skill_Scud.prototype.action = function(src) {
     let realSrc = BattleUtils.getRealTarget(src);
-    CharUtils.decreaseMp(realSrc, this.mpCost);
-    CharUtils.decreaseTp(realSrc, this.tpCost);
+    realSrc.paySkillCost(this);
 
     let effect = CharUtils.getTargetEffect(realSrc, Skill_Scud);
     if (effect) {
@@ -12771,8 +12828,7 @@
 
   Skill_Shield.prototype.action = function(src) {
     let realSrc = BattleUtils.getRealTarget(src);
-    CharUtils.decreaseMp(realSrc, this.mpCost);
-    CharUtils.decreaseTp(realSrc, this.tpCost);
+    realSrc.paySkillCost(this);
 
     let effect = CharUtils.getTargetEffect(realSrc, Skill_Shield);
     if (effect) {
@@ -12824,8 +12880,7 @@
 
   Skill_Barrier.prototype.action = function(src) {
     let realSrc = BattleUtils.getRealTarget(src);
-    CharUtils.decreaseMp(realSrc, this.mpCost);
-    CharUtils.decreaseTp(realSrc, this.tpCost);
+    realSrc.paySkillCost(this);
 
     let effect = CharUtils.getTargetEffect(realSrc, Skill_Barrier);
     if (effect) {
@@ -12878,8 +12933,7 @@
 
   Skill_Roar.prototype.action = function(src) {
     let realSrc = BattleUtils.getRealTarget(src);
-    CharUtils.decreaseMp(realSrc, this.mpCost);
-    CharUtils.decreaseTp(realSrc, this.tpCost);
+    realSrc.paySkillCost(this);
 
     let effect = CharUtils.getTargetEffect(realSrc, Skill_Roar);
     if (effect) {
@@ -12933,8 +12987,7 @@
 
   Skill_Tough.prototype.action = function(src) {
     let realSrc = BattleUtils.getRealTarget(src);
-    CharUtils.decreaseMp(realSrc, this.mpCost);
-    CharUtils.decreaseTp(realSrc, this.tpCost);
+    realSrc.paySkillCost(this);
 
     let effect = CharUtils.getTargetEffect(realSrc, Skill_Tough);
     if (effect) {
@@ -12985,8 +13038,7 @@
 
   Skill_Hide.prototype.action = function(src) {
     let realSrc = BattleUtils.getRealTarget(src);
-    CharUtils.decreaseMp(realSrc, this.mpCost);
-    CharUtils.decreaseTp(realSrc, this.tpCost);
+    realSrc.paySkillCost(this);
 
     if (CharUtils.playerCanSeeChar(src)) {
       if (src == $gamePlayer) {
@@ -13035,8 +13087,7 @@
 
   Skill_SuperRegen.prototype.action = function(src) {
     let realSrc = BattleUtils.getRealTarget(src);
-    CharUtils.decreaseMp(realSrc, this.mpCost);
-    CharUtils.decreaseTp(realSrc, this.tpCost);
+    realSrc.paySkillCost(this);
 
     let effect = CharUtils.getTargetEffect(realSrc, Skill_SuperRegen);
     if (effect) {
@@ -13223,8 +13274,7 @@
 
   Skill_FireBall.prototype.action = function(src, x, y) {
     let realSrc = BattleUtils.getRealTarget(src);
-    CharUtils.decreaseMp(realSrc, this.mpCost);
-    CharUtils.decreaseTp(realSrc, this.tpCost);
+    realSrc.paySkillCost(this);
 
     // parent of this function would be ProjectileData
     let hitCharFunc = function(vm, target) {
@@ -13284,8 +13334,7 @@
 
   Skill_FireBreath.prototype.action = function(src, x, y) {
     let realSrc = BattleUtils.getRealTarget(src);
-    CharUtils.decreaseMp(realSrc, this.mpCost);
-    CharUtils.decreaseTp(realSrc, this.tpCost);
+    realSrc.paySkillCost(this);
 
     // parent of this function would be ProjectileData
     let hitCharFunc = function(vm, target) {
@@ -13345,8 +13394,7 @@
 
   Skill_IceBolt.prototype.action = function(src, x, y) {
     let realSrc = BattleUtils.getRealTarget(src);
-    CharUtils.decreaseMp(realSrc, this.mpCost);
-    CharUtils.decreaseTp(realSrc, this.tpCost);
+    realSrc.paySkillCost(this);
 
     // parent of this function would be ProjectileData
     let hitCharFunc = function(vm, target) {
@@ -13406,8 +13454,7 @@
 
   Skill_IceBreath.prototype.action = function(src, x, y) {
     let realSrc = BattleUtils.getRealTarget(src);
-    CharUtils.decreaseMp(realSrc, this.mpCost);
-    CharUtils.decreaseTp(realSrc, this.tpCost);
+    realSrc.paySkillCost(this);
 
     // parent of this function would be ProjectileData
     let hitCharFunc = function(vm, target) {
@@ -13468,8 +13515,8 @@
 
   Skill_IceBolder.prototype.action = function(src, x, y) {
     let realSrc = BattleUtils.getRealTarget(src);
-    CharUtils.decreaseMp(realSrc, this.mpCost);
-    CharUtils.decreaseTp(realSrc, this.tpCost);
+    realSrc.paySkillCost(this);
+
     LogUtils.addLog(String.format(Message.display('objectSummoned'), LogUtils.getCharName(realSrc), this.name));
     let bolder = new IceBolder(x, y);
     AudioManager.playSe({name: "Earth3", pan: 0, pitch: 100, volume: 100});
@@ -16836,6 +16883,43 @@
     return expPerLevel[level - 1];
   };
 
+  // modify skillMpCost & skillTpCost to support mp/tp reduce
+  Game_Actor.prototype.skillMpCost = function(skill) {
+    let reduce = 0;
+    if (BattleUtils.getWeaponClass(this) == Skill_Staff) {
+      let weaponSkill = BattleUtils.getWeaponSkill(this);
+      if (weaponSkill) {
+        reduce = weaponSkill.manaReducedPercentage();
+      }
+    }
+    let mpCost = 0;
+    if (skill.mpCost > 0) {
+      mpCost = Math.floor(skill.mpCost * (100 - reduce) / 100);
+      mpCost = (mpCost == 0) ? 1 : mpCost;
+    }
+    return mpCost;
+  };
+
+  Game_Actor.prototype.skillTpCost = function(skill) {
+    return skill.tpCost;
+  };
+
+  // player gain attribute exp
+  Game_Actor.prototype.paySkillCost = function(skill) {
+    let mpCost = this.skillMpCost(skill);
+    this._mp -= mpCost;
+    CharUtils.playerGainWisExp(mpCost);
+    // update staff exp if player equips
+    if (BattleUtils.getWeaponClass(this) == Skill_Staff) {
+      let weaponSkill = BattleUtils.getWeaponSkill(this);
+      SkillUtils.gainSkillExp(this, weaponSkill, SkillUtils.getWeaponSkillLevelUpExp(weaponSkill.lv)
+        , mpCost / 2);
+    }
+    let tpCost = this.skillTpCost(skill);
+    this._tp -= tpCost;
+    CharUtils.playerGainAgiExp(tpCost);
+  };
+
   //-----------------------------------------------------------------------------
   // Game_Item
   //
@@ -17010,6 +17094,39 @@
   };
 
   //-----------------------------------------------------------------------------
+  // Window_Selectable
+  //
+  // The window class with cursor movement and scroll functions.
+
+  // modify this so we can use PageUp/PageDown
+  Window_Selectable.prototype.processCursorMove = function() {
+    if (this.isCursorMovable()) {
+      var lastIndex = this.index();
+      if (Input.isRepeated('down')) {
+        this.cursorDown(Input.isTriggered('down'));
+      }
+      if (Input.isRepeated('up')) {
+        this.cursorUp(Input.isTriggered('up'));
+      }
+      if (Input.isRepeated('right')) {
+        this.cursorRight(Input.isTriggered('right'));
+      }
+      if (Input.isRepeated('left')) {
+        this.cursorLeft(Input.isTriggered('left'));
+      }
+      if (!this.isHandled('Numpad3') && Input.isTriggered('Numpad3')) {
+        this.cursorPagedown();
+      }
+      if (!this.isHandled('Numpad9') && Input.isTriggered('Numpad9')) {
+        this.cursorPageup();
+      }
+      if (this.index() !== lastIndex) {
+        SoundManager.playCursor();
+      }
+    }
+  };
+
+  //-----------------------------------------------------------------------------
   // Window_ControlCommand
   //
   // The window for selecting a control of player character
@@ -17026,6 +17143,7 @@
   };
 
   Window_ControlCommand.prototype.makeCommandList = function() {
+    this.addCommand('近身攻擊', 'melee', true);
     this.addCommand('戰技', 'war', true);
     this.addCommand('魔法', 'magic', true);
     this.addCommand('投射物品', 'fire', true);
@@ -17054,7 +17172,7 @@
   };
 
   Window_ControlCommand.prototype.numVisibleRows = function() {
-    return this.maxItems();
+    return 20;
   };
 
   //-----------------------------------------------------------------------------
@@ -17109,6 +17227,7 @@
     this._controlWindow.setHandler('magic', this.onMagic.bind(this));
     this._controlWindow.setHandler('fire', this.onFire.bind(this));
     this._controlWindow.setHandler('setFire', this.onSetFire.bind(this));
+    this._controlWindow.setHandler('melee', this.onMelee.bind(this));
     this._controlWindow.setHandler('walkDown', this.onWalkDown.bind(this));
     this._controlWindow.setHandler('walkUp', this.onWalkUp.bind(this));
     this._controlWindow.setHandler('inventory', this.onInventory.bind(this));
@@ -17166,6 +17285,13 @@
     SceneManager.pop();
     setTimeout(function() {
       Input._onKeyDown(Scene_Menu.createKeyEvent('Q'));
+    }, controlCommandDelay);
+  }
+
+  Scene_Menu.prototype.onMelee = function() {
+    SceneManager.pop();
+    setTimeout(function() {
+      Input._onKeyDown(Scene_Menu.createKeyEvent('F'));
     }, controlCommandDelay);
   }
 
@@ -17444,7 +17570,7 @@
   };
 
   Window_HelpCommand.prototype.numVisibleRows = function() {
-    return this.maxItems();
+    return 20;
   };
 
   Window_HelpCommand.prototype.callUpdateHelp = function() {
