@@ -16327,6 +16327,24 @@
   };
 
   //-----------------------------------------------------------------------------
+  // Window_CraftTypeCommand
+  //
+  // The window for selecting craft type command on craft scene.
+
+  function Window_CraftTypeCommand() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_CraftTypeCommand.prototype = Object.create(Window_ShopCommand.prototype);
+  Window_CraftTypeCommand.prototype.constructor = Window_CraftTypeCommand;
+
+  Window_CraftTypeCommand.prototype.makeCommandList = function() {
+    this.addCommand('武器', 'weapon');
+    this.addCommand('防具', 'armor');
+    this.addCommand('飾品', 'accessory');
+  };
+
+  //-----------------------------------------------------------------------------
   // Window_CraftRecipes
   //
   // The window for selecting an item to craft on craft screen.
@@ -16391,6 +16409,12 @@
     }
     return false;
   };
+
+  Window_CraftRecipes.prototype.updateShopGoods = function(goods) {
+    this._shopGoods = goods;
+    this._index = 0;
+    this.refresh();
+  }
 
   //-----------------------------------------------------------------------------
   // Window_CraftStatus
@@ -16564,11 +16588,25 @@
   Scene_Craft.prototype.constructor = Scene_Craft;
 
   Scene_Craft.prototype.initialize = function() {
-    this._recipes = [];
+    this._recipes = [[], [], []]; // 0: weapon, 1: armor, 2: accessory
     for (let id in ItemUtils.recipes) {
       let recipe = ItemUtils.recipes[id];
       if (CraftUtils.hasMaterialFromRecipe(recipe)) {
-        this._recipes.push(new recipe());
+        let instance = new recipe();
+        let prop = JSON.parse(instance.note);
+        let index;
+        switch (prop.type) {
+          case 'WEAPON': case 'DART':
+            index = 0;
+            break;
+          case 'ARMOR':
+            index = 1;
+            break;
+          case 'ACCESSORY':
+            index = 2;
+            break;
+        }
+        this._recipes[index].push(instance);
       }
     }
     this._materialShortages = []; // element format: {item: itemInstance, amount: integer}
@@ -16582,6 +16620,7 @@
     this.createCraftHelpWindow();
     this.createMaterialHelpWindow();
     this.createCommandWindow();
+    this.createCraftTypeCommandWindow();
     this.createDummyWindow();
     this.createProcedureWindow();
     this.createCraftStatusWindow();
@@ -16642,10 +16681,21 @@
   Scene_Craft.prototype.createCommandWindow = function() {
     this._commandWindow = new Window_CraftCommand(Graphics.boxWidth);
     this._commandWindow.y = this._craftHelpWindow.height;
-    this._commandWindow.setHandler('craft',    this.commandCraft.bind(this));
+    this._commandWindow.setHandler('craft',    this.commandCraftType.bind(this));
     // this._commandWindow.setHandler('enforce',   this.commandEnforce.bind(this));
     this._commandWindow.setHandler('cancel', this.popScene.bind(this));
     this.addWindow(this._commandWindow);
+  };
+
+  Scene_Craft.prototype.createCraftTypeCommandWindow = function() {
+    this._craftTypeCommandWindow = new Window_CraftTypeCommand(Graphics.boxWidth);
+    this._craftTypeCommandWindow.y = this._craftHelpWindow.height;
+    this._craftTypeCommandWindow.setHandler('weapon', this.commandCraft.bind(this, 0));
+    this._craftTypeCommandWindow.setHandler('armor', this.commandCraft.bind(this, 1));
+    this._craftTypeCommandWindow.setHandler('accessory', this.commandCraft.bind(this, 2));
+    this._craftTypeCommandWindow.setHandler('cancel', this.onCraftTypeCancel.bind(this));
+    this._craftTypeCommandWindow.hide();
+    this.addWindow(this._craftTypeCommandWindow);
   };
 
   Scene_Craft.prototype.createDummyWindow = function() {
@@ -16678,7 +16728,7 @@
   Scene_Craft.prototype.createCraftWindow = function() {
     var wy = this._dummyWindow.y;
     var wh = this._dummyWindow.height;
-    this._craftWindow = new Window_CraftRecipes(0, wy, wh, this._recipes);
+    this._craftWindow = new Window_CraftRecipes(0, wy, wh, []); // goods depend on choices
     this._craftWindow.setHelpWindow(this._craftHelpWindow);
     this._craftWindow.setStatusWindow(this._craftStatusWindow);
     this._craftWindow.hide();
@@ -16699,13 +16749,30 @@
     this.addWindow(this._materialWindow);
   };
 
+  Scene_Craft.prototype.activateCraftTypeWindow = function() {
+    this._craftTypeCommandWindow.show();
+    this._craftTypeCommandWindow.activate();
+  }
+
   Scene_Craft.prototype.activateCraftWindow = function() {
     this._craftWindow.show();
     this._craftWindow.activate();
     this._craftStatusWindow.show();
   };
 
-  Scene_Craft.prototype.commandCraft = function() {
+  Scene_Craft.prototype.commandCraftType = function() {
+    this._commandWindow.hide();
+    this.activateCraftTypeWindow();
+  }
+
+  Scene_Craft.prototype.onCraftTypeCancel = function() {
+    this._craftTypeCommandWindow.hide();
+    this._commandWindow.show();
+    this._commandWindow.activate();
+  }
+
+  Scene_Craft.prototype.commandCraft = function(type) {
+    this._craftWindow.updateShopGoods(this._recipes[type]);
     this._dummyWindow.hide();
     this.activateCraftWindow();
   };
@@ -16734,7 +16801,7 @@
   };
 
   Scene_Craft.prototype.onCraftCancel = function() {
-    this._commandWindow.activate();
+    this._craftTypeCommandWindow.activate();
     this._dummyWindow.show();
     this._craftWindow.hide();
     this._craftStatusWindow.hide();
