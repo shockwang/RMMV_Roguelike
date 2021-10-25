@@ -47,6 +47,7 @@
   var MapVariable = function (mapData, rmDataMap, mapType) {
     this.mapData = mapData;
     this.rmDataMap = rmDataMap;
+    this.mapType = mapType; // EARTH, ICE, FIRE, AIR, FOREST, BAT
 
     // indicates map attributes
     this.generateRandom = false;
@@ -58,7 +59,7 @@
     this.secretBlocks = {}; // indicates secret doors
     this.preDefinedTraps = []; // traps at indicated places
     this.preDefinedMobs = []; // predefined mob class
-    this.mapType = mapType; // EARTH, ICE, FIRE, AIR, FOREST, BAT
+    this.mobStatusEffectList = []; // save mob status/effect when change map
   }
 
   var Coordinate = function (x, y) {
@@ -1768,7 +1769,7 @@
       // temp setup
       skillObtainedHint: $dataMap.events[31]
     }
-    $gameVariables[0].skillObtainedHintFlag = true; // set to true for debug purpose
+    $gameVariables[0].skillObtainedHintFlag = false; // set to true for debug purpose
     // tutorial
     $gameVariables[0].tutorialOn = true;
     $gameVariables[0].tutorialEvents = {
@@ -1914,10 +1915,25 @@
     //   $gameParty.gainItem(new Potion_Acid(), 1);
     //   $gameParty.gainItem(new Potion_Poison(), 1);
     // }
-    // $gameParty.gainItem(new Dog_Tooth(), 1);
-    // for (let i = 0; i < 10; i++) {
-    //   $gameParty.gainItem(new Dart_Lv1_T1(), 1);
-    //   $gameParty.gainItem(new Potion_Invisible(), 1);
+    // for (let i = 0; i < 4; i++) {
+    //   $gameParty.gainItem(new Dog_Bone(), 1);
+    //   $gameParty.gainItem(new Dog_Tooth(), 1);
+    //   $gameParty.gainItem(new Rooster_Claw(), 1);
+    //   $gameParty.gainItem(new Cat_Bone(), 1);
+    //   $gameParty.gainItem(new Cat_Claw(), 1);
+    //   $gameParty.gainItem(new Cat_Tooth(), 1);
+    //   $gameParty.gainItem(new Wolf_Bone(), 1);
+    //   $gameParty.gainItem(new Wolf_Claw(), 1);
+    //   $gameParty.gainItem(new Wolf_Tooth(), 1);
+    //   $gameParty.gainItem(new Bear_Bone(), 1);
+    //   $gameParty.gainItem(new Bear_Claw(), 1);
+    //   $gameParty.gainItem(new Buffalo_Bone(), 1);
+    //   $gameParty.gainItem(new Lion_Bone(), 1);
+    //   $gameParty.gainItem(new Lion_Claw(), 1);
+    //   $gameParty.gainItem(new Lion_Tooth(), 1);
+    //   $gameParty.gainItem(new Dragon_Bone(), 1);
+    //   $gameParty.gainItem(new Dragon_Claw(), 1);
+    //   $gameParty.gainItem(new Dragon_Tooth(), 1);
     // }
 
     $gameParty._items.push(new Soul_Bite());
@@ -1928,7 +1944,7 @@
     // Soul_Obtained_Action.learnSkill(Skill_FireBreath);
     // Soul_Obtained_Action.learnSkill(Skill_SuperRegen);
     // Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
-    Soul_Obtained_Action.learnSkill(Skill_IceBolt);
+    // Soul_Obtained_Action.learnSkill(Skill_IceBolt);
     // Soul_Obtained_Action.learnSkill(Skill_IceBreath);
     // Soul_Obtained_Action.learnSkill(Skill_Charge);
     // Soul_Obtained_Action.learnSkill(Skill_IceBolder);
@@ -1960,9 +1976,27 @@
     // $gameParty.gainItem(new Ring_ColdResistance(), 1);
     // $gameParty.gainItem(new Ring_AcidResistance(), 1);
     // $gameParty.gainItem(new Ring_ParalyzeResistance(), 1);
-    $gameParty.gainItem(new Dog_Scimitar(), 1);
-    $gameParty.gainItem(new Dog_Spear(), 1);
-    $gameParty.gainItem(new Dog_Staff(), 1);
+    // $gameParty.gainItem(new Dog_Scimitar(), 1);
+    // $gameParty.gainItem(new Cat_Scimitar(), 1);
+    // $gameParty.gainItem(new Wolf_Scimitar(), 1);
+    // $gameParty.gainItem(new Bear_Scimitar(), 1);
+    // $gameParty.gainItem(new Lion_Scimitar(), 1);
+    // $gameParty.gainItem(new Dragon_Scimitar(), 1);
+
+    // $gameParty.gainItem(new Dog_Spear(), 1);
+    // $gameParty.gainItem(new Cat_Spear(), 1);
+    // $gameParty.gainItem(new Wolf_Spear(), 1);
+    // $gameParty.gainItem(new Lion_Spear(), 1);
+    // $gameParty.gainItem(new Dragon_Spear(), 1);
+
+    // $gameParty.gainItem(new Dog_Staff(), 1);
+    // $gameParty.gainItem(new Cat_Staff(), 1);
+    // $gameParty.gainItem(new Wolf_Staff(), 1);
+    // $gameParty.gainItem(new Bear_Staff(), 1);
+    // $gameParty.gainItem(new Buffalo_Staff(), 1);
+    // $gameParty.gainItem(new Lion_Staff(), 1);
+    // $gameParty.gainItem(new Dragon_Staff(), 1);
+
     $gameParty.gainItem(new Cheese(), 1);
     $gameParty.gainItem(new Cheese(), 1);
     // for (let i = 0; i < 6; i++) {
@@ -2810,6 +2844,8 @@
         if (SceneManager.isCurrentSceneStarted()) {
           // setup current dungeon tiles
           $gameVariables[0].currentDungeonTiles = MapUtils.getMapTileSet($gameVariables[$gameMap.mapId()].mapType);
+          // restore mob status/effect
+          TimeUtils.eventScheduler.restoreMobStatusEffect();
           // check carry status
           if (stair.type == 1 && $gameActors.actor(1).carryStatus > 1) {
             let damage = dice(2, 3);
@@ -2905,7 +2941,7 @@
       var coordinate = MapUtils.getNearbyCoordinate(nowX, nowY, i);
       var events = MapUtils.findEventsXyFromDataMap($gameVariables[nowMapId].rmDataMap, coordinate.x, coordinate.y);
       for (var id in events) {
-        if (events[id].type == 'MOB') {
+        if (events[id].type == 'MOB' && events[id].mob.moveType != 1) { // mobs in water can not change floor
           var mobData = events[id];
           // check for empty space, attempt to stand on the same relative location as player
           var toCheck = MapUtils.getNearbyCoordinate(newX, newY, i);
@@ -5424,6 +5460,10 @@
   }
 
   TrapUtils.checkTrapStepped = function(target) {
+    if (target._x == -10 && target._y == -10) {
+      // deleted event, ignore
+      return;
+    }
     let evts = $gameMap.eventsXy(target._x, target._y);
     for (let id in evts) {
       let evt = evts[id];
@@ -6484,13 +6524,27 @@
         , null, skillEffect));
     },
     clearEventExceptPlayer: function() {
+      // also save mob status/effect events for recovery
       let eventQueue = this.getEventQueue();
       for (let i = eventQueue.length; i > 0; i--) {
         let evt = eventQueue[i - 1];
         if (evt.target != $gamePlayer) {
+          if (evt.statusName || evt.skillEffect) {
+            $gameVariables[$gameMap.mapId()].mobStatusEffectList.push(evt);
+          }
           eventQueue.splice(i - 1, 1);
         }
       }
+    },
+    restoreMobStatusEffect: function() {
+      for (let id in $gameVariables[$gameMap.mapId()].mobStatusEffectList) {
+        let evt = $gameVariables[$gameMap.mapId()].mobStatusEffectList[id];
+        // re-assign target because target always newed whenever a different map is loaded
+        let oldTarget = evt.target;
+        evt.target = MapUtils.getCharXy(oldTarget._x, oldTarget._y);
+        TimeUtils.eventScheduler.insertEvent(evt);
+      }
+      $gameVariables[$gameMap.mapId()].mobStatusEffectList.length = 0;
     },
     execute: function() {
       if (this.getEventQueue().length > 0) {
@@ -7261,7 +7315,7 @@
     let realSrc = BattleUtils.getRealTarget(src);
     let mobEvt = MapUtils.getCharXy(x, y);
     let weaponClass = BattleUtils.getWeaponClass(realSrc);
-    if (!mobEvt && weaponClass == Skill_Spear) {
+    if (!mobEvt && MapUtils.isTileAvailableForMob($gameMap.mapId(), x, y) && weaponClass == Skill_Spear) {
       // check if next block contains mob
       let x2, y2;
       if (src._x > x) {
@@ -7936,7 +7990,7 @@
         newItemClass = list[getRandomInt(list.length)];
       } else {
         // spawn equipment
-        let indicator = getRandomInt(5);
+        let indicator = getRandomInt(6);
         switch (indicator) {
           case 0: // helmet
             list = ItemUtils.equipTemplates[mapTypeIndex].helmet;
@@ -7952,6 +8006,9 @@
             break;
           case 4: // coat
             list = ItemUtils.equipTemplates[mapTypeIndex].coat;
+            break;
+          case 5: // weapon
+            list = ItemUtils.equipTemplates[mapTypeIndex].weapon;
             break;
         }
         newItemClass = ItemUtils.getItemClassFromList(list, dungeonLevel);
@@ -8150,7 +8207,7 @@
     // average them & apply to this equipment
     let len = materials.length;
     for (let i = 2; i <= 6; i++) {
-      tempValue.params[i] /= len;
+      tempValue.params[i] = Math.round(tempValue.params[i] / len);
       this.params[i] += tempValue.params[i];
     }
     for (let i = 0; i < 2; i++) {
@@ -10570,6 +10627,200 @@
   ItemUtils.equipTemplates[0].weapon.push(Dog_Scimitar);
 
   //-----------------------------------------------------------------------------------
+  // Cat_Scimitar
+  //
+  // weapon type: SCIMITAR
+
+  Cat_Scimitar = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Cat_Scimitar.spawnLevel = 4;
+
+  Cat_Scimitar.itemName = '骨刃(貓)';
+  Cat_Scimitar.itemDescription = '泛著光澤的長刀';
+  Cat_Scimitar.material = [{itemClass: Cat_Bone, amount: 2}, {itemClass: Cat_Claw, amount: 4}];
+
+  Cat_Scimitar.prototype = Object.create(EquipTemplate.prototype);
+  Cat_Scimitar.prototype.constructor = Cat_Scimitar;
+
+  Cat_Scimitar.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[14]);
+    this.name = Cat_Scimitar.itemName;
+    this.description = Cat_Scimitar.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(1, 4);
+    modifier += this.bucState;
+    this.traits[2].value = '3d2';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    this.params[4] = 2;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Cat_Scimitar);
+  ItemUtils.equipTemplates[0].weapon.push(Cat_Scimitar);
+
+  //-----------------------------------------------------------------------------------
+  // Wolf_Scimitar
+  //
+  // weapon type: SCIMITAR
+
+  Wolf_Scimitar = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Wolf_Scimitar.spawnLevel = 6;
+
+  Wolf_Scimitar.itemName = '骨刃(狼)';
+  Wolf_Scimitar.itemDescription = '堅韌的長刀';
+  Wolf_Scimitar.material = [{itemClass: Wolf_Bone, amount: 2}, {itemClass: Wolf_Claw, amount: 4}];
+
+  Wolf_Scimitar.prototype = Object.create(EquipTemplate.prototype);
+  Wolf_Scimitar.prototype.constructor = Wolf_Scimitar;
+
+  Wolf_Scimitar.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[14]);
+    this.name = Wolf_Scimitar.itemName;
+    this.description = Wolf_Scimitar.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(0, 3);
+    modifier += this.bucState;
+    this.traits[2].value = '3d3';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    this.params[4] = 1;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Wolf_Scimitar);
+  ItemUtils.equipTemplates[0].weapon.push(Wolf_Scimitar);
+
+  //-----------------------------------------------------------------------------------
+  // Bear_Scimitar
+  //
+  // weapon type: SCIMITAR
+
+  Bear_Scimitar = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Bear_Scimitar.spawnLevel = 6;
+
+  Bear_Scimitar.itemName = '骨刃(熊)';
+  Bear_Scimitar.itemDescription = '厚實的長刀';
+  Bear_Scimitar.material = [{itemClass: Bear_Bone, amount: 2}, {itemClass: Bear_Claw, amount: 4}];
+
+  Bear_Scimitar.prototype = Object.create(EquipTemplate.prototype);
+  Bear_Scimitar.prototype.constructor = Bear_Scimitar;
+
+  Bear_Scimitar.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[14]);
+    this.name = Bear_Scimitar.itemName;
+    this.description = Bear_Scimitar.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(1, 4);
+    modifier += this.bucState;
+    this.traits[2].value = '3d3';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Bear_Scimitar);
+  ItemUtils.equipTemplates[0].weapon.push(Bear_Scimitar);
+
+  //-----------------------------------------------------------------------------------
+  // Lion_Scimitar
+  //
+  // weapon type: SCIMITAR
+
+  Lion_Scimitar = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Lion_Scimitar.spawnLevel = 8;
+
+  Lion_Scimitar.itemName = '骨刃(獅)';
+  Lion_Scimitar.itemDescription = '大貓骨長刀';
+  Lion_Scimitar.material = [{itemClass: Lion_Bone, amount: 2}, {itemClass: Lion_Claw, amount: 4}];
+
+  Lion_Scimitar.prototype = Object.create(EquipTemplate.prototype);
+  Lion_Scimitar.prototype.constructor = Lion_Scimitar;
+
+  Lion_Scimitar.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[14]);
+    this.name = Lion_Scimitar.itemName;
+    this.description = Lion_Scimitar.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(2, 5);
+    modifier += this.bucState;
+    this.traits[2].value = '3d3';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    this.params[4] = 3;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Lion_Scimitar);
+  ItemUtils.equipTemplates[0].weapon.push(Lion_Scimitar);
+
+  //-----------------------------------------------------------------------------------
+  // Dragon_Scimitar
+  //
+  // weapon type: SCIMITAR
+
+  Dragon_Scimitar = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dragon_Scimitar.spawnLevel = 10;
+
+  Dragon_Scimitar.itemName = '龍骨刃(冰)';
+  Dragon_Scimitar.itemDescription = '寒氣逼人的長刀';
+  Dragon_Scimitar.material = [{itemClass: Dragon_Bone, amount: 2}, {itemClass: Dragon_Claw, amount: 4}];
+
+  Dragon_Scimitar.prototype = Object.create(EquipTemplate.prototype);
+  Dragon_Scimitar.prototype.constructor = Dragon_Scimitar;
+
+  Dragon_Scimitar.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[14]);
+    this.name = Dragon_Scimitar.itemName;
+    this.description = Dragon_Scimitar.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(1, 4);
+    modifier += this.bucState;
+    this.traits[2].value = '3d4';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    this.params[4] = 4;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Dragon_Scimitar);
+  ItemUtils.equipTemplates[0].weapon.push(Dragon_Scimitar);
+
+  //-----------------------------------------------------------------------------------
   // Dog_Spear
   //
   // weapon type: SPEAR
@@ -10608,6 +10859,162 @@
   ItemUtils.equipTemplates[0].weapon.push(Dog_Spear);
 
   //-----------------------------------------------------------------------------------
+  // Cat_Spear
+  //
+  // weapon type: SPEAR
+
+  Cat_Spear = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Cat_Spear.spawnLevel = 4;
+
+  Cat_Spear.itemName = '骨矛(貓)';
+  Cat_Spear.itemDescription = '泛著光澤的長矛';
+  Cat_Spear.material = [{itemClass: Cat_Bone, amount: 2}, {itemClass: Cat_Tooth, amount: 4}];
+
+  Cat_Spear.prototype = Object.create(EquipTemplate.prototype);
+  Cat_Spear.prototype.constructor = Cat_Spear;
+
+  Cat_Spear.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[15]);
+    this.name = Cat_Spear.itemName;
+    this.description = Cat_Spear.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(0, 3);
+    modifier += this.bucState;
+    this.traits[2].value = '2d3';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    this.params[4] = 2;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Cat_Spear);
+  ItemUtils.equipTemplates[0].weapon.push(Cat_Spear);
+
+  //-----------------------------------------------------------------------------------
+  // Wolf_Spear
+  //
+  // weapon type: SPEAR
+
+  Wolf_Spear = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Wolf_Spear.spawnLevel = 6;
+
+  Wolf_Spear.itemName = '骨矛(狼)';
+  Wolf_Spear.itemDescription = '堅韌的長矛';
+  Wolf_Spear.material = [{itemClass: Wolf_Bone, amount: 2}, {itemClass: Wolf_Tooth, amount: 4}];
+
+  Wolf_Spear.prototype = Object.create(EquipTemplate.prototype);
+  Wolf_Spear.prototype.constructor = Wolf_Spear;
+
+  Wolf_Spear.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[15]);
+    this.name = Wolf_Spear.itemName;
+    this.description = Wolf_Spear.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(0, 2);
+    modifier += this.bucState;
+    this.traits[2].value = '2d4';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    this.params[4] = 1;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Wolf_Spear);
+  ItemUtils.equipTemplates[0].weapon.push(Wolf_Spear);
+
+  //-----------------------------------------------------------------------------------
+  // Lion_Spear
+  //
+  // weapon type: SPEAR
+
+  Lion_Spear = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Lion_Spear.spawnLevel = 8;
+
+  Lion_Spear.itemName = '骨矛(獅)';
+  Lion_Spear.itemDescription = '大貓骨長矛';
+  Lion_Spear.material = [{itemClass: Lion_Bone, amount: 2}, {itemClass: Lion_Tooth, amount: 4}];
+
+  Lion_Spear.prototype = Object.create(EquipTemplate.prototype);
+  Lion_Spear.prototype.constructor = Lion_Spear;
+
+  Lion_Spear.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[15]);
+    this.name = Lion_Spear.itemName;
+    this.description = Lion_Spear.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = 0;
+    modifier += this.bucState;
+    this.traits[2].value = '2d5';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    this.params[4] = 3;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Lion_Spear);
+  ItemUtils.equipTemplates[0].weapon.push(Lion_Spear);
+
+  //-----------------------------------------------------------------------------------
+  // Dragon_Spear
+  //
+  // weapon type: SPEAR
+
+  Dragon_Spear = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dragon_Spear.spawnLevel = 10;
+
+  Dragon_Spear.itemName = '龍骨矛(冰)';
+  Dragon_Spear.itemDescription = '寒氣逼人的長矛';
+  Dragon_Spear.material = [{itemClass: Dragon_Bone, amount: 2}, {itemClass: Dragon_Tooth, amount: 4}];
+
+  Dragon_Spear.prototype = Object.create(EquipTemplate.prototype);
+  Dragon_Spear.prototype.constructor = Dragon_Spear;
+
+  Dragon_Spear.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[15]);
+    this.name = Dragon_Spear.itemName;
+    this.description = Dragon_Spear.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(0, 2);
+    modifier += this.bucState;
+    this.traits[2].value = '2d6';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    this.params[4] = 4;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Dragon_Spear);
+  ItemUtils.equipTemplates[0].weapon.push(Dragon_Spear);
+
+  //-----------------------------------------------------------------------------------
   // Dog_Staff
   //
   // weapon type: STAFF
@@ -10632,12 +11039,246 @@
     this.weight = 15;
     ItemUtils.updateEquipName(this);
     // randomize attributes
-    this.traits[2].value = '1';
+    this.traits[2].value = '1d2';
+    let modifier = this.bucState;
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
     this.params[4] = 3;
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dog_Staff);
   ItemUtils.equipTemplates[0].weapon.push(Dog_Staff);
+
+  //-----------------------------------------------------------------------------------
+  // Cat_Staff
+  //
+  // weapon type: STAFF
+
+  Cat_Staff = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Cat_Staff.spawnLevel = 4;
+
+  Cat_Staff.itemName = '骨杖(貓)';
+  Cat_Staff.itemDescription = '泛著光澤的法杖';
+  Cat_Staff.material = [{itemClass: Cat_Bone, amount: 4}];
+
+  Cat_Staff.prototype = Object.create(EquipTemplate.prototype);
+  Cat_Staff.prototype.constructor = Cat_Staff;
+
+  Cat_Staff.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[16]);
+    this.name = Cat_Staff.itemName;
+    this.description = Cat_Staff.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    this.traits[2].value = '1d3';
+    let modifier = this.bucState;
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    this.params[4] = 3;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Cat_Staff);
+  ItemUtils.equipTemplates[0].weapon.push(Cat_Staff);
+
+  //-----------------------------------------------------------------------------------
+  // Wolf_Staff
+  //
+  // weapon type: STAFF
+
+  Wolf_Staff = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Wolf_Staff.spawnLevel = 6;
+
+  Wolf_Staff.itemName = '骨杖(狼)';
+  Wolf_Staff.itemDescription = '堅韌的法杖';
+  Wolf_Staff.material = [{itemClass: Wolf_Bone, amount: 4}];
+
+  Wolf_Staff.prototype = Object.create(EquipTemplate.prototype);
+  Wolf_Staff.prototype.constructor = Wolf_Staff;
+
+  Wolf_Staff.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[16]);
+    this.name = Wolf_Staff.itemName;
+    this.description = Wolf_Staff.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    this.traits[2].value = '1d4';
+    let modifier = this.bucState;
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    this.params[4] = 3;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Wolf_Staff);
+  ItemUtils.equipTemplates[0].weapon.push(Wolf_Staff);
+
+  //-----------------------------------------------------------------------------------
+  // Bear_Staff
+  //
+  // weapon type: STAFF
+
+  Bear_Staff = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Bear_Staff.spawnLevel = 6;
+
+  Bear_Staff.itemName = '骨杖(熊)';
+  Bear_Staff.itemDescription = '厚實的法杖';
+  Bear_Staff.material = [{itemClass: Bear_Bone, amount: 4}];
+
+  Bear_Staff.prototype = Object.create(EquipTemplate.prototype);
+  Bear_Staff.prototype.constructor = Bear_Staff;
+
+  Bear_Staff.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[16]);
+    this.name = Bear_Staff.itemName;
+    this.description = Bear_Staff.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    this.traits[2].value = '1d5';
+    let modifier = this.bucState;
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    this.params[4] = 3;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Bear_Staff);
+  ItemUtils.equipTemplates[0].weapon.push(Bear_Staff);
+
+  //-----------------------------------------------------------------------------------
+  // Buffalo_Staff
+  //
+  // weapon type: STAFF
+
+  Buffalo_Staff = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Buffalo_Staff.spawnLevel = 7;
+
+  Buffalo_Staff.itemName = '骨杖(牛)';
+  Buffalo_Staff.itemDescription = '拿著就會有牛脾氣?';
+  Buffalo_Staff.material = [{itemClass: Buffalo_Bone, amount: 4}];
+
+  Buffalo_Staff.prototype = Object.create(EquipTemplate.prototype);
+  Buffalo_Staff.prototype.constructor = Buffalo_Staff;
+
+  Buffalo_Staff.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[16]);
+    this.name = Buffalo_Staff.itemName;
+    this.description = Buffalo_Staff.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    this.traits[2].value = '1d6';
+    let modifier = this.bucState;
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    this.params[4] = 3;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Buffalo_Staff);
+  ItemUtils.equipTemplates[0].weapon.push(Buffalo_Staff);
+
+  //-----------------------------------------------------------------------------------
+  // Lion_Staff
+  //
+  // weapon type: STAFF
+
+  Lion_Staff = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Lion_Staff.spawnLevel = 8;
+
+  Lion_Staff.itemName = '骨杖(獅)';
+  Lion_Staff.itemDescription = '大貓骨杖';
+  Lion_Staff.material = [{itemClass: Lion_Bone, amount: 4}];
+
+  Lion_Staff.prototype = Object.create(EquipTemplate.prototype);
+  Lion_Staff.prototype.constructor = Lion_Staff;
+
+  Lion_Staff.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[16]);
+    this.name = Lion_Staff.itemName;
+    this.description = Lion_Staff.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    this.traits[2].value = '1d7';
+    let modifier = this.bucState;
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    this.params[4] = 3;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Lion_Staff);
+  ItemUtils.equipTemplates[0].weapon.push(Lion_Staff);
+
+  //-----------------------------------------------------------------------------------
+  // Dragon_Staff
+  //
+  // weapon type: STAFF
+
+  Dragon_Staff = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dragon_Staff.spawnLevel = 10;
+
+  Dragon_Staff.itemName = '龍骨杖(冰)';
+  Dragon_Staff.itemDescription = '寒氣逼人的法杖';
+  Dragon_Staff.material = [{itemClass: Dragon_Bone, amount: 4}];
+
+  Dragon_Staff.prototype = Object.create(EquipTemplate.prototype);
+  Dragon_Staff.prototype.constructor = Dragon_Staff;
+
+  Dragon_Staff.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[16]);
+    this.name = Dragon_Staff.itemName;
+    this.description = Dragon_Staff.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    this.traits[2].value = '1d8';
+    let modifier = this.bucState;
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    this.params[4] = 3;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Dragon_Staff);
+  ItemUtils.equipTemplates[0].weapon.push(Dragon_Staff);
 
   //-----------------------------------------------------------------------------------
   // Potion_Heal
@@ -12094,11 +12735,11 @@
   }
 
   Skill_Staff.prototype.getDamage = function() {
-    return 0;
+    return Math.ceil(this.lv / 2);
   }
 
   Skill_Staff.prototype.manaReducedPercentage = function() {
-    return 10 + this.lv * 7;
+    return 30 + this.lv * 5;
   }
   SkillUtils.weaponSkillList.push(Skill_Staff);
 
@@ -12429,6 +13070,8 @@
       TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '擊退'));
       target.setPosition(target._x + data.directionX, target._y + data.directionY);
       LogUtils.addLog(String.format(Message.display('bumpKnockBack'), LogUtils.getCharName(realTarget)));
+      TrapUtils.checkTrapStepped(target);
+      TrapUtils.updateLastTriggered();
     } else {
       TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '昏迷'));
       realTarget.status.faintEffect.turns++;
