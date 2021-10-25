@@ -14160,6 +14160,17 @@
     let realSrc = BattleUtils.getRealTarget(src);
     realSrc.paySkillCost(this);
 
+    // check if cast on wall or closed door
+    let doorEvt = $gameMap.eventsXy(x, y).filter(function(evt) {
+      return evt.type == 'DOOR';
+    })[0];
+    let mapId = $gameMap.mapId();
+    if (!MapUtils.isTilePassable(mapId, x, y, $gameVariables[mapId].mapData[x][y].originalTile)
+      || (doorEvt && doorEvt.status == 1)) {
+      MapUtils.addBothLog(Message.display('scrollReadNoEffect'));
+      return true;
+    }
+
     LogUtils.addLog(String.format(Message.display('objectSummoned'), LogUtils.getCharName(realSrc), this.name));
     let bolder = new IceBolder(x, y);
     AudioManager.playSe({name: "Earth3", pan: 0, pitch: 100, volume: 100});
