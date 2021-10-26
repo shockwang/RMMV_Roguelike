@@ -499,7 +499,7 @@
       hotkeyUndefined: '未定義的熱鍵.',
       trapFloated: '{0}漂浮經過{1}, 並未受到傷害.',
       spikeTrapTriggered: '{0}一腳踩上尖刺陷阱, 受到{1}點傷害!',
-      teleportTrapTriggered: '{0}一腳踩入了傳送陷阱.',
+      teleportTrapTriggered: '{0}觸動了傳送陷阱.',
       seeTeleportAway: '{0}突然從你眼前消失了!',
       seeTeleportAppear: '{0}突然出現在你面前!',
       secretTrapDiscovered: '你找到了一個隱藏的{0}.',
@@ -2779,7 +2779,7 @@
       } else if (event.type == 'TRAP') {
         TrapUtils.drawTrap(event);
       } else if (event._x > 0 && event._y > 0 && mapData[event._x][event._y].isVisible) {
-        if (event.mob) { // mob
+        if (event.type == 'MOB') { // mob
           MapUtils.drawMob(mapData, event);
         } else if (event.type == 'AURA') {
           event.setOpacity(128);
@@ -4441,6 +4441,9 @@
         } else if ($dataMap.events[i].type == 'TERRAIN') {
           this._events[i] = new window[$dataMap.events[i].evt.className]($dataMap.events[i].x
             , $dataMap.events[i].y, $dataMap.events[i]);
+        } else if ($dataMap.events[i].type == 'BOLDER') {
+          this._events[i] = new window[$dataMap.events[i].className]($dataMap.events[i].x
+            , $dataMap.events[i].y, $dataMap.events[i]);
         } else {
           this._events[i] = new Game_Event(this._mapId, i);
         }
@@ -4489,10 +4492,18 @@
     target.type = src.type;
     target.x = src.x;
     target.y = src.y;
+    target.className = src.className;
+    target.mob = src.mob; // for teleport purpose
   }
 
   Bolder.prototype.initStatus = function (event) {
     event.type = 'BOLDER';
+    event.mob = {
+      name: function() {
+        return this._name;
+      }
+    };
+    event.mob.status = CharUtils.initStatus();
   }
 
   Bolder.prototype.updateDataMap = function () {
@@ -4550,6 +4561,9 @@
       LogUtils.addLog(String.format(Message.display('pushObject'), LogUtils.getCharName(realSrc)
         , this.name));
       this.checkTerrainEffect();
+      if (this._x > 0 && this._y > 0) {
+        this.updateDataMap();
+      }
     }
   }
 
@@ -4577,6 +4591,9 @@
       switch (trap.trap.trapClass) {
         case 'Trap_GroundHole':
           this.hitGroundHoleTrap(trap);
+          break;
+        case 'Trap_Teleport':
+          this.hitTeleportTrap(trap);
           break;
       }
     }
@@ -4619,6 +4636,11 @@
     this.hitWater();
   }
 
+  Bolder.prototype.hitTeleportTrap = function(trap) {
+    trap.triggered(this);
+    this.checkTerrainEffect();
+  }
+
   //-----------------------------------------------------------------------------
   // IceBolder
   //
@@ -4635,6 +4657,9 @@
     Bolder.prototype.initialize.call(this, x, y, fromData);
     this.setImage('!Other1', 2);
     this.name = '冰岩';
+    this.mob._name = this.name;
+    this.className = this.constructor.name;
+    this.updateDataMap();
   }
 
   IceBolder.prototype.hitWater = function() {
@@ -6529,7 +6554,7 @@
       for (let i = eventQueue.length; i > 0; i--) {
         let evt = eventQueue[i - 1];
         if (evt.target != $gamePlayer) {
-          if (evt.statusName || evt.skillEffect) {
+          if (evt.statusName || evt.skillEffect || evt.target instanceof IceBolder) {
             $gameVariables[$gameMap.mapId()].mobStatusEffectList.push(evt);
           }
           eventQueue.splice(i - 1, 1);
@@ -6541,7 +6566,13 @@
         let evt = $gameVariables[$gameMap.mapId()].mobStatusEffectList[id];
         // re-assign target because target always newed whenever a different map is loaded
         let oldTarget = evt.target;
-        evt.target = MapUtils.getCharXy(oldTarget._x, oldTarget._y);
+        if (oldTarget instanceof IceBolder) {
+          evt.target = $gameMap.eventsXy(oldTarget._x, oldTarget._y).filter(function(evt) {
+            return evt.type && evt.type == 'BOLDER';
+          })[0];
+        } else {
+          evt.target = MapUtils.getCharXy(oldTarget._x, oldTarget._y);
+        }
         TimeUtils.eventScheduler.insertEvent(evt);
       }
       $gameVariables[$gameMap.mapId()].mobStatusEffectList.length = 0;
@@ -6551,14 +6582,29 @@
         let event = this.getEventQueue()[0];
         let target = event.target;
         this.getEventQueue().splice(0, 1);
-        $gameVariables[0].gameTime = event.execTime;
+        // do not update gameTime if execTime is past
+        $gameVariables[0].gameTime = ($gameVariables[0].gameTime > event.execTime)
+          ? $gameVariables[0].gameTime : event.execTime;
         if (event.statusName) {
           let realTarget = BattleUtils.getRealTarget(target);
           if (realTarget._hp > 0) {
             CharUtils.updateStatus(target, event.statusName, null);
             if (realTarget.status[event.statusName].turns > 0) {
-              this.insertEvent(new ScheduleEvent(target, $gameVariables[0].gameTime
-                + CharUtils.getActionTime(realTarget), event.statusName, null));
+              // check if effect sustains because of terrain effect, may cause 
+              // crash when player come back to this map after a long long time
+              // because the system tries to catch up all those time. And then 
+              // stack overflow happened.
+              // This bug is caused by javascript asynchronize function structure,
+              // so we need to try to avoid it.
+              let nextScheduleTime = event.execTime + CharUtils.getActionTime(realTarget);
+              let playerEvt = this.queryEvent($gamePlayer);
+              if (playerEvt.execTime - event.execTime > 1000) {
+                if (event.statusName == 'wetEffect' && CharUtils.isCharInWater(event.target)) {
+                  // char in water, effect not gonna to go away
+                  nextScheduleTime = playerEvt.execTime;
+                }
+              }
+              this.insertEvent(new ScheduleEvent(target, nextScheduleTime, event.statusName, null));
             }
           }
           TimeUtils.afterPlayerMoved();
@@ -6567,7 +6613,7 @@
           if (realTarget._hp > 0) {
             CharUtils.updateStatus(target, null, event.skillEffect);
             if (event.skillEffect.effectCount > 0) {
-              this.insertEvent(new ScheduleEvent(target, $gameVariables[0].gameTime
+              this.insertEvent(new ScheduleEvent(target, event.execTime
                 + CharUtils.getActionTime(realTarget), null, event.skillEffect));
             }
           }
@@ -6596,7 +6642,7 @@
         } else if (target.type == 'MOB') {
           TimeUtils.afterPlayerMovedData.currentEvent = target;
           TimeUtils.afterPlayerMovedData.done = false;
-          target.mob.lastTimeMoved = $gameVariables[0].gameTime;
+          target.mob.lastTimeMoved = event.execTime;
           target.mob.turnCount++;
           if (target.mob.turnCount % regenTurnCount == 0) {
             CharUtils.regenerate(target);
@@ -6608,7 +6654,7 @@
           }
           // schedule next turn event
           this.insertEvent(new ScheduleEvent(target
-            , $gameVariables[0].gameTime + CharUtils.getActionTime(target.mob)));
+            , event.execTime + CharUtils.getActionTime(target.mob)));
           TimeUtils.afterPlayerMovedData.state = 2;
           target.action();
         } else if (target instanceof IceBolder) {
@@ -7075,7 +7121,7 @@
     } else {
       for (let id in $gameMap._events) {
         let evt = $gameMap._events[id];
-        if (evt && evt.type == 'MOB' && evt.mob == realTarget) {
+        if (evt && (evt.type == 'MOB' || evt.type == 'BOLDER') && evt.mob == realTarget) {
           return evt;
         }
       }
@@ -12499,7 +12545,7 @@
 
   SkillUtils.gainSkillExp = function(realSrc, skill, lvUpExp, amount) {
     if (realSrc == $gameActors.actor(1)) {
-      amount = (!amount) ? 1 : amount;
+      amount = (amount == undefined) ? 1 : amount;
       skill.exp += Soul_Chick.expAfterAmplify(amount);
       if (lvUpExp != -1 && skill.exp >= lvUpExp) {
         let msg = String.format(Message.display('skillLevelUp'), skill.name)
@@ -13351,7 +13397,7 @@
     this.name = '狡詐';
     this.description = '暫時智力提升';
     this.iconIndex = 79;
-    this.mpCost = 6;
+    this.mpCost = 10;
     this.lv = 1;
     this.exp = 0;
     // buff or debuf
@@ -13380,7 +13426,7 @@
       LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
         , LogUtils.getCharName(realSrc), this.name));
     }
-    let buffAmount = Math.round(10 + this.lv + realSrc.param(4) * this.lv / 10);
+    let buffAmount = Math.round(10 + this.lv + realSrc.param(4) * this.lv / 20);
     realSrc._buffs[4] += buffAmount;
     let newEffect = new SkillEffect_Clever(realSrc, this, 15 + this.lv * 5, buffAmount);
     realSrc.status.skillEffect.push(newEffect);
@@ -13433,7 +13479,7 @@
       LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
         , LogUtils.getCharName(realSrc), this.name));
     }
-    let buffAmount = Math.round(10 + this.lv + realSrc.param(6) * this.lv / 10);
+    let buffAmount = Math.round(10 + this.lv + realSrc.param(6) * this.lv / 20);
     realSrc._buffs[6] += buffAmount;
     let newEffect = new SkillEffect_Scud(realSrc, this, 15 + this.lv * 5, buffAmount);
     realSrc.status.skillEffect.push(newEffect);
@@ -13457,7 +13503,7 @@
     this.name = '鐵壁';
     this.description = '暫時護甲強度提升';
     this.iconIndex = 81;
-    this.mpCost = 6;
+    this.mpCost = 10;
     this.lv = 1;
     this.exp = 0;
     // buff or debuf
@@ -13486,7 +13532,7 @@
       LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
         , LogUtils.getCharName(realSrc), this.name));
     }
-    let buffAmount = Math.round(10 + 2 * this.lv + realSrc.param(4) * this.lv / 10);
+    let buffAmount = Math.round(10 + this.lv + realSrc.param(4) * this.lv / 20);
     let newEffect = new SkillEffect_Shield(realSrc, this, 15 + this.lv * 5, buffAmount);
     realSrc.status.skillEffect.push(newEffect);
     TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
@@ -13509,7 +13555,7 @@
     this.name = '光盾';
     this.description = '暫時魔法抗性提升';
     this.iconIndex = 81;
-    this.mpCost = 6;
+    this.mpCost = 10;
     this.lv = 1;
     this.exp = 0;
     // buff or debuf
@@ -13538,7 +13584,7 @@
       LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
         , LogUtils.getCharName(realSrc), this.name));
     }
-    let buffAmount = Math.round(10 + 2 * this.lv + realSrc.param(4) * this.lv / 10);
+    let buffAmount = Math.round(10 + this.lv + realSrc.param(4) * this.lv / 20);
     let newEffect = new SkillEffect_Barrier(realSrc, this, 15 + this.lv * 5, buffAmount);
     realSrc.status.skillEffect.push(newEffect);
     TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
@@ -13591,7 +13637,7 @@
       LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
         , LogUtils.getCharName(realSrc), this.name));
     }
-    let buffAmount = Math.round(5 + this.lv + realSrc.param(2) * this.lv / 10);
+    let buffAmount = Math.round(5 + this.lv + realSrc.param(2) * this.lv / 20);
     realSrc._buffs[2] += buffAmount;
     let newEffect = new SkillEffect_Roar(realSrc, this, 15 + this.lv * 5, buffAmount);
     realSrc.status.skillEffect.push(newEffect);
@@ -13645,7 +13691,7 @@
       LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
         , LogUtils.getCharName(realSrc), this.name));
     }
-    let buffAmount = Math.round(5 + this.lv + realSrc.param(3) * this.lv / 10);
+    let buffAmount = Math.round(5 + this.lv + realSrc.param(3) * this.lv / 20);
     realSrc._buffs[3] += buffAmount;
     let newEffect = new SkillEffect_Tough(realSrc, this, 15 + this.lv * 5, buffAmount);
     realSrc.status.skillEffect.push(newEffect);
@@ -17631,10 +17677,10 @@
     this._mp -= mpCost;
     CharUtils.playerGainWisExp(mpCost);
     // update staff exp if player equips
-    if (BattleUtils.getWeaponClass(this) == Skill_Staff) {
+    if (BattleUtils.getWeaponClass(this) == Skill_Staff && mpCost > 0) {
       let weaponSkill = BattleUtils.getWeaponSkill(this);
       SkillUtils.gainSkillExp(this, weaponSkill, SkillUtils.getWeaponSkillLevelUpExp(weaponSkill.lv)
-        , mpCost / 2);
+        , mpCost / 3);
     }
     let tpCost = this.skillTpCost(skill);
     this._tp -= tpCost;
