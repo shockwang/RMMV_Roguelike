@@ -11061,6 +11061,27 @@
   ItemUtils.equipTemplates[0].weapon.push(Dragon_Spear);
 
   //-----------------------------------------------------------------------------------
+  // StaffTemplate
+  //
+  // template for weapon type: STAFF
+
+  StaffTemplate = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  StaffTemplate.prototype = Object.create(EquipTemplate.prototype);
+  StaffTemplate.prototype.constructor = StaffTemplate;
+
+  StaffTemplate.prototype.initialize = function(manaReducedPercentage) {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[16]);
+    this._manaReducedPercentage = manaReducedPercentage;
+  }
+
+  StaffTemplate.prototype.manaReducedPercentage = function() {
+    return this._manaReducedPercentage;
+  }
+
+  //-----------------------------------------------------------------------------------
   // Dog_Staff
   //
   // weapon type: STAFF
@@ -11074,11 +11095,11 @@
   Dog_Staff.itemDescription = '輕薄的法杖';
   Dog_Staff.material = [{itemClass: Dog_Bone, amount: 4}];
 
-  Dog_Staff.prototype = Object.create(EquipTemplate.prototype);
+  Dog_Staff.prototype = Object.create(StaffTemplate.prototype);
   Dog_Staff.prototype.constructor = Dog_Staff;
 
   Dog_Staff.prototype.initialize = function () {
-    EquipTemplate.prototype.initialize.call(this, $dataWeapons[16]);
+    StaffTemplate.prototype.initialize.call(this, 5);
     this.name = Dog_Staff.itemName;
     this.description = Dog_Staff.itemDescription;
     this.templateName = this.name;
@@ -11112,11 +11133,11 @@
   Cat_Staff.itemDescription = '泛著光澤的法杖';
   Cat_Staff.material = [{itemClass: Cat_Bone, amount: 4}];
 
-  Cat_Staff.prototype = Object.create(EquipTemplate.prototype);
+  Cat_Staff.prototype = Object.create(StaffTemplate.prototype);
   Cat_Staff.prototype.constructor = Cat_Staff;
 
   Cat_Staff.prototype.initialize = function () {
-    EquipTemplate.prototype.initialize.call(this, $dataWeapons[16]);
+    StaffTemplate.prototype.initialize.call(this, 10);
     this.name = Cat_Staff.itemName;
     this.description = Cat_Staff.itemDescription;
     this.templateName = this.name;
@@ -11150,11 +11171,11 @@
   Wolf_Staff.itemDescription = '堅韌的法杖';
   Wolf_Staff.material = [{itemClass: Wolf_Bone, amount: 4}];
 
-  Wolf_Staff.prototype = Object.create(EquipTemplate.prototype);
+  Wolf_Staff.prototype = Object.create(StaffTemplate.prototype);
   Wolf_Staff.prototype.constructor = Wolf_Staff;
 
   Wolf_Staff.prototype.initialize = function () {
-    EquipTemplate.prototype.initialize.call(this, $dataWeapons[16]);
+    StaffTemplate.prototype.initialize.call(this, 15);
     this.name = Wolf_Staff.itemName;
     this.description = Wolf_Staff.itemDescription;
     this.templateName = this.name;
@@ -11188,11 +11209,11 @@
   Bear_Staff.itemDescription = '厚實的法杖';
   Bear_Staff.material = [{itemClass: Bear_Bone, amount: 4}];
 
-  Bear_Staff.prototype = Object.create(EquipTemplate.prototype);
+  Bear_Staff.prototype = Object.create(StaffTemplate.prototype);
   Bear_Staff.prototype.constructor = Bear_Staff;
 
   Bear_Staff.prototype.initialize = function () {
-    EquipTemplate.prototype.initialize.call(this, $dataWeapons[16]);
+    StaffTemplate.prototype.initialize.call(this, 20);
     this.name = Bear_Staff.itemName;
     this.description = Bear_Staff.itemDescription;
     this.templateName = this.name;
@@ -11226,11 +11247,11 @@
   Buffalo_Staff.itemDescription = '拿著就會有牛脾氣?';
   Buffalo_Staff.material = [{itemClass: Buffalo_Bone, amount: 4}];
 
-  Buffalo_Staff.prototype = Object.create(EquipTemplate.prototype);
+  Buffalo_Staff.prototype = Object.create(StaffTemplate.prototype);
   Buffalo_Staff.prototype.constructor = Buffalo_Staff;
 
   Buffalo_Staff.prototype.initialize = function () {
-    EquipTemplate.prototype.initialize.call(this, $dataWeapons[16]);
+    StaffTemplate.prototype.initialize.call(this, 25);
     this.name = Buffalo_Staff.itemName;
     this.description = Buffalo_Staff.itemDescription;
     this.templateName = this.name;
@@ -11264,11 +11285,11 @@
   Lion_Staff.itemDescription = '大貓骨杖';
   Lion_Staff.material = [{itemClass: Lion_Bone, amount: 4}];
 
-  Lion_Staff.prototype = Object.create(EquipTemplate.prototype);
+  Lion_Staff.prototype = Object.create(StaffTemplate.prototype);
   Lion_Staff.prototype.constructor = Lion_Staff;
 
   Lion_Staff.prototype.initialize = function () {
-    EquipTemplate.prototype.initialize.call(this, $dataWeapons[16]);
+    StaffTemplate.prototype.initialize.call(this, 30);
     this.name = Lion_Staff.itemName;
     this.description = Lion_Staff.itemDescription;
     this.templateName = this.name;
@@ -11302,11 +11323,11 @@
   Dragon_Staff.itemDescription = '寒氣逼人的法杖';
   Dragon_Staff.material = [{itemClass: Dragon_Bone, amount: 4}];
 
-  Dragon_Staff.prototype = Object.create(EquipTemplate.prototype);
+  Dragon_Staff.prototype = Object.create(StaffTemplate.prototype);
   Dragon_Staff.prototype.constructor = Dragon_Staff;
 
   Dragon_Staff.prototype.initialize = function () {
-    EquipTemplate.prototype.initialize.call(this, $dataWeapons[16]);
+    StaffTemplate.prototype.initialize.call(this, 35);
     this.name = Dragon_Staff.itemName;
     this.description = Dragon_Staff.itemDescription;
     this.templateName = this.name;
@@ -12785,7 +12806,7 @@
   }
 
   Skill_Staff.prototype.manaReducedPercentage = function() {
-    return 30 + this.lv * 5;
+    return this.lv * 3;
   }
   SkillUtils.weaponSkillList.push(Skill_Staff);
 
@@ -15641,6 +15662,39 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Salamander
+
+  Salamander = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Salamander.prototype = Object.create(Game_Mob.prototype);
+  Salamander.prototype.constructor = Salamander;
+
+  Salamander.prototype.initialize = function (x, y, fromData, targetLevel) {
+    Game_Mob.adjustMobAbility(Salamander, targetLevel);
+    Game_Mob.prototype.initialize.call(this, x, y, fromData);
+    this.setImage('Salamander', 1);
+  }
+
+  Salamander.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 20 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Acid
+      return this.mob._skills[0].action(this, target);
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  Salamander.prototype.looting = function () {
+    var lootings = [];
+    if (getRandomInt(100) < 30) {
+      lootings.push(new Flesh(this.mob, 200, 100, 'FLESH'));
+    }
+    Game_Mob.prototype.looting.call(this, lootings);
+  }
+  CharUtils.mobTemplates[2].push(Salamander);
+
+  //-----------------------------------------------------------------------------------
   // Soul_Obtained_Action
   //
   // actions for souls obtained
@@ -17655,8 +17709,9 @@
     let reduce = 0;
     if (BattleUtils.getWeaponClass(this) == Skill_Staff) {
       let weaponSkill = BattleUtils.getWeaponSkill(this);
+      let weapon = this.equips()[0];
       if (weaponSkill) {
-        reduce = weaponSkill.manaReducedPercentage();
+        reduce = weaponSkill.manaReducedPercentage() + weapon.manaReducedPercentage();
       }
     }
     let mpCost = 0;
