@@ -861,7 +861,7 @@
     throw new Error('This is a static class');
   };
   CharUtils.mobTemplates = [
-    [], [] // 0: earth, 1: ice
+    [], [] // 0: earth, 1: ice, 2: fire
   ]; // save all mobs
 
   CharUtils.baseHp = 35;
@@ -2005,7 +2005,6 @@
     // }
     // player._hp = 120;
     // player._mp = 80;
-    // setTimeout(MapUtils.goDownLevels, 500, 7);
   }
 
   MapUtils.loadFile = function(filePath) {
@@ -2962,6 +2961,14 @@
           if (placeFound) {
             // remove it from current $dataMap
             $gameVariables[nowMapId].rmDataMap.events[mobData.id] = null;
+            // need to transfer mob status too
+            let effects = TimeUtils.eventScheduler.extractTargetEffects(mobData.x, mobData.y, nowMapId);
+            for (let id in effects) {
+              // setup target's new position
+              effects[id].target._x = toCheck.x;
+              effects[id].target._y = toCheck.y;
+              $gameVariables[toMapId].mobStatusEffectList.push(effects[id]);
+            }
             // add it to new $dataMap
             var eventId = MapUtils.findEmptyFromList($gameVariables[toMapId].rmDataMap.events);
             mobData.id = eventId;
@@ -4668,6 +4675,8 @@
     this.setPosition(-10, -10);
     $gameMap._events[this._eventId] = null;
     $dataMap.events[this._eventId] = null;
+    // remove from eventQueue
+    TimeUtils.eventScheduler.removeEvent(this);
     MapUtils.refreshMap();
     AudioManager.playSe({name: 'Water5', pan: 0, pitch: 100, volume: 100});
     LogUtils.addLog(String.format(Message.display('iceMeltInWater'), this.name));
@@ -4683,6 +4692,8 @@
     this.setPosition(-10, -10);
     $gameMap._events[this._eventId] = null;
     $dataMap.events[this._eventId] = null;
+    // remove from eventQueue
+    TimeUtils.eventScheduler.removeEvent(this);
     MapUtils.refreshMap();
     AudioManager.playSe({name: 'Water2', pan: 0, pitch: 100, volume: 100});
     LogUtils.addLog(String.format(Message.display('iceHitLava'), this.name));
@@ -4702,6 +4713,8 @@
     this.setPosition(-10, -10);
     $gameMap._events[this._eventId] = null;
     $dataMap.events[this._eventId] = null;
+    // remove from eventQueue
+    TimeUtils.eventScheduler.removeEvent(this);
     MapUtils.refreshMap();
     AudioManager.playSe({name: 'Water5', pan: 0, pitch: 100, volume: 100});
     LogUtils.addLog(String.format(Message.display('iceMeltInHole'), this.name));
@@ -6562,6 +6575,20 @@
         }
       }
     },
+    extractTargetEffects: function(x, y, mapId) {
+      let effectsList = $gameVariables[mapId].mobStatusEffectList;
+      let result = [];
+      for (let i = effectsList.length; i > 0; i--) {
+        let evt = effectsList[i - 1];
+        if (evt.target._x == x && evt.target._y == y) {
+          if (evt.statusName || evt.skillEffect) {
+            result.push(evt);
+            effectsList.splice(i - 1, 1);
+          }
+        }
+      }
+      return result;
+    },
     restoreMobStatusEffect: function() {
       for (let id in $gameVariables[$gameMap.mapId()].mobStatusEffectList) {
         let evt = $gameVariables[$gameMap.mapId()].mobStatusEffectList[id];
@@ -6573,6 +6600,10 @@
           })[0];
         } else {
           evt.target = MapUtils.getCharXy(oldTarget._x, oldTarget._y);
+        }
+        if (!evt.target) {
+          console.log('error! target should not be null!');
+          console.log(evt.target.error);
         }
         TimeUtils.eventScheduler.insertEvent(evt);
       }
@@ -7231,7 +7262,15 @@
 
   BattleUtils.calcMeleeDamage = function(realSrc, realTarget, weaponBonus) {
     let weaponDamage = (BattleUtils.rollWeaponDamage(realSrc.param(10)) + weaponBonus) * (1 + realSrc.param(2) / 200);
-    return BattleUtils.calcPhysicalDamage(realSrc, realTarget, weaponDamage);
+    let physicalDamage = BattleUtils.calcPhysicalDamage(realSrc, realTarget, weaponDamage);
+    let totalDamage = physicalDamage;
+    for (let id in realSrc.status.damageType.elemental) {
+      if (realSrc.status.damageType.elemental[id] > 0) {
+        let magicDamage = Math.round(realSrc.status.damageType.elemental[id] * physicalDamage);
+        totalDamage += magicDamage * (1 - realTarget.status.resistance.elemental[id]);
+      }
+    }
+    return totalDamage;
   }
 
   BattleUtils.calcProjectileDamage = function(realSrc, realTarget, item, weaponBonus) {
@@ -7462,7 +7501,7 @@
 
   ItemUtils.potionTemplates = [];
   ItemUtils.scrollTemplates = [];
-  ItemUtils.lootingTemplates = new Array(2); // 0: earth, 1: ice
+  ItemUtils.lootingTemplates = new Array(2); // 0: earth, 1: ice, 2: fire
   for (let i = 0; i < ItemUtils.lootingTemplates.length; i++) {
     ItemUtils.lootingTemplates[i] = {
       skin: [],
@@ -7751,6 +7790,21 @@
         if (attr.dataId != 2) {
           result += ItemUtils.showNumberWithSign(Math.round(attr.value * 100)) + ' ';
         }
+      }
+    }
+    // show damage type buff (now only deal with elemental damage)
+    for (let id in item.damageType.elemental) {
+      if (item.damageType.elemental[id] != 0) {
+        switch (id) {
+          case 'cold':
+            result += '冰冷';
+            break;
+          case 'fire':
+            result += '火焰';
+            break;
+        }
+        result += '傷害';
+        result += ItemUtils.showNumberWithSign(item.damageType.elemental[id] * 100) + '% ';
       }
     }
     // show elemental resistance
@@ -8210,7 +8264,7 @@
     // initialize resistance
     this.resistance = new ResistanceData();
     // initialize damage effect
-    this.damageEffect = new ResistanceData();
+    this.damageType = new ResistanceData();
   };
 
   EquipTemplate.prototype.onWear = function(realTarget) {
@@ -8823,9 +8877,10 @@
     } else if (modifier < 0) {
       this.traits[2].value += modifier;
     }
+    this.damageType.elemental.fire = 0.2;
     ItemUtils.updateEquipDescription(this);
   }
-  ItemUtils.lootingTemplates[2].tooth.push(Salamander_Tooth);
+  // ItemUtils.lootingTemplates[2].tooth.push(Salamander_Tooth);
 
   //-----------------------------------------------------------------------------------
   // Dog_Bone
@@ -15756,7 +15811,7 @@
     }
     Game_Mob.prototype.looting.call(this, lootings);
   }
-  CharUtils.mobTemplates[2].push(Salamander);
+  // CharUtils.mobTemplates[2].push(Salamander);
 
   //-----------------------------------------------------------------------------------
   // Soul_Obtained_Action
