@@ -886,7 +886,8 @@
       groundHoleTrapped: false,
       skillEffect: [],
       bellyStatus: 'NORMAL', // FAINT, WEAK, HUNGRY, NORMAL, FULL
-      resistance: new ResistanceData()
+      resistance: new ResistanceData(),
+      damageType: new ResistanceData()
     }
     return result;
   }
@@ -8208,6 +8209,8 @@
     }
     // initialize resistance
     this.resistance = new ResistanceData();
+    // initialize damage effect
+    this.damageEffect = new ResistanceData();
   };
 
   EquipTemplate.prototype.onWear = function(realTarget) {
@@ -8217,6 +8220,12 @@
     for (let id in this.resistance.elemental) {
       realTarget.status.resistance.elemental[id] += this.resistance.elemental[id];
     }
+    for (let id in this.damageType.state) {
+      realTarget.status.damageType.state[id] += this.damageType.state[id];
+    }
+    for (let id in this.damageType.elemental) {
+      realTarget.status.damageType.elemental[id] += this.damageType.elemental[id];
+    }
   }
 
   EquipTemplate.prototype.onRemove = function(realTarget) {
@@ -8225,6 +8234,12 @@
     }
     for (let id in this.resistance.elemental) {
       realTarget.status.resistance.elemental[id] -= this.resistance.elemental[id];
+    }
+    for (let id in this.damageType.state) {
+      realTarget.status.damageType.state[id] -= this.damageType.state[id];
+    }
+    for (let id in this.damageType.elemental) {
+      realTarget.status.damageType.elemental[id] -= this.damageType.elemental[id];
     }
   }
 
@@ -8778,6 +8793,39 @@
     ItemUtils.updateEquipDescription(this);
   }
   ItemUtils.lootingTemplates[1].tooth.push(Dragon_Tooth);
+
+  //-----------------------------------------------------------------------------------
+  // Salamander_Tooth
+  //
+  // weapon type: TOOTH
+
+  Salamander_Tooth = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Salamander_Tooth.spawnLevel = 5;
+
+  Salamander_Tooth.prototype = Object.create(EquipTemplate.prototype);
+  Salamander_Tooth.prototype.constructor = Salamander_Tooth;
+
+  Salamander_Tooth.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[11]);
+    this.name = '火蜥蜴牙';
+    this.description = '發燙的尖牙';
+    this.templateName = this.name;
+    this.weight = 3;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(1, 4);
+    modifier += this.bucState;
+    this.traits[2].value = '1d5';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    ItemUtils.updateEquipDescription(this);
+  }
+  ItemUtils.lootingTemplates[2].tooth.push(Salamander_Tooth);
 
   //-----------------------------------------------------------------------------------
   // Dog_Bone
@@ -12533,6 +12581,22 @@
     ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
     this.name = '冰岩';
     this.description = '你能夠凝結空氣中的水氣';
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Soul_AuraFire
+
+  Soul_AuraFire = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Soul_AuraFire.prototype = Object.create(ItemTemplate.prototype);
+  Soul_AuraFire.prototype.constructor = Soul_AuraFire;
+
+  Soul_AuraFire.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
+    this.name = '火焰光環';
+    this.description = '你能夠散發出高熱';
   }
 
   //-----------------------------------------------------------------------------------
