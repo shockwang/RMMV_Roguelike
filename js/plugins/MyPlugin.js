@@ -997,7 +997,7 @@
       if (skillEffect instanceof SkillEffect_Aura) {
         let skill = skillEffect.skill;
         let realSrc = skillEffect.realSrc;
-        if (realSrc._mp < skill.mpCost || realSrc._tp < skill.tpCost) {
+        if (realSrc._mp < realSrc.skillMpCost(skill) || realSrc._tp < realSrc.skillTpCost(skill)) {
           AudioManager.playSe({name: "Down2", pan: 0, pitch: 100, volume: 100});
           LogUtils.addLog(String.format(Message.display('auraOutOfEnergy'), LogUtils.getCharName(realSrc)
             , skill.name));
@@ -1015,7 +1015,7 @@
             }
           }
 
-          realSrc.paySkillCost(this);
+          realSrc.paySkillCost(skill);
           skillEffect.auraEffect();
         }
         SkillUtils.gainSkillExp(realSrc, skill, SkillUtils.getWarSkillLevelUpExp(skill.lv));
@@ -1298,11 +1298,7 @@
           }
         }
         if (location) {
-          let spawnLevel = CharUtils.calcMobSpawnLevel(mobClass);
-          if (mobClass.isBoss) {
-            spawnLevel += 3;
-          }
-          return new mobClass(location.x, location.y, null, spawnLevel);
+          return new mobClass(location.x, location.y, null);
         } else {
           console.log('can not find location out of sight!');
         }
@@ -1338,7 +1334,7 @@
       }
     } while (candidates.length == 0);
     let mobClass = candidates[getRandomInt(candidates.length)];
-    return new mobClass(x, y, null, CharUtils.calcMobSpawnLevel(mobClass));
+    return new mobClass(x, y, null);
   }
 
   CharUtils.spawnMobNearPlayer = function(mobType, xOffset, yOffset) {
@@ -1770,7 +1766,7 @@
       // temp setup
       skillObtainedHint: $dataMap.events[31]
     }
-    $gameVariables[0].skillObtainedHintFlag = false; // set to true for debug purpose
+    $gameVariables[0].skillObtainedHintFlag = true; // set to true for debug purpose
     // tutorial
     $gameVariables[0].tutorialOn = true;
     $gameVariables[0].tutorialEvents = {
@@ -1940,14 +1936,14 @@
     $gameParty._items.push(new Soul_Bite());
     Soul_Obtained_Action.learnSkill(Skill_Bite);
     // Soul_Obtained_Action.learnSkill(Skill_AuraFire);
-    // Soul_Obtained_Action.learnSkill(Skill_FirePath);
+    Soul_Obtained_Action.learnSkill(Skill_FirePath);
     // Soul_Obtained_Action.learnSkill(Skill_FireBall);
     // Soul_Obtained_Action.learnSkill(Skill_FireBreath);
     // Soul_Obtained_Action.learnSkill(Skill_SuperRegen);
     // Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
     // Soul_Obtained_Action.learnSkill(Skill_IceBolt);
     // Soul_Obtained_Action.learnSkill(Skill_IceBreath);
-    // Soul_Obtained_Action.learnSkill(Skill_Charge);
+    Soul_Obtained_Action.learnSkill(Skill_Charge);
     // Soul_Obtained_Action.learnSkill(Skill_IceBolder);
     // Soul_Obtained_Action.learnSkill(Skill_Bash);
     // Soul_Obtained_Action.learnSkill(Skill_Pierce);
@@ -1966,17 +1962,6 @@
     // player._paramPlus[2] = 9;
     // player._paramPlus[3] = 9;
     // player._paramPlus[6] = 9;
-    // $gameParty.gainItem(new Lion_Shield(), 1);
-    // $gameParty.gainItem(new Bear_Skin(), 1);
-    // $gameParty.gainItem(new Bear_Claw(), 1);
-    // $gameParty.gainItem(new Cat_Gloves(), 1);
-    // $gameParty.gainItem(new Cat_Shoes(), 1);
-    // $gameParty.gainItem(new Potion_Heal(), 1);
-    // $gameParty.gainItem(new Potion_Heal(), 1);
-    // $gameParty.gainItem(new Ring_Protection(), 1);
-    // $gameParty.gainItem(new Ring_ColdResistance(), 1);
-    // $gameParty.gainItem(new Ring_AcidResistance(), 1);
-    // $gameParty.gainItem(new Ring_ParalyzeResistance(), 1);
     // $gameParty.gainItem(new Dog_Scimitar(), 1);
     // $gameParty.gainItem(new Cat_Scimitar(), 1);
     // $gameParty.gainItem(new Wolf_Scimitar(), 1);
@@ -1997,6 +1982,15 @@
     // $gameParty.gainItem(new Buffalo_Staff(), 1);
     // $gameParty.gainItem(new Lion_Staff(), 1);
     // $gameParty.gainItem(new Dragon_Staff(), 1);
+
+    $gameParty.gainItem(ItemUtils.createItem(Salamander_Gloves), 1);
+    $gameParty.gainItem(ItemUtils.createItem(Salamander_Helmet), 1);
+    $gameParty.gainItem(ItemUtils.createItem(Salamander_Shield), 1);
+    $gameParty.gainItem(ItemUtils.createItem(Salamander_Shoes), 1);
+    $gameParty.gainItem(ItemUtils.createItem(Salamander_Coat), 1);
+
+    $gameParty.gainItem(ItemUtils.createItem(FireHorse_Shoe), 1);
+    $gameParty.gainItem(ItemUtils.createItem(FireHorse_Tail), 1);
 
     $gameParty.gainItem(new Cheese(), 1);
     $gameParty.gainItem(new Cheese(), 1);
@@ -2046,15 +2040,18 @@
         }
       }
       mobClass.mobInitData = mobInitData;
+      // update mob status by level
+      let spawnLevel = CharUtils.calcMobSpawnLevel(mobClass);
+      Game_Mob.adjustMobAbility(mobClass, spawnLevel);
       // read lootings
       mobClass.lootings = [];
       if (mobData[14].length > 2) {
-        let itemSpawnLevel = CharUtils.calcMobSpawnLevel(mobClass);
         let lootingList = mobData[14].split(';');
         for (let j = 0; j < lootingList.length; j++) {
           let lootingData = lootingList[j].split('.');
           // setup mob related material to mob level
-          window[lootingData[0]].spawnLevel = itemSpawnLevel;
+          window[lootingData[0]].originalSpawnLevel = window[lootingData[0]].spawnLevel;
+          window[lootingData[0]].spawnLevel = spawnLevel;
           mobClass.lootings.push(new LootingData(lootingData[0], parseInt(lootingData[1])));
         }
       }
@@ -2063,6 +2060,16 @@
         let temp = mobData[15].split('.');
         mobClass.soulData = new SoulData(temp[0], parseInt(temp[1]));
       }
+    }
+    // update crafted items' spawnLevel by material (calculate by highest level material)
+    for (let i = 0; i < ItemUtils.recipes.length; i++) {
+      let recipe = ItemUtils.recipes[i];
+      let spawnLevel = 1;
+      for (let j = 0; j < recipe.material.length; j++) {
+        let materialSpawnLevel = recipe.material[j].itemClass.spawnLevel;
+        spawnLevel = (materialSpawnLevel > spawnLevel) ? materialSpawnLevel : spawnLevel;
+      }
+      recipe.spawnLevel = spawnLevel;
     }
   }
 
@@ -2169,7 +2176,7 @@
         for (let j = 0; j < mobNumPerMap; j++) {
           let mobClassPool = CharUtils.getMobPools(i);
           let mobClass = CharUtils.chooseMobClassFromPool(mobClassPool);
-          let mob = new mobClass(1, 1, null, $gameVariables[$gameMap.mapId()].dungeonLevel);
+          let mob = new mobClass(1, 1, null);
           mob.looting();
           mob.setPosition(-10, -10);
           $gameMap._events[mob._eventId] = null;
@@ -6645,8 +6652,16 @@
           if (realTarget._hp > 0) {
             CharUtils.updateStatus(target, null, event.skillEffect);
             if (event.skillEffect.effectCount > 0) {
-              this.insertEvent(new ScheduleEvent(target, event.execTime
-                + CharUtils.getActionTime(realTarget), null, event.skillEffect));
+              // check if effect sustains
+              let nextScheduleTime = event.execTime + CharUtils.getActionTime(realTarget);
+              let playerEvt = this.queryEvent($gamePlayer);
+              if (playerEvt.execTime - event.execTime > 1000) {
+                if (event.skillEffect instanceof SkillEffect_Aura) {
+                  // skip effect check
+                  nextScheduleTime = playerEvt.execTime;
+                }
+              }
+              this.insertEvent(new ScheduleEvent(target, nextScheduleTime, null, event.skillEffect));
             }
           }
           TimeUtils.afterPlayerMoved();
@@ -7266,11 +7281,11 @@
     let totalDamage = physicalDamage;
     for (let id in realSrc.status.damageType.elemental) {
       if (realSrc.status.damageType.elemental[id] > 0) {
-        let magicDamage = Math.round(realSrc.status.damageType.elemental[id] * physicalDamage);
+        let magicDamage = realSrc.status.damageType.elemental[id] * physicalDamage;
         totalDamage += magicDamage * (1 - realTarget.status.resistance.elemental[id]);
       }
     }
-    return totalDamage;
+    return Math.round(totalDamage);
   }
 
   BattleUtils.calcProjectileDamage = function(realSrc, realTarget, item, weaponBonus) {
@@ -7282,7 +7297,7 @@
     let skillClass;
     if (realSrc._equips && realSrc._equips[0].itemId() != 0) {
       let prop = JSON.parse($dataWeapons[realSrc._equips[0].itemId()].note);
-      // TODO: implement weapon types
+      // get weapon type
       switch (prop.subType) {
         case 'SCIMITAR':
           skillClass = Skill_Scimitar;
@@ -8044,6 +8059,28 @@
     return null;
   }
 
+  ItemUtils.createItem = function(newItemClass) {
+    let newItem = new newItemClass();
+    if (newItem instanceof EquipTemplate) {
+      // check if newItem is craftable equipment
+      if (newItemClass.material) {
+        let materials = [];
+        for (let id in newItemClass.material) {
+          let materialType = newItemClass.material[id];
+          for (let i = 0; i < materialType.amount; i++) {
+            let itemClass = materialType.itemClass;
+            let delta = itemClass.spawnLevel - itemClass.originalSpawnLevel;
+            materials.push(ItemUtils.adjustEquipByLevel(new itemClass(), delta));
+          }
+        }
+        newItem.applyMaterials(materials);
+      } else {
+        ItemUtils.adjustEquipByLevel(newItem, newItemClass.spawnLevel - newItemClass.originalSpawnLevel);
+      }
+    }
+    return newItem;
+  }
+
   ItemUtils.spawnItem = function(mapId) {
     let list;
     let newItemClass;
@@ -8115,20 +8152,7 @@
         newItemClass = ItemUtils.getItemClassFromList(list, dungeonLevel);
       }
     } while (!newItemClass);
-    let newItem = new newItemClass();
-    if (newItem instanceof EquipTemplate) {
-      // check if newItem is craftable equipment
-      if (newItemClass.material) {
-        let materials = [];
-        for (let id in newItemClass.material) {
-          let materialType = newItemClass.material[id];
-          for (let i = 0; i < materialType.amount; i++) {
-            materials.push(new materialType.itemClass());
-          }
-        }
-        newItem.applyMaterials(materials);
-      }
-    }
+    let newItem = ItemUtils.createItem(newItemClass);
     return newItem;
   }
 
@@ -8192,12 +8216,7 @@
   }
 
   // adjust equipment attributes by level
-  ItemUtils.adjustEquipByLevel = function(equip, level) {
-    let delta = level - window[equip.constructor.name].spawnLevel;
-    if (delta > 0) {
-      // get higher is more difficult
-      delta = Math.round(delta / 3);
-    }
+  ItemUtils.adjustEquipByLevel = function(equip, delta) {
     // update def & mdef
     for (let i = 0; i < 2; i++) {
       if (equip.traits[i].value != 0) {
@@ -8476,6 +8495,46 @@
     this.weight = 5;
   }
   ItemUtils.lootingTemplates[1].material.push(Tentacle);
+
+  //-----------------------------------------------------------------------------------
+  // FireHorse_Shoe
+  //
+  // type: MATERIAL
+
+  FireHorse_Shoe = function() {
+    this.initialize.apply(this, arguments);
+  }
+  FireHorse_Shoe.spawnLevel = 6;
+
+  FireHorse_Shoe.prototype = Object.create(ItemTemplate.prototype);
+  FireHorse_Shoe.prototype.constructor = FireHorse_Shoe;
+
+  FireHorse_Shoe.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[16]);
+    this.name = '馬蹄';
+    this.description = '被踢到會凹下去';
+    this.weight = 5;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // FireHorse_Tail
+  //
+  // type: MATERIAL
+
+  FireHorse_Tail = function() {
+    this.initialize.apply(this, arguments);
+  }
+  FireHorse_Tail.spawnLevel = 6;
+
+  FireHorse_Tail.prototype = Object.create(ItemTemplate.prototype);
+  FireHorse_Tail.prototype.constructor = FireHorse_Tail;
+
+  FireHorse_Tail.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[15]);
+    this.name = '燃燒的鬃毛';
+    this.description = '永遠燃燒著火焰, 但卻不會燙傷你';
+    this.weight = 2;
+  }
 
   //-----------------------------------------------------------------------------------
   // Flesh (for animal)
@@ -9072,6 +9131,33 @@
   ItemUtils.lootingTemplates[1].bone.push(Dragon_Bone);
 
   //-----------------------------------------------------------------------------------
+  // Salamander_Bone
+  //
+  // weapon type: BONE
+
+  Salamander_Bone = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Salamander_Bone.spawnLevel = 5;
+
+  Salamander_Bone.prototype = Object.create(EquipTemplate.prototype);
+  Salamander_Bone.prototype.constructor = Salamander_Bone;
+
+  Salamander_Bone.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[12]);
+    this.name = '火蜥蜴骨';
+    this.description = '發燙的骨頭';
+    this.templateName = this.name;
+    this.weight = 3;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    this.traits[2].value = '1d2';
+    this.params[4] = 3;
+    this.damageType.elemental.fire = 0.2;
+    ItemUtils.updateEquipDescription(this);
+  }
+
+  //-----------------------------------------------------------------------------------
   // Rooster_Claw
   //
   // weapon type: CLAW
@@ -9270,6 +9356,38 @@
   ItemUtils.lootingTemplates[1].claw.push(Dragon_Claw);
 
   //-----------------------------------------------------------------------------------
+  // Salamander_Claw
+  //
+  // weapon type: CLAW
+
+  Salamander_Claw = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Salamander_Claw.spawnLevel = 5;
+
+  Salamander_Claw.prototype = Object.create(EquipTemplate.prototype);
+  Salamander_Claw.prototype.constructor = Salamander_Claw;
+
+  Salamander_Claw.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[13]);
+    this.name = '火蜥蜴爪';
+    this.description = '發燙的爪';
+    this.templateName = this.name;
+    this.weight = 4;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = this.bucState;
+    this.traits[2].value = '2d3';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    this.damageType.elemental.fire = 0.2;
+    ItemUtils.updateEquipDescription(this);
+  }
+
+  //-----------------------------------------------------------------------------------
   // Dog_Skin
   //
   // armor type: SKIN
@@ -9428,6 +9546,33 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.lootingTemplates[1].skin.push(Dragon_Skin);
+
+  //-----------------------------------------------------------------------------------
+  // Salamander_Skin
+  //
+  // armor type: SKIN
+
+  Salamander_Skin = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Salamander_Skin.spawnLevel = 5;
+
+  Salamander_Skin.prototype = Object.create(EquipTemplate.prototype);
+  Salamander_Skin.prototype.constructor = Salamander_Skin;
+
+  Salamander_Skin.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[11]);
+    this.name = '火蜥蜴皮';
+    this.description = '發燙的皮';
+    this.templateName = this.name;
+    this.weight = 10;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 3);
+    ItemUtils.modifyAttr(this.traits[1], 4 + this.bucState);
+    this.resistance.elemental.fire = 0.1;
+    ItemUtils.updateEquipDescription(this);
+  };
 
   //-----------------------------------------------------------------------------------
   // Turtle_Shell
@@ -10579,6 +10724,166 @@
   ItemUtils.equipTemplates[1].coat.push(Ice_Coat);
 
   //-----------------------------------------------------------------------------------
+  // Salamander_Gloves
+  //
+  // armor type: GLOVES
+
+  Salamander_Gloves = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Salamander_Gloves.spawnLevel = 5;
+
+  Salamander_Gloves.itemName = '火蜥蜴皮手套';
+  Salamander_Gloves.itemDescription = '發燙的手套';
+  Salamander_Gloves.material = [{itemClass: Salamander_Skin, amount: 4}];
+
+  Salamander_Gloves.prototype = Object.create(EquipTemplate.prototype);
+  Salamander_Gloves.prototype.constructor = Salamander_Gloves;
+
+  Salamander_Gloves.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[12]);
+    this.name = Salamander_Gloves.itemName;
+    this.description = Salamander_Gloves.itemDescription;
+    this.templateName = this.name;
+    this.weight = 10;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], this.bucState);
+    this.resistance.elemental.fire = 0.1;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Salamander_Gloves);
+
+  //-----------------------------------------------------------------------------------
+  // Salamander_Shoes
+  //
+  // armor type: SHOES
+
+  Salamander_Shoes = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Salamander_Shoes.spawnLevel = 5;
+
+  Salamander_Shoes.itemName = '火蜥蜴皮靴';
+  Salamander_Shoes.itemDescription = '發燙的靴子';
+  Salamander_Shoes.material = [{itemClass: Salamander_Skin, amount: 4}];
+
+  Salamander_Shoes.prototype = Object.create(EquipTemplate.prototype);
+  Salamander_Shoes.prototype.constructor = Salamander_Shoes;
+
+  Salamander_Shoes.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[13]);
+    this.name = Salamander_Shoes.itemName;
+    this.description = Salamander_Shoes.itemDescription;
+    this.templateName = this.name;
+    this.weight = 10;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], this.bucState);
+    this.resistance.elemental.fire = 0.1;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Salamander_Shoes);
+
+  //-----------------------------------------------------------------------------------
+  // Salamander_Shield
+  //
+  // armor type: SHIELD
+
+  Salamander_Shield = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Salamander_Shield.spawnLevel = 5;
+
+  Salamander_Shield.itemName = '火蜥蜴皮盾';
+  Salamander_Shield.itemDescription = '發燙的皮盾';
+  Salamander_Shield.material = [{itemClass: Salamander_Skin, amount: 3}, {itemClass: Salamander_Bone, amount: 3}];
+
+  Salamander_Shield.prototype = Object.create(EquipTemplate.prototype);
+  Salamander_Shield.prototype.constructor = Salamander_Shield;
+
+  Salamander_Shield.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[14]);
+    this.name = Salamander_Shield.itemName;
+    this.description = Salamander_Shield.itemDescription;
+    this.templateName = this.name;
+    this.weight = 50;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 2 + this.bucState);
+    this.resistance.elemental.fire = 0.2;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Salamander_Shield);
+
+  //-----------------------------------------------------------------------------------
+  // Salamander_Helmet
+  //
+  // armor type: HELMET
+
+  Salamander_Helmet = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Salamander_Helmet.spawnLevel = 5;
+
+  Salamander_Helmet.itemName = '火蜥蜴皮帽';
+  Salamander_Helmet.itemDescription = '發燙的皮帽';
+  Salamander_Helmet.material = [{itemClass: Salamander_Skin, amount: 4}];
+
+  Salamander_Helmet.prototype = Object.create(EquipTemplate.prototype);
+  Salamander_Helmet.prototype.constructor = Salamander_Helmet;
+
+  Salamander_Helmet.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[15]);
+    this.name = Salamander_Helmet.itemName;
+    this.description = Salamander_Helmet.itemDescription;
+    this.templateName = this.name;
+    this.weight = 10;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], this.bucState);
+    this.resistance.elemental.fire = 0.1;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Salamander_Helmet);
+
+  //-----------------------------------------------------------------------------------
+  // Salamander_Coat
+  //
+  // armor type: COAT
+
+  Salamander_Coat = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Salamander_Coat.spawnLevel = 5;
+
+  Salamander_Coat.itemName = '火蜥蜴皮大衣';
+  Salamander_Coat.itemDescription = '發燙的大衣';
+  Salamander_Coat.material = [{itemClass: Salamander_Skin, amount: 8}];
+
+  Salamander_Coat.prototype = Object.create(EquipTemplate.prototype);
+  Salamander_Coat.prototype.constructor = Salamander_Coat;
+
+  Salamander_Coat.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[16]);
+    this.name = Salamander_Coat.itemName;
+    this.description = Salamander_Coat.itemDescription;
+    this.templateName = this.name;
+    this.weight = 120;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 3 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 4 + this.bucState);
+    this.resistance.elemental.fire = 0.2;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Salamander_Coat);
+
+  //-----------------------------------------------------------------------------------
   // Ring_Protection
   // 
   // armor type: ACCESSORY
@@ -10735,7 +11040,7 @@
     // randomize attributes
     ItemUtils.updateEquipDescription(this);
   };
-  ItemUtils.recipes.push(Ring_ColdResistance);
+  // ItemUtils.recipes.push(Ring_ColdResistance);
 
   //-----------------------------------------------------------------------------------
   // Dog_Scimitar
@@ -12652,6 +12957,22 @@
     ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
     this.name = '火焰光環';
     this.description = '你能夠散發出高熱';
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Soul_FirePath
+
+  Soul_FirePath = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Soul_FirePath.prototype = Object.create(ItemTemplate.prototype);
+  Soul_FirePath.prototype.constructor = Soul_FirePath;
+
+  Soul_FirePath.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
+    this.name = '火焰路徑';
+    this.description = '你的腳下燃起永不熄滅的火焰';
   }
 
   //-----------------------------------------------------------------------------------
@@ -14717,8 +15038,8 @@
         }
       }
     } else {
-      // new mob instance from mobId & attributes, also read mobInitData from Game_Mob.mobInitData
-      let mobInitData = Game_Mob.mobInitData;
+      // new mob instance from mobId & attributes
+      let mobInitData = window[this.constructor.name].mobInitData;
       this.mob = new Game_Enemy(11, x, y, mobInitData.params, mobInitData.xparams);
       this.mob._name = mobInitData.name;
       this.mob.level = mobInitData.level;
@@ -15007,10 +15328,8 @@
       for (let i = 0; i < mobClass.lootings.length; i++) {
         let lootData = mobClass.lootings[i];
         if (getRandomInt(100) < lootData.percentage) {
-          let item = new window[lootData.itemClassName]();
-          if (item instanceof EquipTemplate) {
-            ItemUtils.adjustEquipByLevel(item, this.mob.level);
-          }
+          let itemClass = window[lootData.itemClassName];
+          let item = ItemUtils.createItem(itemClass);
           lootings.push(item);
         }
       }
@@ -15050,11 +15369,8 @@
     }
   }
 
-  // mob lv adjust due to dungeon level
-  Game_Mob.mobInitData = null;
-
   Game_Mob.adjustMobAbility = function(mobClass, targetLevel) {
-    let mobInitData = cloneObject(mobClass.mobInitData);
+    let mobInitData = mobClass.mobInitData;
     let delta = targetLevel - mobInitData.level;
     mobInitData.level = targetLevel;
     if (delta != 0) {
@@ -15066,7 +15382,6 @@
       // deal with AGI
       mobInitData.params[6] += Math.round(delta / 2);
     }
-    Game_Mob.mobInitData = mobInitData;
   }
 
   //-----------------------------------------------------------------------------------
@@ -15079,8 +15394,7 @@
   Chick.prototype = Object.create(Game_Mob.prototype);
   Chick.prototype.constructor = Chick;
 
-  Chick.prototype.initialize = function (x, y, fromData, targetLevel) {
-    Game_Mob.adjustMobAbility(Chick, targetLevel);
+  Chick.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Chick', 0);
   }
@@ -15104,8 +15418,7 @@
   Dog.prototype = Object.create(Game_Mob.prototype);
   Dog.prototype.constructor = Dog;
 
-  Dog.prototype.initialize = function (x, y, fromData, targetLevel) {
-    Game_Mob.adjustMobAbility(Dog, targetLevel);
+  Dog.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Nature', 0);
   }
@@ -15137,8 +15450,7 @@
   Bee.prototype = Object.create(Game_Mob.prototype);
   Bee.prototype.constructor = Bee;
 
-  Bee.prototype.initialize = function (x, y, fromData, targetLevel) {
-    Game_Mob.adjustMobAbility(Bee, targetLevel);
+  Bee.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Fly1', 0);
   }
@@ -15170,8 +15482,7 @@
   Rooster.prototype = Object.create(Game_Mob.prototype);
   Rooster.prototype.constructor = Rooster;
 
-  Rooster.prototype.initialize = function (x, y, fromData, targetLevel) {
-    Game_Mob.adjustMobAbility(Rooster, targetLevel);
+  Rooster.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Nature', 2);
   }
@@ -15195,8 +15506,7 @@
   Rat.prototype = Object.create(Game_Mob.prototype);
   Rat.prototype.constructor = Rat;
 
-  Rat.prototype.initialize = function (x, y, fromData, targetLevel) {
-    Game_Mob.adjustMobAbility(Rat, targetLevel);
+  Rat.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Mice', 1);
   }
@@ -15231,8 +15541,7 @@
   Cat.prototype = Object.create(Game_Mob.prototype);
   Cat.prototype.constructor = Cat;
 
-  Cat.prototype.initialize = function (x, y, fromData, targetLevel) {
-    Game_Mob.adjustMobAbility(Cat, targetLevel);
+  Cat.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Nature', 1);
   }
@@ -15274,8 +15583,7 @@
   Boar.prototype = Object.create(Game_Mob.prototype);
   Boar.prototype.constructor = Boar;
 
-  Boar.prototype.initialize = function (x, y, fromData, targetLevel) {
-    Game_Mob.adjustMobAbility(Boar, targetLevel);
+  Boar.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Boar', 1);
   }
@@ -15310,8 +15618,7 @@
   Wolf.prototype = Object.create(Game_Mob.prototype);
   Wolf.prototype.constructor = Wolf;
 
-  Wolf.prototype.initialize = function (x, y, fromData, targetLevel) {
-    Game_Mob.adjustMobAbility(Wolf, targetLevel);
+  Wolf.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Animal', 2);
   }
@@ -15353,8 +15660,7 @@
   Turtle.prototype = Object.create(Game_Mob.prototype);
   Turtle.prototype.constructor = Turtle;
 
-  Turtle.prototype.initialize = function (x, y, fromData, targetLevel) {
-    Game_Mob.adjustMobAbility(Turtle, targetLevel);
+  Turtle.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Animal', 6);
   }
@@ -15393,8 +15699,7 @@
   Bear.prototype = Object.create(Game_Mob.prototype);
   Bear.prototype.constructor = Bear;
 
-  Bear.prototype.initialize = function (x, y, fromData, targetLevel) {
-    Game_Mob.adjustMobAbility(Bear, targetLevel);
+  Bear.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Bear', 0);
   }
@@ -15426,8 +15731,7 @@
   Lion.prototype = Object.create(Game_Mob.prototype);
   Lion.prototype.constructor = Lion;
 
-  Lion.prototype.initialize = function (x, y, fromData, targetLevel) {
-    Game_Mob.adjustMobAbility(Lion, targetLevel);
+  Lion.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Lion', 0);
   }
@@ -15466,8 +15770,7 @@
   Buffalo.prototype = Object.create(Game_Mob.prototype);
   Buffalo.prototype.constructor = Buffalo;
 
-  Buffalo.prototype.initialize = function (x, y, fromData, targetLevel) {
-    Game_Mob.adjustMobAbility(Buffalo, targetLevel);
+  Buffalo.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Buffalo', 1);
   }
@@ -15506,8 +15809,7 @@
   Shark.prototype = Object.create(Game_Mob.prototype);
   Shark.prototype.constructor = Shark;
 
-  Shark.prototype.initialize = function (x, y, fromData, targetLevel) {
-    Game_Mob.adjustMobAbility(Shark, targetLevel);
+  Shark.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Shark', 0);
   }
@@ -15539,8 +15841,7 @@
   Slime.prototype = Object.create(Game_Mob.prototype);
   Slime.prototype.constructor = Slime;
 
-  Slime.prototype.initialize = function (x, y, fromData, targetLevel) {
-    Game_Mob.adjustMobAbility(Slime, targetLevel);
+  Slime.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Monster', 1);
   }
@@ -15569,8 +15870,7 @@
   Jellyfish.prototype = Object.create(Game_Mob.prototype);
   Jellyfish.prototype.constructor = Jellyfish;
 
-  Jellyfish.prototype.initialize = function (x, y, fromData, targetLevel) {
-    Game_Mob.adjustMobAbility(Jellyfish, targetLevel);
+  Jellyfish.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Jellyfish', 0);
   }
@@ -15602,8 +15902,7 @@
   Ice_Spirit.prototype = Object.create(Game_Mob.prototype);
   Ice_Spirit.prototype.constructor = Ice_Spirit;
 
-  Ice_Spirit.prototype.initialize = function (x, y, fromData, targetLevel) {
-    Game_Mob.adjustMobAbility(Ice_Spirit, targetLevel);
+  Ice_Spirit.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Fairy', 2);
   }
@@ -15650,8 +15949,7 @@
   Ice_Dragon.prototype = Object.create(Game_Mob.prototype);
   Ice_Dragon.prototype.constructor = Ice_Dragon;
 
-  Ice_Dragon.prototype.initialize = function (x, y, fromData, targetLevel) {
-    Game_Mob.adjustMobAbility(Ice_Dragon, targetLevel);
+  Ice_Dragon.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Dragon', 1);
   }
@@ -15716,8 +16014,7 @@
 
   Selina.isBoss = true;
 
-  Selina.prototype.initialize = function (x, y, fromData, targetLevel) {
-    Game_Mob.adjustMobAbility(Selina, targetLevel);
+  Selina.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Jelly_Maid', 0);
   }
@@ -15790,15 +16087,24 @@
   Salamander.prototype = Object.create(Game_Mob.prototype);
   Salamander.prototype.constructor = Salamander;
 
-  Salamander.prototype.initialize = function (x, y, fromData, targetLevel) {
-    Game_Mob.adjustMobAbility(Salamander, targetLevel);
+  Salamander.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Salamander', 1);
   }
 
+  Salamander.prototype.targetInSightAction = function(target) {
+    if (getRandomInt(100) < 40) { // Skill_AuraFire
+      return this.performBuffIfNotPresent(this.mob._skills[0]);
+    }
+    return false;
+  }
+
   Salamander.prototype.meleeAction = function(target) {
-    if (getRandomInt(100) < 20 && SkillUtils.canPerform(this.mob, this.mob._skills[0])) { // Skill_Acid
-      return this.mob._skills[0].action(this, target);
+    let randNum = getRandomInt(100);
+    if (randNum < 50 && this.performBuffIfNotPresent(this.mob._skills[0])) { // Skill_AuraFire
+      return true;
+    } else if (randNum < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[1])) { // Skill_Bite
+      return this.mob._skills[1].action(this, target);
     } else {
       return BattleUtils.meleeAttack(this, target);
     }
@@ -15811,7 +16117,58 @@
     }
     Game_Mob.prototype.looting.call(this, lootings);
   }
-  // CharUtils.mobTemplates[2].push(Salamander);
+
+  //-----------------------------------------------------------------------------------
+  // FireHorse
+
+  FireHorse = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  FireHorse.prototype = Object.create(Game_Mob.prototype);
+  FireHorse.prototype.constructor = FireHorse;
+
+  FireHorse.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, fromData);
+    this.setImage('Flame_Horse', 0);
+  }
+
+  Salamander.prototype.targetInSightAction = function(target) {
+    if (getRandomInt(100) < 40) { // Skill_FirePath
+      return this.performBuffIfNotPresent(this.mob._skills[0]);
+    }
+    return false;
+  }
+
+  Salamander.prototype.projectileAction = function(x, y, distance) {
+    if (getRandomInt(100) < 80 && distance < 3) { // Skill_Charge
+      let skill = this.mob._skills[1];
+      if (SkillUtils.canPerform(this.mob, skill)) {
+        skill.action(this, x, y);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  FireHorse.prototype.meleeAction = function(target) {
+    let randNum = getRandomInt(100);
+    if (randNum < 50 && this.performBuffIfNotPresent(this.mob._skills[0])) { // Skill_FirePath
+      return true;
+    } else if (randNum < 80 && this.moveAwayFromCharacter($gamePlayer)) { // keep distance
+      return true;
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  FireHorse.prototype.looting = function () {
+    var lootings = [];
+    if (getRandomInt(100) < 30) {
+      lootings.push(new Flesh(this.mob, 300, 100, 'FLESH'));
+    }
+    Game_Mob.prototype.looting.call(this, lootings);
+  }
 
   //-----------------------------------------------------------------------------------
   // Soul_Obtained_Action
