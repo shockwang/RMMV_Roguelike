@@ -13612,6 +13612,15 @@
           && src.canPassDiagonally(src._x, src._y, data.moveData.param1, data.moveData.param2))) {
           // can pass
           src.setPosition(checkX, checkY);
+          // check if terrain effect applied
+          // check if terrain effect skill enabled
+          let auraEffects = TimeUtils.eventScheduler.getEventQueue().filter(function(evt) {
+            return evt.target == src && evt.skillEffect && evt.skillEffect instanceof SkillEffect_Aura;
+          });
+          for (let id in auraEffects) {
+            let auraEvt = auraEffects[id];
+            auraEvt.skillEffect.auraEffect();
+          }
           // check trap stepped
           TrapUtils.checkTrapStepped(src);
           TrapUtils.updateLastTriggered();
@@ -14951,6 +14960,10 @@
       $gameMap._events[evts[0]._eventId] = null;
       $dataMap.events[evts[0]._eventId] = null;
       MapUtils.refreshMap();
+    }
+    // fire can not burn under water
+    if ($gameVariables[$gameMap.mapId()].mapData[src._x][src._y].originalTile == WATER) {
+      return;
     }
     let terrainEvt = new Terrain_Fire(src._x, src._y);
     terrainEvt.evt.damage = this.skill.lv;
