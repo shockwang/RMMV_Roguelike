@@ -17,8 +17,9 @@ Slime,史萊姆,10,10,15,15,10,5,5,0,0,5,0,Skill_Acid.1;Skill_AdaptWater.3,Mucus
 Jellyfish,水母,6,10,30,10,10,5,0,5,0,6,1,Skill_Discharge.1;Skill_AdaptWater.3,Glue.25;Tentacle.25,Soul_Discharge.10
 Ice_Spirit,冰精靈,10,8,20,20,20,5,8,12,0,7,2,Skill_Barrier.1;Skill_IceBolt.1,Ice_Coat.10;Ring_ColdResistance.5,Soul_IceBolt.10
 Shark,鯊魚,16,15,10,10,15,5,0,0,1d8,8,1,Skill_Bite.3;Skill_AdaptWater.3,Shark_Tooth.25,Soul_AdaptWater.10
-Ice_Dragon,冰龍,18,18,18,18,10,5,8,8,1d9,10,2,Skill_Barrier.1;Skill_Bash.1;Skill_IceBolt.1;Skill_IceBreath.1,Dragon_Tooth.25;Dragon_Claw.25;Dragon_Skin.25;Dragon_Bone.25,Soul_IceBreath.10
+Ice_Dragon,冰龍,18,18,18,18,10,5,8,8,1d9,10,2,Skill_Barrier.1;Skill_Bash.1;Skill_IceBolt.1;Skill_IceBreath.1,IceDragon_Tooth.25;IceDragon_Claw.25;IceDragon_Skin.25;IceDragon_Bone.25,Soul_IceBreath.10
 Selina,瑟蓮娜,15,20,20,20,20,5,20,20,1d5,12,0,Skill_Barrier.2;Skill_IceBolt.2;Skill_IceBreath.2;Skill_IceBolder.2;Skill_AdaptWater.3,,Soul_IceBolder.100
 // fire
 Salamander,火蜥蜴,12,12,10,10,10,5,3,3,2d3,5,0,Skill_AuraFire.3;Skill_Bite.2,Salamander_Skin.25;Salamander_Tooth.25;Salamander_Claw.25;Salamander_Bone.25,Soul_AuraFire.10
 FireHorse,烈焰馬,10,10,10,20,15,5,3,3,1d5,6,0,Skill_FirePath.3;Skill_Charge.3,FireHorse_Shoe.25;FireHorse_Tail.25,Soul_FirePath.10
+Fire_Spirit,火精靈,10,8,20,20,20,5,8,12,0,7,2,Skill_Barrier.1;Skill_FireBall.1,Fire_Coat.10;Ring_FireResistance.5,Soul_FireBall.10
