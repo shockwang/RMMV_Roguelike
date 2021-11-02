@@ -2322,6 +2322,37 @@
     return false;
   }
 
+  // only used on current map
+  MapUtils.isCharacterPassable = function(charEvt, x, y) {
+    let realTarget = BattleUtils.getRealTarget(charEvt);
+    let mapId = $gameMap.mapId();
+    let tile = $gameVariables[mapId].mapData[x][y].originalTile;
+    // check basic (wall/secret door) tile
+    let passable = MapUtils.isTilePassable(mapId, x, y, tile);
+    if (!passable) {
+      return false;
+    }
+    // check if door & door opened
+    if (tile == DOOR) {
+      let openedDoor = $gameMap.eventsXy(x, y).filter(function(evt) {
+        return evt.type == 'DOOR' && evt.status == 2;
+      });
+      if (!openedDoor[0]) {
+        return false;
+      }
+    }
+    // check if character occupied
+    if (MapUtils.getCharXy(x, y)) {
+      return false;
+    }
+    // check if mob can pass through tile
+    if ((tile == FLOOR && realTarget.moveType == 1) || (tile == HOLLOW && realTarget.moveType != 2)
+      || (tile == LAVA && realTarget.moveType != 2)) {
+      return false;
+    }
+    return true;
+  }
+
   MapUtils.isBolderOnTile = function(x, y) {
     return $gameMap.eventsXy(x, y).filter(function(evt) {
       return evt.type && evt.type == 'BOLDER';
@@ -3728,11 +3759,11 @@
   }
 
   // find route between two events (using Dijkstra's algorithm)
-  MapUtils.findShortestRoute = function (x1, y1, x2, y2, maxPathLength, mobEvt) {
+  MapUtils.findShortestRoute = function (mobEvt, x2, y2, maxPathLength) {
     var mapData = $gameVariables[$gameMap.mapId()].mapData;
     var path = [], explored = [];
 
-    explored.push(new RouteData(mapData[x1][y1], 0));
+    explored.push(new RouteData(mapData[mobEvt._x][mobEvt._y], 0));
     let steps = 0, reached = false;
     while (steps < maxPathLength && !reached) {
       // find all elements fit now steps
@@ -3756,29 +3787,9 @@
             exists[0].weight = (steps < exists[0].weight) ? steps : exists[0].weight;
           } else { // block not exists, add to exploredList
             let mapBlock = mapData[coordinate.x][coordinate.y];
-            let tile = mapBlock.originalTile;
             let weight = -1;
-            let mob = mobEvt.mob;
-            // check if mob can pass through tile
-            if ((tile == FLOOR && mob.moveType != 1) || tile == WATER || (tile == HOLLOW && mob.moveType == 2)
-              || (tile == LAVA && mob.moveType == 2)) {
-              // check if mob on it
-              let mobList = $gameMap.eventsXy(coordinate.x, coordinate.y).filter(function(evt) {
-                return evt.type == 'MOB';
-              })
-              if (mobList[0] && !(mobList[0]._x == x2 && mobList[0]._y == y2)) {
-                // mob on it & it's not destination
-                weight = -1;
-              } else {
-                weight = steps;
-              }
-            } else if (tile == DOOR) {
-              let openedDoor = $gameMap.eventsXy(coordinate.x, coordinate.y).filter(function(evt) {
-                return evt.type == 'DOOR' && evt.status == 2;
-              })
-              if (openedDoor[0]) {
-                weight = steps;
-              }
+            if (MapUtils.isCharacterPassable(mobEvt, coordinate.x, coordinate.y)) {
+              weight = steps;
             }
             explored.push(new RouteData(mapBlock, weight));
             if (coordinate.x == x2 && coordinate.y == y2) {
@@ -13612,7 +13623,7 @@
           && src.canPassDiagonally(src._x, src._y, data.moveData.param1, data.moveData.param2))) {
           // can pass
           src.setPosition(checkX, checkY);
-          // check if terrain effect applied
+          // TODO: check if terrain effect applied
           // check if terrain effect skill enabled
           let auraEffects = TimeUtils.eventScheduler.getEventQueue().filter(function(evt) {
             return evt.target == src && evt.skillEffect && evt.skillEffect instanceof SkillEffect_Aura;
@@ -15126,9 +15137,9 @@
         } else if (distance < 2) {
           this.turnTowardCharacter($gamePlayer);
           if (this.targetInSightAction($gamePlayer)) {
-            // alreay done action
+            // already done action
           } else if (this.meleeAction($gamePlayer)) {
-            this.mob.attacked = true;
+            // already done action
           } else if (CharUtils.playerCanSeeChar(this)) {
             LogUtils.addLog(String.format(Message.display('attackOutOfEnergy'), LogUtils.getCharName(this.mob)));
           }
@@ -15136,7 +15147,7 @@
           // check remote attack
           if (MapUtils.checkVisible(this, this.mob.awareDistance, $gamePlayer._x, $gamePlayer._y
             , $gameVariables[$gameMap.mapId()].mapData) && this.targetInSightAction($gamePlayer)) {
-            // alreay done action
+            // already done action
           } else {
             // check projectile action
             let data = CharUtils.checkTargetReachable(this, $gamePlayer);
@@ -15149,10 +15160,14 @@
                 // already done action
               } else {
                 // find route to player
-                let path = MapUtils.findShortestRoute(this._x, this._y
-                  , $gamePlayer._x, $gamePlayer._y, mobTraceRouteMaxDistance, this);
+                let path = MapUtils.findShortestRoute(this, $gamePlayer._x, $gamePlayer._y, mobTraceRouteMaxDistance);
                 if (path) {
-                  this.moveTowardPosition(path[0].mapBlock.x, path[0].mapBlock.y);
+                  // add this to prevent corner hit-and-wait
+                  let keepDistance = window[this.constructor.name].keepDistance;
+                  if (!keepDistance || MapUtils.getDistance(path[0].mapBlock.x, path[0].mapBlock.y
+                    , $gamePlayer._x, $gamePlayer._y) > keepDistance) {
+                    this.moveTowardPosition(path[0].mapBlock.x, path[0].mapBlock.y);
+                  }
                 } else {
                   this.moveTowardCharacter($gamePlayer);
                 }
@@ -15264,53 +15279,113 @@
     for (var i = 0; i < candidate.length; i++) {
       this.moveTowardPosition(candidate[i].x, candidate[i].y);
       if (this.isMovementSucceeded()) {
-        break;
+        this.mob.moved = true;
+        return true;
       }
     }
-    return this.isMovementSucceeded();
+    return false;
   }
 
   Game_Mob.prototype.moveAwayFromCharacter = function (character) {
     var mapData = $gameVariables[$gameMap.mapId()].mapData;
-    var candidate = [], distanceRecord = [];
-    var nowDistance = MapUtils.getDistance(this._x, this._y, character._x, character._y);
-    for (var i = 0; i < 8; i++) {
-      var coordinate = MapUtils.getNearbyCoordinate(this._x, this._y, i);
-      if (!MapUtils.isTilePassable($gameMap.mapId(), coordinate.x, coordinate.y
-        , mapData[coordinate.x][coordinate.y].originalTile)
-        || (mapData[coordinate.x][coordinate.y].originalTile == LAVA && this.mob.moveType != 2)
-        || (mapData[coordinate.x][coordinate.y].originalTile == HOLLOW && this.mob.moveType != 2)) {
-        continue;
-      }
-      var distance = MapUtils.getDistance(coordinate.x, coordinate.y, character._x, character._y);
-      if (distance > nowDistance) {
-        if (candidate.length == 0) {
-          candidate.push(coordinate);
-          distanceRecord.push(distance);
-        } else {
-          var added = false;
-          for (var i = 0; i < candidate.length; i++) {
-            if (distance > distanceRecord[i]) {
-              candidate.splice(i, 0, coordinate);
-              distanceRecord.splice(i, 0, distance);
-              added = true;
-              break;
+    var path = [], explored = [];
+
+    explored.push(new RouteData(mapData[this._x][this._y], 0));
+    let steps = 0, maxDisNode = null, maxDistance = 0;
+    while (steps < mobTraceRouteMaxDistance) {
+      // find all elements fit now steps
+      let toExpend = explored.filter(function(routeData) {
+        return routeData.weight == steps;
+      })
+      steps++;
+      // explore from point & update weight
+      for (let id in toExpend) {
+        let node = toExpend[id];
+        for (let i = 0; i < 8; i++) {
+          let coordinate = MapUtils.getNearbyCoordinate(node.mapBlock.x, node.mapBlock.y, i);
+          // check if node already exists
+          let exists = explored.filter(function(routeData) {
+            return routeData.mapBlock.x == coordinate.x && routeData.mapBlock.y == coordinate.y;
+          })
+          if (exists[0]) { // block already explored, check & update weight
+            exists[0].weight = (steps < exists[0].weight) ? steps : exists[0].weight;
+          } else { // block not exists, add to exploredList
+            let mapBlock = mapData[coordinate.x][coordinate.y];
+            let weight = -1;
+            if (MapUtils.isCharacterPassable(this, coordinate.x, coordinate.y)) {
+              weight = steps;
             }
-          }
-          if (!added) {
-            candidate.push(coordinate);
-            distanceRecord.push(distance);
+            let routeData = new RouteData(mapBlock, weight);
+            explored.push(routeData);
+            if (weight > maxDistance) {
+              maxDistance = weight;
+              maxDisNode = routeData;
+            }
           }
         }
       }
     }
-    for (var i = 0; i < candidate.length; i++) {
-      this.moveTowardPosition(candidate[i].x, candidate[i].y);
-      if (this.isMovementSucceeded()) {
-        break;
+
+    // rollback path
+    if (maxDistance > 0) {
+      path.push(maxDisNode);
+      steps = maxDistance;
+      while (steps > 1) {
+        steps--;
+        let nodes = explored.filter(function(routeData) {
+          return routeData.weight == steps;
+        })
+        let nodesBefore = explored.filter(function(routeData) {
+          return routeData.weight == steps - 1;
+        })
+        let nodeAfter = path[path.length - 1];
+        let candidates = [];
+        for (let id in nodes) {
+          let node = nodes[id];
+          for (let id2 in nodesBefore) {
+            let nodeBefore = nodesBefore[id2];
+            if (MapUtils.isNearBy(node.mapBlock.x, node.mapBlock.y, nodeAfter.mapBlock.x, nodeAfter.mapBlock.y) &&
+              MapUtils.isNearBy(node.mapBlock.x, node.mapBlock.y, nodeBefore.mapBlock.x, nodeBefore.mapBlock.y)) {
+              candidates.push(node);
+            }
+          }
+        }
+        path.push(candidates[getRandomInt(candidates.length)]);
+      }
+      path.reverse();
+      this.moveTowardPosition(path[0].mapBlock.x, path[0].mapBlock.y);
+      return true;
+    }
+    return false;
+  }
+
+  Game_Mob.prototype.moveInLineWithCharacter = function(character, minDistance) {
+    let distance = MapUtils.getDistance(this._x, this._y, character._x, character._y);
+    let data = CharUtils.checkTargetReachable(this, character);
+    if (distance > minDistance && data) {
+      // already meet requirement
+      return false;
+    }
+    let candidate;
+    let candidateDistance = 100;
+    for (let i = 0; i < 8; i++) {
+      let coordinate = MapUtils.getNearbyCoordinate(this._x, this._y, i);
+      if (MapUtils.isTilePassable($gameMap.mapId(), coordinate.x, coordinate.y
+        , $gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].originalTile)
+        && !MapUtils.getCharXy(coordinate.x, coordinate.y)
+        && CharUtils.checkTargetReachable(character, {_x: coordinate.x, _y: coordinate.y})) {
+        let distance = MapUtils.getDistance(coordinate.x, coordinate.y, character._x, character._y);
+        if (distance > minDistance && distance < candidateDistance) {
+          candidateDistance = distance;
+          candidate = coordinate;
+        }
       }
     }
-    return this.isMovementSucceeded();
+    if (candidate) {
+      this.moveTowardPosition(candidate.x, candidate.y);
+      return true;
+    }
+    return false;
   }
 
   // Override this so mobs can move diagonally
@@ -16137,6 +16212,7 @@
   FireHorse = function () {
     this.initialize.apply(this, arguments);
   }
+  FireHorse.keepDistance = 1;
 
   FireHorse.prototype = Object.create(Game_Mob.prototype);
   FireHorse.prototype.constructor = FireHorse;
@@ -16146,20 +16222,26 @@
     this.setImage('Flame_Horse', 0);
   }
 
-  Salamander.prototype.targetInSightAction = function(target) {
+  FireHorse.prototype.targetInSightAction = function(target) {
     if (getRandomInt(100) < 40) { // Skill_FirePath
       return this.performBuffIfNotPresent(this.mob._skills[0]);
     }
-    return false;
+    return this.moveInLineWithCharacter(target, FireHorse.keepDistance);
   }
 
-  Salamander.prototype.projectileAction = function(x, y, distance) {
+  FireHorse.prototype.projectileAction = function(x, y, distance) {
     if (getRandomInt(100) < 80 && distance < 3) { // Skill_Charge
       let skill = this.mob._skills[1];
       if (SkillUtils.canPerform(this.mob, skill)) {
         skill.action(this, x, y);
         return true;
       }
+    }
+    if (CharUtils.getTargetEffect(this.mob, window[this.mob._skills[0].constructor.name])
+      && distance == 1) {
+      // with fire path, keep distance
+      let target = MapUtils.getCharXy(x, y);
+      return this.moveAwayFromCharacter(target);
     }
     return false;
   }
@@ -16168,7 +16250,7 @@
     let randNum = getRandomInt(100);
     if (randNum < 50 && this.performBuffIfNotPresent(this.mob._skills[0])) { // Skill_FirePath
       return true;
-    } else if (randNum < 80 && this.moveAwayFromCharacter($gamePlayer)) { // keep distance
+    } else if (randNum < 80 && this.moveAwayFromCharacter(target)) { // keep distance
       return true;
     } else {
       return BattleUtils.meleeAttack(this, target);
