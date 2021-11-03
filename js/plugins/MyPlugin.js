@@ -215,7 +215,7 @@
   var pressFloor = 1654;
 
   var dungeonDepth = 9;
-  var subDungeonDepth = 6;
+  var subDungeonDepth = 5;
 
   // door figures
   var doorClosedIcon = 512;
@@ -861,7 +861,7 @@
     throw new Error('This is a static class');
   };
   CharUtils.mobTemplates = [
-    [], [] // 0: earth, 1: ice, 2: fire
+    [], [], [] // 0: earth, 1: ice, 2: fire
   ]; // save all mobs
 
   CharUtils.baseHp = 35;
@@ -1676,39 +1676,41 @@
     $gameVariables[dungeonDepth].stairDownNum = 0;
 
     // initialize sub-dungeon levels
-    // 0: earth, 1: ice
+    // 0: earth, 1: ice, 2: fire
     $gameVariables[0] = {};
-    $gameVariables[0].dungeonEntranceLevel = [0, 0];
+    $gameVariables[0].dungeonEntranceLevel = [0, 0, 0];
     // generate ice entrance
+    let dungeonStart = 11;
     $gameVariables[0].dungeonEntranceLevel[1] = getRandomIntRange(4, dungeonDepth);
     $gameVariables[$gameVariables[0].dungeonEntranceLevel[1]].stairDownNum++;
-    $gameVariables[$gameVariables[0].dungeonEntranceLevel[1]].stairToList.push(11);
-    $gameVariables[11].stairToList.push($gameVariables[0].dungeonEntranceLevel[1]);
-    let dungeonStart = 11;
+    $gameVariables[$gameVariables[0].dungeonEntranceLevel[1]].stairToList.push(dungeonStart);
+    $gameVariables[dungeonStart].stairToList.push($gameVariables[0].dungeonEntranceLevel[1]);
     for (let i = dungeonStart; i < dungeonStart + subDungeonDepth; i++) {
       $gameVariables[i].stairToList.push(i - 1);
       $gameVariables[i].stairToList.push(i + 1);
       $gameVariables[i].mapType = 'ICE';
       $gameVariables[i].dungeonLevel = i - dungeonStart + $gameVariables[0].dungeonEntranceLevel[1];
     }
-    $gameVariables[11].stairToList.splice(1, 1);
-    $gameVariables[15].stairToList.pop();
-    $gameVariables[15].stairDownNum = 0;
-    $gameVariables[15].preDefinedMobs.push('Selina');
+    $gameVariables[dungeonStart].stairToList.splice(1, 1);
+    $gameVariables[dungeonStart + subDungeonDepth - 1].stairToList.pop();
+    $gameVariables[dungeonStart + subDungeonDepth - 1].stairDownNum = 0;
+    $gameVariables[dungeonStart + subDungeonDepth - 1].preDefinedMobs.push('Selina');
 
-    // let fireEntranceLevel = 2;
-    // $gameVariables[fireEntranceLevel].stairDownNum++;
-    // $gameVariables[fireEntranceLevel].stairToList.push(21);
-    // $gameVariables[21].stairToList.push(fireEntranceLevel);
-    // for (let i = 21; i < 26; i++) {
-    //   $gameVariables[i].stairToList.push(i - 1);
-    //   $gameVariables[i].stairToList.push(i + 1);
-    //   $gameVariables[i].mapType = 'FIRE';
-    //   $gameVariables[i].dungeonLevel = i - 16;
-    // }
-    // $gameVariables[21].stairToList.splice(1, 1);
-    // $gameVariables[25].stairToList.pop();
-    // $gameVariables[25].stairDownNum = 0;
+    // generate fire entrance
+    dungeonStart = 21;
+    $gameVariables[0].dungeonEntranceLevel[2] = getRandomIntRange(4, dungeonDepth);
+    $gameVariables[$gameVariables[0].dungeonEntranceLevel[2]].stairDownNum++;
+    $gameVariables[$gameVariables[0].dungeonEntranceLevel[2]].stairToList.push(dungeonStart);
+    $gameVariables[dungeonStart].stairToList.push($gameVariables[0].dungeonEntranceLevel[2]);
+    for (let i = dungeonStart; i < dungeonStart + subDungeonDepth; i++) {
+      $gameVariables[i].stairToList.push(i - 1);
+      $gameVariables[i].stairToList.push(i + 1);
+      $gameVariables[i].mapType = 'FIRE';
+      $gameVariables[i].dungeonLevel = i - dungeonStart + $gameVariables[0].dungeonEntranceLevel[2];
+    }
+    $gameVariables[dungeonStart].stairToList.splice(1, 1);
+    $gameVariables[dungeonStart + subDungeonDepth - 1].stairToList.pop();
+    $gameVariables[dungeonStart + subDungeonDepth - 1].stairDownNum = 0;
 
     // initialize $gameVariables[0] for multiple usage
     MapUtils.loadMob();
@@ -1916,14 +1918,14 @@
     $gameParty._items.push(new Soul_Bite());
     Soul_Obtained_Action.learnSkill(Skill_Bite);
     // Soul_Obtained_Action.learnSkill(Skill_AuraFire);
-    Soul_Obtained_Action.learnSkill(Skill_FirePath);
+    // Soul_Obtained_Action.learnSkill(Skill_FirePath);
     // Soul_Obtained_Action.learnSkill(Skill_FireBall);
     // Soul_Obtained_Action.learnSkill(Skill_FireBreath);
     // Soul_Obtained_Action.learnSkill(Skill_SuperRegen);
     // Soul_Obtained_Action.learnSkill(Skill_AdaptWater);
     // Soul_Obtained_Action.learnSkill(Skill_IceBolt);
     // Soul_Obtained_Action.learnSkill(Skill_IceBreath);
-    Soul_Obtained_Action.learnSkill(Skill_Charge);
+    // Soul_Obtained_Action.learnSkill(Skill_Charge);
     // Soul_Obtained_Action.learnSkill(Skill_IceBolder);
     // Soul_Obtained_Action.learnSkill(Skill_Bash);
     // Soul_Obtained_Action.learnSkill(Skill_Pierce);
@@ -1938,10 +1940,16 @@
     // Soul_Obtained_Action.learnSkill(Skill_Hide);
 
     // modify actor status
-    // let player = $gameActors.actor(1);
-    // player._paramPlus[2] = 9;
-    // player._paramPlus[3] = 9;
-    // player._paramPlus[6] = 9;
+    let player = $gameActors.actor(1);
+    player._paramPlus[2] = 9;
+    player._paramPlus[3] = 9;
+    player._paramPlus[6] = 9;
+
+    $gameParty.gainItem(ItemUtils.createItem(Dog_Shield), 1);
+    $gameParty.gainItem(ItemUtils.createItem(Cat_Gloves), 1);
+    $gameParty.gainItem(ItemUtils.createItem(Wolf_Skin), 1);
+    $gameParty.gainItem(ItemUtils.createItem(Bear_Claw), 1);
+    $gameParty.gainItem(ItemUtils.createItem(Wolf_Shoes), 1);
 
     // $gameParty.gainItem(ItemUtils.createItem(Salamander_Gloves), 1);
     // $gameParty.gainItem(ItemUtils.createItem(Salamander_Helmet), 1);
@@ -1953,7 +1961,6 @@
     // $gameParty.gainItem(ItemUtils.createItem(FireHorse_Tail), 1);
 
     // $gameParty.gainItem(ItemUtils.createItem(Fire_Coat), 1);
-    // $gameParty.gainItem(ItemUtils.createItem(Ice_Coat), 1);
     // $gameParty.gainItem(ItemUtils.createItem(Ring_FireResistance), 1);
 
     // $gameParty.gainItem(ItemUtils.createItem(IceDragon_Skin), 1);
@@ -1972,13 +1979,19 @@
     // $gameParty.gainItem(ItemUtils.createItem(FireDragon_Shoes), 1);
     // $gameParty.gainItem(ItemUtils.createItem(FireDragon_Shield), 1);
 
+    // $gameParty.gainItem(ItemUtils.createItem(Salamander_Scimitar), 1);
+    // $gameParty.gainItem(ItemUtils.createItem(Salamander_Spear), 1);
+    // $gameParty.gainItem(ItemUtils.createItem(Salamander_Staff), 1);
+    // $gameParty.gainItem(ItemUtils.createItem(Dart_Fire_T1), 1);
+    // $gameParty.gainItem(ItemUtils.createItem(Dart_Fire_T2), 1);
+
     $gameParty.gainItem(new Cheese(), 1);
     $gameParty.gainItem(new Cheese(), 1);
-    // for (let i = 0; i < 6; i++) {
-    //   player.levelUp();
-    // }
-    // player._hp = 120;
-    // player._mp = 80;
+    for (let i = 0; i < 6; i++) {
+      player.levelUp();
+    }
+    player._hp = 120;
+    player._mp = 80;
   }
 
   MapUtils.loadFile = function(filePath) {
@@ -2108,6 +2121,9 @@
         break;
       case 'ICE':
         mapTypeIndex = 1;
+        break;
+      case 'FIRE':
+        mapTypeIndex = 2;
         break;
     }
     return mapTypeIndex;
@@ -5539,7 +5555,7 @@
     // check if target in the lava
     if ($gameVariables[$gameMap.mapId()].mapData[target._x][target._y].originalTile == LAVA
       && realTarget.moveType != 2) {
-      let value = 30;
+      let value = Math.round(40 * (1 - realTarget.status.resistance.elemental.fire));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
       CharUtils.decreaseHp(realTarget, value);
@@ -5553,7 +5569,7 @@
     if (terrainEvt) {
       if (terrainEvt instanceof Terrain_Fire && !CharUtils.getTargetEffect(realTarget, Skill_FirePath)) {
         // not using same skill, should take damage
-        let damage = terrainEvt.evt.damage;
+        let damage = Math.round(terrainEvt.evt.damage * (1 - realTarget.status.resistance.elemental.fire));
         CharUtils.decreaseHp(realTarget, damage);
         if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
           TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
@@ -7508,7 +7524,7 @@
 
   ItemUtils.potionTemplates = [];
   ItemUtils.scrollTemplates = [];
-  ItemUtils.lootingTemplates = new Array(2); // 0: earth, 1: ice, 2: fire
+  ItemUtils.lootingTemplates = new Array(3); // 0: earth, 1: ice, 2: fire
   for (let i = 0; i < ItemUtils.lootingTemplates.length; i++) {
     ItemUtils.lootingTemplates[i] = {
       skin: [],
@@ -7518,7 +7534,7 @@
       material: []
     }
   }
-  ItemUtils.equipTemplates = new Array(2);
+  ItemUtils.equipTemplates = new Array(3); // 0: earth, 1: ice, 2: fire
   for (let i = 0; i < ItemUtils.equipTemplates.length; i++) {
     ItemUtils.equipTemplates[i] = {
       helmet: [],
@@ -8512,6 +8528,7 @@
     this.description = '被踢到會凹下去';
     this.weight = 5;
   }
+  ItemUtils.lootingTemplates[2].material.push(FireHorse_Shoe);
 
   //-----------------------------------------------------------------------------------
   // FireHorse_Tail
@@ -8532,6 +8549,7 @@
     this.description = '永遠燃燒著火焰, 但卻不會燙傷你';
     this.weight = 2;
   }
+  ItemUtils.lootingTemplates[2].material.push(FireHorse_Tail);
 
   //-----------------------------------------------------------------------------------
   // Phoenix_Feather
@@ -8552,6 +8570,7 @@
     this.description = '溫熱發亮的羽毛';
     this.weight = 1;
   }
+  ItemUtils.lootingTemplates[2].material.push(Phoenix_Feather);
 
   //-----------------------------------------------------------------------------------
   // Phoenix_Blood
@@ -8572,6 +8591,7 @@
     this.description = '不斷沸騰著的血';
     this.weight = 10;
   }
+  ItemUtils.lootingTemplates[2].material.push(Phoenix_Blood);
 
   //-----------------------------------------------------------------------------------
   // Flesh (for animal)
@@ -8977,7 +8997,7 @@
     this.damageType.elemental.fire = 0.2;
     ItemUtils.updateEquipDescription(this);
   }
-  // ItemUtils.lootingTemplates[2].tooth.push(Salamander_Tooth);
+  ItemUtils.lootingTemplates[2].tooth.push(Salamander_Tooth);
 
   //-----------------------------------------------------------------------------------
   // Phoenix_Tooth
@@ -9011,6 +9031,7 @@
     this.damageType.elemental.fire = 0.2;
     ItemUtils.updateEquipDescription(this);
   }
+  ItemUtils.lootingTemplates[2].tooth.push(Phoenix_Tooth);
 
   //-----------------------------------------------------------------------------------
   // FireDragon_Tooth
@@ -9044,6 +9065,7 @@
     this.damageType.elemental.fire = 0.2;
     ItemUtils.updateEquipDescription(this);
   }
+  ItemUtils.lootingTemplates[2].tooth.push(FireDragon_Tooth);
 
   //-----------------------------------------------------------------------------------
   // Dog_Bone
@@ -9261,6 +9283,7 @@
     this.damageType.elemental.fire = 0.2;
     ItemUtils.updateEquipDescription(this);
   }
+  ItemUtils.lootingTemplates[2].bone.push(Salamander_Bone);
 
   //-----------------------------------------------------------------------------------
   // FireDragon_Bone
@@ -9288,6 +9311,7 @@
     this.damageType.elemental.fire = 0.2;
     ItemUtils.updateEquipDescription(this);
   }
+  ItemUtils.lootingTemplates[2].bone.push(FireDragon_Bone);
 
   //-----------------------------------------------------------------------------------
   // Rooster_Claw
@@ -9519,6 +9543,7 @@
     this.damageType.elemental.fire = 0.2;
     ItemUtils.updateEquipDescription(this);
   }
+  ItemUtils.lootingTemplates[2].claw.push(Salamander_Claw);
 
   //-----------------------------------------------------------------------------------
   // FireDragon_Claw
@@ -9552,6 +9577,7 @@
     this.damageType.elemental.fire = 0.2;
     ItemUtils.updateEquipDescription(this);
   }
+  ItemUtils.lootingTemplates[2].claw.push(FireDragon_Claw);
 
   //-----------------------------------------------------------------------------------
   // Dog_Skin
@@ -9740,6 +9766,7 @@
     this.resistance.elemental.fire = 0.1;
     ItemUtils.updateEquipDescription(this);
   };
+  ItemUtils.lootingTemplates[2].skin.push(Salamander_Skin);
 
   //-----------------------------------------------------------------------------------
   // FireDragon_Skin
@@ -9767,6 +9794,7 @@
     this.resistance.elemental.fire = 0.1;
     ItemUtils.updateEquipDescription(this);
   };
+  ItemUtils.lootingTemplates[2].skin.push(FireDragon_Skin);
 
   //-----------------------------------------------------------------------------------
   // Turtle_Shell
@@ -9934,6 +9962,60 @@
   }
   ItemUtils.recipes.push(Dart_Lv2_T2);
   ItemUtils.lootingTemplates[0].material.push(Dart_Lv2_T2);
+
+  //-----------------------------------------------------------------------------------
+  // Dart_Fire_T1
+  //
+  // type: DART
+
+  Dart_Fire_T1 = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dart_Fire_T1.spawnLevel = 8;
+
+  Dart_Fire_T1.itemName = '火焰飛鏢';
+  Dart_Fire_T1.itemDescription = '射向敵人造成傷害';
+  Dart_Fire_T1.material = [{itemClass: Phoenix_Feather, amount: 1}, {itemClass: Salamander_Tooth, amount: 1}];
+
+  Dart_Fire_T1.prototype = Object.create(ItemTemplate.prototype);
+  Dart_Fire_T1.prototype.constructor = Dart_Fire_T1;
+
+  Dart_Fire_T1.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[13]);
+    this.damage = '1d16';
+    this.name = Dart_Fire_T1.itemName;
+    this.description = Dart_Fire_T1.itemDescription + '\n投擲傷害' + this.damage;
+    this.templateName = this.name;
+    this.weight = 3;
+  }
+  ItemUtils.recipes.push(Dart_Fire_T1);
+
+  //-----------------------------------------------------------------------------------
+  // Dart_Fire_T2
+  //
+  // type: DART
+
+  Dart_Fire_T2 = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Dart_Fire_T2.spawnLevel = 8;
+
+  Dart_Fire_T2.itemName = '火焰飛鏢';
+  Dart_Fire_T2.itemDescription = '射向敵人造成傷害';
+  Dart_Fire_T2.material = [{itemClass: Phoenix_Feather, amount: 1}, {itemClass: Phoenix_Tooth, amount: 1}];
+
+  Dart_Fire_T2.prototype = Object.create(ItemTemplate.prototype);
+  Dart_Fire_T2.prototype.constructor = Dart_Fire_T2;
+
+  Dart_Fire_T2.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[13]);
+    this.damage = '1d16';
+    this.name = Dart_Fire_T2.itemName;
+    this.description = Dart_Fire_T2.itemDescription + '\n投擲傷害' + this.damage;
+    this.templateName = this.name;
+    this.weight = 3;
+  }
+  ItemUtils.recipes.push(Dart_Fire_T2);
 
   //-----------------------------------------------------------------------------------
   // Dog_Gloves
@@ -11272,6 +11354,7 @@
     this.resistance.elemental.fire = 0.3;
     ItemUtils.updateEquipDescription(this);
   };
+  ItemUtils.equipTemplates[2].coat.push(Fire_Coat);
 
   //-----------------------------------------------------------------------------------
   // Ring_FireResistance
@@ -11460,7 +11543,6 @@
     // randomize attributes
     ItemUtils.updateEquipDescription(this);
   };
-  // ItemUtils.recipes.push(Ring_ColdResistance);
 
   //-----------------------------------------------------------------------------------
   // Dog_Scimitar
@@ -11696,6 +11778,45 @@
   ItemUtils.equipTemplates[1].weapon.push(IceDragon_Scimitar);
 
   //-----------------------------------------------------------------------------------
+  // Salamander_Scimitar
+  //
+  // weapon type: SCIMITAR
+
+  Salamander_Scimitar = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Salamander_Scimitar.spawnLevel = 5;
+
+  Salamander_Scimitar.itemName = '火蜥蜴刃';
+  Salamander_Scimitar.itemDescription = '發燙的長刀';
+  Salamander_Scimitar.material = [{itemClass: Salamander_Bone, amount: 2}, {itemClass: Salamander_Claw, amount: 4}];
+
+  Salamander_Scimitar.prototype = Object.create(EquipTemplate.prototype);
+  Salamander_Scimitar.prototype.constructor = Salamander_Scimitar;
+
+  Salamander_Scimitar.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[14]);
+    this.name = Salamander_Scimitar.itemName;
+    this.description = Salamander_Scimitar.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(2, 5);
+    modifier += this.bucState;
+    this.traits[2].value = '3d2';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    this.params[4] = 4;
+    this.damageType.elemental.fire = 0.2;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Salamander_Scimitar);
+
+  //-----------------------------------------------------------------------------------
   // Dog_Spear
   //
   // weapon type: SPEAR
@@ -11889,6 +12010,45 @@
   };
   ItemUtils.recipes.push(IceDragon_Spear);
   ItemUtils.equipTemplates[1].weapon.push(IceDragon_Spear);
+
+  //-----------------------------------------------------------------------------------
+  // Salamander_Spear
+  //
+  // weapon type: SPEAR
+
+  Salamander_Spear = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Salamander_Spear.spawnLevel = 5;
+
+  Salamander_Spear.itemName = '火蜥蜴矛';
+  Salamander_Spear.itemDescription = '發燙的長矛';
+  Salamander_Spear.material = [{itemClass: Salamander_Bone, amount: 2}, {itemClass: Salamander_Tooth, amount: 4}];
+
+  Salamander_Spear.prototype = Object.create(EquipTemplate.prototype);
+  Salamander_Spear.prototype.constructor = Salamander_Spear;
+
+  Salamander_Spear.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[15]);
+    this.name = Salamander_Spear.itemName;
+    this.description = Salamander_Spear.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(1, 4);
+    modifier += this.bucState;
+    this.traits[2].value = '2d3';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    this.params[4] = 4;
+    this.damageType.elemental.fire = 0.2;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Salamander_Spear);
 
   //-----------------------------------------------------------------------------------
   // StaffTemplate
@@ -12177,6 +12337,44 @@
   };
   ItemUtils.recipes.push(IceDragon_Staff);
   ItemUtils.equipTemplates[1].weapon.push(IceDragon_Staff);
+
+  //-----------------------------------------------------------------------------------
+  // Salamander_Staff
+  //
+  // weapon type: STAFF
+
+  Salamander_Staff = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Salamander_Staff.spawnLevel = 5;
+
+  Salamander_Staff.itemName = '火蜥蜴杖';
+  Salamander_Staff.itemDescription = '發燙的法杖';
+  Salamander_Staff.material = [{itemClass: Salamander_Bone, amount: 4}];
+
+  Salamander_Staff.prototype = Object.create(StaffTemplate.prototype);
+  Salamander_Staff.prototype.constructor = Salamander_Staff;
+
+  Salamander_Staff.prototype.initialize = function () {
+    StaffTemplate.prototype.initialize.call(this, 15);
+    this.name = Salamander_Staff.itemName;
+    this.description = Salamander_Staff.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    this.traits[2].value = '1d4';
+    let modifier = this.bucState;
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    this.params[4] = 3;
+    this.damageType.elemental.fire = 0.2;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(Salamander_Staff);
 
   //-----------------------------------------------------------------------------------
   // Potion_Heal
@@ -14913,6 +15111,7 @@
 
       let atkValue = 4 + this.skill.lv + realSrc.param(4) / 3;
       let damage = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
+      damage = Math.round(damage * (1 - realTarget.status.resistance.elemental.fire));
       CharUtils.decreaseHp(realTarget, damage);
       if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
         TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
@@ -14972,7 +15171,7 @@
       let realTarget = BattleUtils.getRealTarget(target);
       let atkValue = 8 + this.skill.lv * 2 + realSrc.param(4) / 3;
       let damage = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
-      damage = Math.round(damage * (1 - realTarget.status.resistance.elemental.cold));
+      damage = Math.round(damage * (1 - realTarget.status.resistance.elemental.fire));
       CharUtils.decreaseHp(realTarget, damage);
       if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
         TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
@@ -15389,7 +15588,7 @@
       if (target) {
         let realTarget = BattleUtils.getRealTarget(target);
         if (!realTarget.checked) {
-          let damage = this.skill.lv;
+          let damage = Math.round(this.skill.lv * (1 - realTarget.status.resistance.elemental.fire));
           CharUtils.decreaseHp(realTarget, damage);
           if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
             TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
@@ -16638,6 +16837,7 @@
   Salamander.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Salamander', 1);
+    this.mob.status.resistance.elemental.fire = 1;
   }
 
   Salamander.prototype.targetInSightAction = function(target) {
@@ -16665,6 +16865,7 @@
     }
     Game_Mob.prototype.looting.call(this, lootings);
   }
+  CharUtils.mobTemplates[2].push(Salamander);
 
   //-----------------------------------------------------------------------------------
   // FireHorse
@@ -16680,6 +16881,7 @@
   FireHorse.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Flame_Horse', 0);
+    this.mob.status.resistance.elemental.fire = 0.8;
   }
 
   FireHorse.prototype.targetInSightAction = function(target) {
@@ -16724,6 +16926,7 @@
     }
     Game_Mob.prototype.looting.call(this, lootings);
   }
+  CharUtils.mobTemplates[2].push(FireHorse);
 
   //-----------------------------------------------------------------------------------
   // Fire_Spirit
@@ -16738,6 +16941,7 @@
   Fire_Spirit.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Fairy', 3);
+    this.mob.status.resistance.elemental.fire = 1;
   }
 
   Fire_Spirit.prototype.targetInSightAction = function(target) {
@@ -16770,6 +16974,7 @@
     var lootings = [];
     Game_Mob.prototype.looting.call(this, lootings);
   }
+  CharUtils.mobTemplates[2].push(Fire_Spirit);
 
   //-----------------------------------------------------------------------------------
   // Phoenix
@@ -16784,6 +16989,7 @@
   Phoenix.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Phoenix', 0);
+    this.mob.status.resistance.elemental.fire = 0.8;
   }
 
   // set cooldown for Skill_SuperRegen
@@ -16834,6 +17040,7 @@
     }
     Game_Mob.prototype.looting.call(this, lootings);
   }
+  CharUtils.mobTemplates[2].push(Phoenix);
 
   //-----------------------------------------------------------------------------------
   // Fire_Dragon
@@ -16848,6 +17055,7 @@
   Fire_Dragon.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Dragon', 3);
+    this.mob.status.resistance.elemental.fire = 1;
   }
 
   Fire_Dragon.prototype.targetInSightAction = function(target) {
@@ -16894,6 +17102,7 @@
     }
     Game_Mob.prototype.looting.call(this, lootings);
   }
+  CharUtils.mobTemplates[2].push(Fire_Dragon);
 
   //-----------------------------------------------------------------------------------
   // Soul_Obtained_Action
