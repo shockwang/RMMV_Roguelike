@@ -245,6 +245,8 @@
   var carryObjectMaxNum = 52;
   var controlCommandDelay = 50;
   var skillLevelMax = 10;
+  var bossHpMpMultiplier = 1.5;
+  var bossDebuffTurnsMultiplier = 0.3;
 
   // word attached
   var groundWord = '(地上)';
@@ -1711,6 +1713,7 @@
     $gameVariables[dungeonStart].stairToList.splice(1, 1);
     $gameVariables[dungeonStart + subDungeonDepth - 1].stairToList.pop();
     $gameVariables[dungeonStart + subDungeonDepth - 1].stairDownNum = 0;
+    $gameVariables[dungeonStart + subDungeonDepth - 1].preDefinedMobs.push('FireKing');
 
     // initialize $gameVariables[0] for multiple usage
     MapUtils.loadMob();
@@ -1765,6 +1768,8 @@
       discoverPressFloor: $dataMap.events[10],
       selinaEncountered: $dataMap.events[11],
       selinaDefeated: $dataMap.events[12],
+      fireKingEncountered: $dataMap.events[34],
+      fireKingDefeated: $dataMap.events[35],
       // temp setup
       skillObtainedHint: $dataMap.events[31]
     }
@@ -1848,7 +1853,8 @@
     // define event related states
     $gameVariables[0].eventState = {
       pressFloorDiscovered: false,
-      selinaEncountered: false
+      selinaEncountered: false,
+      fireKingEncountered: false
     }
     // define last savefileId
     $gameVariables[0].lastSavefileId = 0;
@@ -2133,7 +2139,7 @@
     if (mapId < 11) {
       return mapId - 1;
     } else {
-      return mapId - 10;
+      return mapId % 10;
     }
   }
 
@@ -3840,9 +3846,12 @@
     // first load map
     console.log("first load map: " + mapId);
     var rawMap;
-    if (mapId == 15) {
+    if (mapId == 10 + subDungeonDepth) {
       // ice boss room
       rawMap = MapUtils.dataToMap('iceBossRoom');
+    } else if (mapId == 20 + subDungeonDepth) {
+      // fire boss room
+      rawMap = MapUtils.dataToMap('fireBossRoom');
     } else {
       rawMap = MapUtils.generateMapData(mapId, genMapRoomsFullMaze, 20, 10);
       rawMap = MapUtils.removeDeadEnds(rawMap);
@@ -5555,7 +5564,8 @@
     // check if target in the lava
     if ($gameVariables[$gameMap.mapId()].mapData[target._x][target._y].originalTile == LAVA
       && realTarget.moveType != 2) {
-      let value = Math.round(40 * (1 - realTarget.status.resistance.elemental.fire));
+      let value = Math.round(40 * (1 - SkillUtils.getResistance(realTarget.status.resistance.elemental.fire))
+        * Skill_AdaptTerrain.getTerrainDamageMultiplier(realTarget));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
       CharUtils.decreaseHp(realTarget, value);
@@ -5569,7 +5579,9 @@
     if (terrainEvt) {
       if (terrainEvt instanceof Terrain_Fire && !CharUtils.getTargetEffect(realTarget, Skill_FirePath)) {
         // not using same skill, should take damage
-        let damage = Math.round(terrainEvt.evt.damage * (1 - realTarget.status.resistance.elemental.fire));
+        let damage = Math.round(terrainEvt.evt.damage
+          * (1 - SkillUtils.getResistance(realTarget.status.resistance.elemental.fire))
+          * Skill_AdaptTerrain.getTerrainDamageMultiplier(realTarget));
         CharUtils.decreaseHp(realTarget, damage);
         if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
           TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
@@ -12434,7 +12446,7 @@
 
   Potion_Mana.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
-    let value = 20;
+    let value = 30;
     realUser.setMp(realUser._mp + value);
     if (CharUtils.playerCanSeeChar(user)) {
       TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 45));
@@ -12470,7 +12482,7 @@
 
   Potion_Blind.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
-    realUser.status.blindEffect.turns = 20;
+    realUser.status.blindEffect.turns = SkillUtils.getDebuffEffectCount(user, 10);
     TimeUtils.eventScheduler.addStatusEffect(user, 'blindEffect');
     if (user == $gamePlayer) {
       $gameActors.actor(1).awareDistance = 0;
@@ -12509,7 +12521,7 @@
   Potion_Paralyze.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
     if (realUser.status.resistance.state.paralyze == 0) {
-      realUser.status.paralyzeEffect.turns = 5;
+      realUser.status.paralyzeEffect.turns = SkillUtils.getDebuffEffectCount(user, 5);
       TimeUtils.eventScheduler.addStatusEffect(user, 'paralyzeEffect');
       if (CharUtils.playerCanSeeChar(user)) {
         TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 64));
@@ -12554,7 +12566,7 @@
 
   Potion_Sleep.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
-    realUser.status.sleepEffect.turns = 20;
+    realUser.status.sleepEffect.turns = SkillUtils.getDebuffEffectCount(user, 20);
     TimeUtils.eventScheduler.addStatusEffect(user, 'sleepEffect');
     if (CharUtils.playerCanSeeChar(user)) {
       TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 62));
@@ -12816,7 +12828,7 @@
 
   Potion_Poison.prototype.onQuaff = function(user, identifyObject) {
     let realUser = BattleUtils.getRealTarget(user);
-    realUser.status.poisonEffect.turns = 10;
+    realUser.status.poisonEffect.turns = SkillUtils.getDebuffEffectCount(user, 10);
     TimeUtils.eventScheduler.addStatusEffect(user, 'poisonEffect');
     if (CharUtils.playerCanSeeChar(user)) {
       TimeUtils.animeQueue.push(new AnimeObject(user, 'ANIME', 59));
@@ -13229,7 +13241,7 @@
       for (let id in $gameMap._events) {
         let evt = $gameMap._events[id];
         if (evt && evt.type == 'MOB' && MapUtils.getDistance(evt._x, evt._y, $gamePlayer._x, $gamePlayer._y) <= 10) {
-          evt.mob.status.afraidEffect.turns = 20;
+          evt.mob.status.afraidEffect.turns = SkillUtils.getDebuffEffectCount(user, 20);
           TimeUtils.eventScheduler.addStatusEffect(evt, 'afraidEffect');
           if ($gameVariables[$gameMap._mapId].mapData[evt._x][evt._y].isVisible) {
             LogUtils.addLog(String.format(Message.display('monsterFlee'), evt.mob.name()));
@@ -13645,6 +13657,22 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Soul_AdaptTerrain
+
+  Soul_AdaptTerrain = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Soul_AdaptTerrain.prototype = Object.create(ItemTemplate.prototype);
+  Soul_AdaptTerrain.prototype.constructor = Soul_AdaptTerrain;
+
+  Soul_AdaptTerrain.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
+    this.name = '適應地形';
+    this.description = '你能夠適應各種地形';
+  }
+
+  //-----------------------------------------------------------------------------------
   // SkillUtils
   //
   // Skill related methods
@@ -13785,6 +13813,17 @@
       return -1;
     }
     return 40 * (skillLv + 1);
+  }
+
+  SkillUtils.getDebuffEffectCount = function(target, count) {
+    let multiplier = (target.isBoss) ? bossDebuffTurnsMultiplier : 1
+    let result = Math.round(count * multiplier);
+    result = (result < 1) ? 1 : result;
+    return result;
+  }
+
+  SkillUtils.getResistance = function(resistanceValue) {
+    return (resistanceValue > 1) ? 1 : resistanceValue;
   }
 
   //-----------------------------------------------------------------------------------
@@ -14002,6 +14041,37 @@
       {lv: 2, levelUp: 150},
       {lv: 3, levelUp: -1},
     ]
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Skill_AdaptTerrain
+
+  Skill_AdaptTerrain = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_AdaptTerrain.prototype = Object.create(ItemTemplate.prototype);
+  Skill_AdaptTerrain.prototype.constructor = Skill_AdaptTerrain;
+
+  Skill_AdaptTerrain.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[11]);
+    this.name = '適應地形';
+    this.description = '地形傷害減半';
+    this.iconIndex = 77;
+    this.lv = 1;
+    this.exp = 0;
+  }
+
+  Skill_AdaptTerrain.prop = {
+    type: "SKILL",
+    subType:"PASSIVE",
+    effect: [
+      {lv: 1, levelUp: -1}
+    ]
+  }
+
+  Skill_AdaptTerrain.getTerrainDamageMultiplier = function(realTarget) {
+    return (SkillUtils.getSkillInstance(realTarget, Skill_AdaptTerrain)) ? 0.5 : 1;
   }
 
   //-----------------------------------------------------------------------------------
@@ -14495,7 +14565,7 @@
       let realTarget = BattleUtils.getRealTarget(target);
       let atkValue = 4 + this.lv * 2 + realSrc.param(4) / 3;
       let value = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
-      value = Math.round(value * (1 - realTarget.status.resistance.elemental.cold));
+      value = Math.round(value * (1 - SkillUtils.getResistance(realTarget.status.resistance.elemental.cold)));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 77));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
       LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)
@@ -15111,7 +15181,7 @@
 
       let atkValue = 4 + this.skill.lv + realSrc.param(4) / 3;
       let damage = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
-      damage = Math.round(damage * (1 - realTarget.status.resistance.elemental.fire));
+      damage = Math.round(damage * (1 - SkillUtils.getResistance(realTarget.status.resistance.elemental.fire)));
       CharUtils.decreaseHp(realTarget, damage);
       if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
         TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
@@ -15171,7 +15241,7 @@
       let realTarget = BattleUtils.getRealTarget(target);
       let atkValue = 8 + this.skill.lv * 2 + realSrc.param(4) / 3;
       let damage = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
-      damage = Math.round(damage * (1 - realTarget.status.resistance.elemental.fire));
+      damage = Math.round(damage * (1 - SkillUtils.getResistance(realTarget.status.resistance.elemental.fire)));
       CharUtils.decreaseHp(realTarget, damage);
       if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
         TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
@@ -15231,7 +15301,7 @@
       let realTarget = BattleUtils.getRealTarget(target);
       let atkValue = 4 + this.skill.lv + realSrc.param(4) / 3;
       let damage = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
-      damage = Math.round(damage * (1 - realTarget.status.resistance.elemental.cold));
+      damage = Math.round(damage * (1 - SkillUtils.getResistance(realTarget.status.resistance.elemental.cold)));
       CharUtils.decreaseHp(realTarget, damage);
       if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
         TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 71));
@@ -15291,7 +15361,7 @@
       let realTarget = BattleUtils.getRealTarget(target);
       let atkValue = 8 + this.skill.lv * 2 + realSrc.param(4) / 3;
       let damage = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
-      damage = Math.round(damage * (1 - realTarget.status.resistance.elemental.cold));
+      damage = Math.round(damage * (1 - SkillUtils.getResistance(realTarget.status.resistance.elemental.cold)));
       CharUtils.decreaseHp(realTarget, damage);
       if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
         TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 71));
@@ -15368,7 +15438,7 @@
       let realTarget = BattleUtils.getRealTarget(target);
       let atkValue = 15 + this.lv * 5 + realSrc.param(4) / 3;
       let value = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
-      value = Math.round(value * (1 - realTarget.status.resistance.elemental.cold));
+      value = Math.round(value * (1 - SkillUtils.getResistance(realTarget.status.resistance.elemental.cold)));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 4));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
       LogUtils.addLog(String.format(Message.display('damageSkillPerformed'), LogUtils.getCharName(realSrc)
@@ -15588,7 +15658,8 @@
       if (target) {
         let realTarget = BattleUtils.getRealTarget(target);
         if (!realTarget.checked) {
-          let damage = Math.round(this.skill.lv * (1 - realTarget.status.resistance.elemental.fire));
+          let damage = Math.round(this.skill.lv
+            * (1 - SkillUtils.getResistance(realTarget.status.resistance.elemental.fire)));
           CharUtils.decreaseHp(realTarget, damage);
           if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
             TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
@@ -16097,6 +16168,13 @@
 
   Game_Mob.prototype.initAttribute = function() {
     CharUtils.updateHpMp(this.mob);
+    // amplify HP/MP if target is boss
+    if (this.isBoss) {
+      this.mob._paramPlus[0] = Math.round(this.mob._paramPlus[0] * bossHpMpMultiplier);
+      this.mob._hp = this.mob.mhp;
+      this.mob._paramPlus[1] = Math.round(this.mob._paramPlus[1] * bossHpMpMultiplier);
+      this.mob._mp = this.mob.mmp;
+    }
   }
 
   // soul related
@@ -16559,6 +16637,7 @@
   Shark.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Shark', 0);
+    this.mob.status.resistance.elemental.fire = 1;
   }
 
   Shark.prototype.meleeAction = function(target) {
@@ -16591,6 +16670,8 @@
   Slime.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Monster', 1);
+    this.mob.status.resistance.elemental.fire = 0.3;
+    this.mob.status.resistance.elemental.ice = 0.3;
   }
 
   Slime.prototype.meleeAction = function(target) {
@@ -16620,6 +16701,7 @@
   Jellyfish.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Jellyfish', 0);
+    this.mob.status.resistance.elemental.fire = 1;
   }
 
   Jellyfish.prototype.meleeAction = function(target) {
@@ -16652,6 +16734,8 @@
   Ice_Spirit.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Fairy', 2);
+    this.mob.status.resistance.elemental.fire = -0.5;
+    this.mob.status.resistance.elemental.cold = 1;
   }
 
   Ice_Spirit.prototype.targetInSightAction = function(target) {
@@ -16699,6 +16783,7 @@
   Ice_Dragon.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Dragon', 1);
+    this.mob.status.resistance.elemental.cold = 1;
   }
 
   Ice_Dragon.prototype.targetInSightAction = function(target) {
@@ -16759,11 +16844,13 @@
   Selina.prototype = Object.create(Game_Mob.prototype);
   Selina.prototype.constructor = Selina;
 
-  Selina.isBoss = true;
+  Selina.prototype.isBoss = true;
 
   Selina.prototype.initialize = function (x, y, fromData) {
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Jelly_Maid', 0);
+    this.mob.status.resistance.elemental.cold = 1;
+    this.mob.status.resistance.elemental.fire = -0.3;
   }
 
   Selina.prototype.targetInSightAction = function(target) {
@@ -16821,7 +16908,9 @@
     var lootings = [];
     // TODO: implements looting
     Game_Mob.prototype.looting.call(this, lootings);
-    MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.selinaDefeated);
+    setTimeout(() => {
+      MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.selinaDefeated);
+    }, 100);
   }
 
   //-----------------------------------------------------------------------------------
@@ -16838,6 +16927,7 @@
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Salamander', 1);
     this.mob.status.resistance.elemental.fire = 1;
+    this.mob.status.resistance.elemental.cold = -0.5;
   }
 
   Salamander.prototype.targetInSightAction = function(target) {
@@ -16882,6 +16972,7 @@
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Flame_Horse', 0);
     this.mob.status.resistance.elemental.fire = 0.8;
+    this.mob.status.resistance.elemental.cold = -0.3;
   }
 
   FireHorse.prototype.targetInSightAction = function(target) {
@@ -16942,6 +17033,7 @@
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Fairy', 3);
     this.mob.status.resistance.elemental.fire = 1;
+    this.mob.status.resistance.elemental.cold = -0.5;
   }
 
   Fire_Spirit.prototype.targetInSightAction = function(target) {
@@ -16990,6 +17082,7 @@
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Phoenix', 0);
     this.mob.status.resistance.elemental.fire = 0.8;
+    this.mob.status.resistance.elemental.cold = -0.3;
   }
 
   // set cooldown for Skill_SuperRegen
@@ -17103,6 +17196,81 @@
     Game_Mob.prototype.looting.call(this, lootings);
   }
   CharUtils.mobTemplates[2].push(Fire_Dragon);
+
+  //-----------------------------------------------------------------------------------
+  // FireKing
+  // 
+  // Fire dungeon boss
+
+  FireKing = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  FireKing.prototype = Object.create(Game_Mob.prototype);
+  FireKing.prototype.constructor = FireKing;
+
+  FireKing.prototype.isBoss = true;
+
+  FireKing.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, fromData);
+    this.setImage('Evil2', 4);
+    this.mob.status.resistance.elemental.fire = 1;
+    this.mob.status.resistance.elemental.cold = -0.3;
+  }
+
+  FireKing.prototype.targetInSightAction = function(target) {
+    if (!$gameVariables[0].eventState.fireKingEncountered) {
+      $gameVariables[0].eventState.fireKingEncountered = true;
+      MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.fireKingEncountered);
+    } else if (AudioManager._currentBgm.name != 'Battle2') {
+      AudioManager.playBgm({name: 'Battle2', pan: 0, pitch: 100, volume: 100});
+    }
+    if (this.performBuffIfNotPresent(this.mob._skills[3])) { // Skill_AuraFire
+      // already done action
+    } else if (getRandomInt(100) < 60) { // Skill_Barrier
+      return this.performBuffIfNotPresent(this.mob._skills[0]);
+    }
+    return false;
+  }
+
+  FireKing.prototype.projectileAction = function(x, y, distance) {
+    if (getRandomInt(100) < 80) {
+      let skill = this.mob._skills[1]; // Skill_FireBall
+      if (distance <= skill.getDistance() && SkillUtils.canPerform(this.mob, skill)) {
+        skill.action(this, x, y);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  FireKing.prototype.penetrateAction = function(x, y, distance) {
+    if (getRandomInt(100) < 80) {
+      let skill = this.mob._skills[2]; // Skill_FireBreath
+      if (distance <= skill.getDistance() && SkillUtils.canPerform(this.mob, skill)) {
+        skill.action(this, x, y);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  FireKing.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 40 && SkillUtils.canPerform(this.mob, this.mob._skills[1])) { // Skill_FireBall
+      return this.mob._skills[1].action(this, target._x, target._y);
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  FireKing.prototype.looting = function () {
+    var lootings = [];
+    // TODO: implements looting
+    Game_Mob.prototype.looting.call(this, lootings);
+    setTimeout(() => {
+      MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.fireKingDefeated);
+    }, 100);
+  }
 
   //-----------------------------------------------------------------------------------
   // Soul_Obtained_Action
