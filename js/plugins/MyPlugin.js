@@ -51,12 +51,16 @@
 
     // indicates map attributes
     this.generateRandom = false;
+    this.spawnTraps = true; // spawn random traps
+    this.spawnMobs = true; // spawn random mobs
+    this.spawnItems = true; // spawn random items
     this.dungeonLevel = 1; // determine the level difficulty
     this.stairDownNum = 1;
     this.stairUpNum = 1;
     this.stairList = [];
     this.stairToList = []; // indicates which layer this stair leads to
     this.secretBlocks = {}; // indicates secret doors
+    this.preDefinedStairs = []; // predefined stairs
     this.preDefinedTraps = []; // traps at indicated places
     this.preDefinedMobs = []; // predefined mob class
     this.mobStatusEffectList = []; // save mob status/effect when change map
@@ -172,6 +176,11 @@
       cold: 0,
       fire: 0
     }
+  }
+
+  var PreDefinedMobData = function(mobClassName, coordinate) {
+    this.mobClassName = mobClassName;
+    this.coordinate = coordinate; // random place if null
   }
 
   var FLOOR = '□';
@@ -1677,6 +1686,21 @@
     $gameVariables[dungeonDepth].stairToList.push(dungeonDepth - 1);
     $gameVariables[dungeonDepth].stairDownNum = 0;
 
+    // add for test
+    $gameVariables[3].spawnMobs = false;
+    $gameVariables[3].spawnItems = false;
+    $gameVariables[3].spawnTraps = false;
+    let stairUp = new StairData();
+    stairUp.x = 10;
+    stairUp.y = 16;
+    $gameVariables[3].preDefinedStairs.push(stairUp);
+    let stairDown = new StairData();
+    stairDown.type = 1;
+    stairDown.x = 10;
+    stairDown.y = 4;
+    $gameVariables[3].preDefinedStairs.push(stairDown);
+    $gameVariables[3].preDefinedMobs.push(new PreDefinedMobData('Dog', new Coordinate(10, 10)));
+
     // initialize sub-dungeon levels
     // 0: earth, 1: ice, 2: fire
     $gameVariables[0] = {};
@@ -1696,7 +1720,7 @@
     $gameVariables[dungeonStart].stairToList.splice(1, 1);
     $gameVariables[dungeonStart + subDungeonDepth - 1].stairToList.pop();
     $gameVariables[dungeonStart + subDungeonDepth - 1].stairDownNum = 0;
-    $gameVariables[dungeonStart + subDungeonDepth - 1].preDefinedMobs.push('Selina');
+    $gameVariables[dungeonStart + subDungeonDepth - 1].preDefinedMobs.push(new PreDefinedMobData('Selina'));
 
     // generate fire entrance
     dungeonStart = 21;
@@ -1713,7 +1737,8 @@
     $gameVariables[dungeonStart].stairToList.splice(1, 1);
     $gameVariables[dungeonStart + subDungeonDepth - 1].stairToList.pop();
     $gameVariables[dungeonStart + subDungeonDepth - 1].stairDownNum = 0;
-    $gameVariables[dungeonStart + subDungeonDepth - 1].preDefinedMobs.push('FireKing');
+    $gameVariables[dungeonStart + subDungeonDepth - 1].preDefinedMobs.push(new PreDefinedMobData('FireKing')
+      , new Coordinate(9, 3));
 
     // initialize $gameVariables[0] for multiple usage
     MapUtils.loadMob();
@@ -1923,6 +1948,9 @@
 
     $gameParty._items.push(new Soul_Bite());
     Soul_Obtained_Action.learnSkill(Skill_Bite);
+    Soul_Obtained_Action.learnSkill(Skill_DarkFireBall);
+    Soul_Obtained_Action.learnSkill(Skill_DarkFireBlast);
+    Soul_Obtained_Action.learnSkill(Skill_Judgement);
     // Soul_Obtained_Action.learnSkill(Skill_AuraFire);
     // Soul_Obtained_Action.learnSkill(Skill_FirePath);
     // Soul_Obtained_Action.learnSkill(Skill_FireBall);
@@ -1932,7 +1960,7 @@
     // Soul_Obtained_Action.learnSkill(Skill_IceBolt);
     // Soul_Obtained_Action.learnSkill(Skill_IceBreath);
     // Soul_Obtained_Action.learnSkill(Skill_Charge);
-    // Soul_Obtained_Action.learnSkill(Skill_IceBolder);
+    Soul_Obtained_Action.learnSkill(Skill_IceBolder);
     // Soul_Obtained_Action.learnSkill(Skill_Bash);
     // Soul_Obtained_Action.learnSkill(Skill_Pierce);
     // Soul_Obtained_Action.learnSkill(Skill_Barrier);
@@ -3852,6 +3880,9 @@
     } else if (mapId == 20 + subDungeonDepth) {
       // fire boss room
       rawMap = MapUtils.dataToMap('fireBossRoom');
+    } else if (mapId == 3) {
+      // for test only
+      rawMap = MapUtils.dataToMap('earthBossRoom');
     } else {
       rawMap = MapUtils.generateMapData(mapId, genMapRoomsFullMaze, 20, 10);
       rawMap = MapUtils.removeDeadEnds(rawMap);
@@ -3868,12 +3899,20 @@
   MapUtils.generateNewMapMobs = function (mapId, mapBlocks) {
     let totalBlocksLength = mapBlocks.floor.length + mapBlocks.water.length + mapBlocks.hollow.length;
     for (let id in $gameVariables[mapId].preDefinedMobs) {
-      let mobClass = window[$gameVariables[mapId].preDefinedMobs[id]];
-      CharUtils.spawnMob(mapId, mapBlocks, false, mobClass);
+      let mobData = $gameVariables[mapId].preDefinedMobs[id];
+      let mobClass = window[mobData.mobClassName];
+      if (mobData.coordinate) {
+        // place defined
+        new mobClass(mobData.coordinate.x, mobData.coordinate.y, null);
+      } else {
+        CharUtils.spawnMob(mapId, mapBlocks, false, mobClass);
+      }
     }
-    let mobCounts = Math.floor(totalBlocksLength * mobSpawnPercentage);
-    for (let i = 0; i < mobCounts; i++) {
-      CharUtils.spawnMob(mapId, mapBlocks);
+    if ($gameVariables[mapId].spawnMobs) {
+      let mobCounts = Math.floor(totalBlocksLength * mobSpawnPercentage);
+      for (let i = 0; i < mobCounts; i++) {
+        CharUtils.spawnMob(mapId, mapBlocks);
+      }
     }
   }
 
@@ -3895,24 +3934,26 @@
   }
 
   MapUtils.generateNewMapItems = function(mapId, floors) {
-    let itemCount = Math.floor(floors.length * itemSpawnPercentage);
-    for (let i = 0; i < itemCount; i++) {
-      while (true) {
-        let floor = floors[getRandomInt(floors.length)];
-        // do not place item on trap that can cause position movement
-        let evts = $gameMap.eventsXy(floor.x, floor.y);
-        let trap;
-        for (let id in evts) {
-          if (evts[id].type == 'TRAP') {
-            trap = evts[id];
+    if ($gameVariables[mapId].spawnItems) {
+      let itemCount = Math.floor(floors.length * itemSpawnPercentage);
+      for (let i = 0; i < itemCount; i++) {
+        while (true) {
+          let floor = floors[getRandomInt(floors.length)];
+          // do not place item on trap that can cause position movement
+          let evts = $gameMap.eventsXy(floor.x, floor.y);
+          let trap;
+          for (let id in evts) {
+            if (evts[id].type == 'TRAP') {
+              trap = evts[id];
+              break;
+            }
+          }
+          if (trap && trap instanceof Trap_Teleport) {
+            // can not place item, do nothing
+          } else {
+            ItemUtils.addItemToItemPile(floor.x, floor.y, ItemUtils.spawnItem(mapId));
             break;
           }
-        }
-        if (trap && trap instanceof Trap_Teleport) {
-          // can not place item, do nothing
-        } else {
-          ItemUtils.addItemToItemPile(floor.x, floor.y, ItemUtils.spawnItem(mapId));
-          break;
         }
       }
     }
@@ -3988,9 +4029,23 @@
             let stairUpCreated = 0;
             let stairIndex = 0;
             while (stairUpCreated < targetMapVariable.stairUpNum) {
-              let randId = getRandomInt(floors.length);
-              let candidate = floors[randId];
-              floors.splice(randId, 1); // remove it from candidate list
+              let preDefinedStairs = $gameVariables[targetMapId].preDefinedStairs;
+              let stairUpData;
+              let candidate;
+              for (let i = 0; i < preDefinedStairs.length; i++) {
+                if (preDefinedStairs[i].type == 0) {
+                  stairUpData = preDefinedStairs[i];
+                  preDefinedStairs.splice(i, 1);
+                  break;
+                }
+              }
+              if (stairUpData) {
+                candidate = new Coordinate(stairUpData.x, stairUpData.y);
+              } else {
+                let randId = getRandomInt(floors.length);
+                candidate = floors[randId];
+                floors.splice(randId, 1); // remove it from candidate list
+              }
               let newStair = new StairData();
               newStair.x = candidate.x;
               newStair.y = candidate.y;
@@ -4014,9 +4069,23 @@
             // create down stairs
             let stairDownCreated = 0;
             while (stairDownCreated < $gameVariables[targetMapId].stairDownNum) {
-              let randId = getRandomInt(floors.length);
-              let candidate = floors[randId];
-              floors.splice(randId, 1); // remove it from candidate list
+              let preDefinedStairs = $gameVariables[targetMapId].preDefinedStairs;
+              let stairDownData;
+              let candidate;
+              for (let i = 0; i < preDefinedStairs.length; i++) {
+                if (preDefinedStairs[i].type == 1) {
+                  stairDownData = preDefinedStairs[i];
+                  preDefinedStairs.splice(i, 1);
+                  break;
+                }
+              }
+              if (stairDownData) {
+                candidate = new Coordinate(stairDownData.x, stairDownData.y);
+              } else {
+                let randId = getRandomInt(floors.length);
+                candidate = floors[randId];
+                floors.splice(randId, 1); // remove it from candidate list
+              }
               let newStair = new StairData();
               newStair.type = 1;
               newStair.x = candidate.x;
@@ -4685,6 +4754,18 @@
   IceBolder.prototype = Object.create(Bolder.prototype);
   IceBolder.prototype.constructor = IceBolder;
 
+  IceBolder.melt = function(target) {
+    MapUtils.refreshMap();
+    if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
+      AudioManager.playSe({name: 'Water5', pan: 0, pitch: 100, volume: 100});
+      LogUtils.addLog(String.format(Message.display('iceMelt'), target.name));
+    }
+    target.setPosition(-10, -10);
+    $gameMap._events[target._eventId] = null;
+    $dataMap.events[target._eventId] = null;
+    MapUtils.refreshMap();
+  }
+
   IceBolder.prototype.initialize = function (x, y, fromData) {
     Bolder.prototype.initialize.call(this, x, y, fromData);
     this.setImage('!Other1', 2);
@@ -4895,6 +4976,48 @@
     this.setPattern(1);
     this.setDirection(2);
     this.setImage('!Flame', 3);
+    this.setOpacity(128);
+    if (this.evt.damage && this.evt.expire) {
+      TimeUtils.eventScheduler.insertEvent(new ScheduleEvent(this, this.evt.expire));
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Terrain_DarkFire
+  //
+  // must assign damage after new object
+
+  Terrain_DarkFire = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Terrain_DarkFire.prototype = Object.create(Game_Terrain.prototype);
+  Terrain_DarkFire.prototype.constructor = Terrain_DarkFire;
+
+  Terrain_DarkFire.generate = function(x, y) {
+    let terrainEvt = new Terrain_DarkFire(x, y);
+    terrainEvt.evt.damage = 6;
+    terrainEvt.evt.expire = $gameVariables[0].gameTime + 2000;
+    terrainEvt.updateDataMap();
+    TimeUtils.eventScheduler.insertEvent(new ScheduleEvent(terrainEvt, terrainEvt.evt.expire));
+  }
+
+  Terrain_DarkFire.prototype.initStatus = function(event) {
+    Game_Terrain.prototype.initStatus.call(this, event);
+    
+    event.evt = {
+      name: '闇炎',
+      className: 'Terrain_DarkFire'
+    }
+  }
+
+  Terrain_DarkFire.prototype.initialize = function (x, y, fromData) {
+    Game_Terrain.prototype.initialize.call(this, x, y, fromData);
+    // setup image
+    this._originalPattern = 1;
+    this.setPattern(1);
+    this.setDirection(2);
+    this.setImage('!Flame2', 3);
     this.setOpacity(128);
     if (this.evt.damage && this.evt.expire) {
       TimeUtils.eventScheduler.insertEvent(new ScheduleEvent(this, this.evt.expire));
@@ -5281,6 +5404,7 @@
     return true;
   }
 
+  // TODO: need bug fix, no evt can be found
   Projectile_SingleTarget.prototype.hitWall = function(vm, evt) {
     Game_Projectile.prototype.hitWall.call(this, vm, evt);
     if (this.projectileData.hitWallFunc) {
@@ -5508,15 +5632,17 @@
       }
     }
     // generate traps
-    let trapCounts = Math.round(floors.length * trapSpawnPercentage);
-    for (let i = 0; i < trapCounts; i++) {
-      while (true) {
-        let floor = floors[Math.randomInt(floors.length)];
-        if (MapUtils.isTileAvailableForMob(mapId, floor.x, floor.y)
-          && TrapUtils.canPlaceTrap(mapId, floor.x, floor.y)) {
-          let trapType = TrapUtils.trapTemplates[Math.randomInt(TrapUtils.trapTemplates.length)];
-          new trapType(floor.x, floor.y);
-          break;
+    if ($gameVariables[mapId].spawnTraps) {
+      let trapCounts = Math.round(floors.length * trapSpawnPercentage);
+      for (let i = 0; i < trapCounts; i++) {
+        while (true) {
+          let floor = floors[Math.randomInt(floors.length)];
+          if (MapUtils.isTileAvailableForMob(mapId, floor.x, floor.y)
+            && TrapUtils.canPlaceTrap(mapId, floor.x, floor.y)) {
+            let trapType = TrapUtils.trapTemplates[Math.randomInt(TrapUtils.trapTemplates.length)];
+            new trapType(floor.x, floor.y);
+            break;
+          }
         }
       }
     }
@@ -5581,6 +5707,17 @@
         // not using same skill, should take damage
         let damage = Math.round(terrainEvt.evt.damage
           * (1 - SkillUtils.getResistance(realTarget.status.resistance.elemental.fire))
+          * Skill_AdaptTerrain.getTerrainDamageMultiplier(realTarget));
+        CharUtils.decreaseHp(realTarget, damage);
+        if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
+          TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
+          TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
+          LogUtils.addLog(String.format(Message.display('terrainDamage'), LogUtils.getCharName(realTarget)
+            , damage, terrainEvt.evt.name));
+        }
+        BattleUtils.checkTargetAlive(null, realTarget, target);
+      } else if (terrainEvt instanceof Terrain_DarkFire) {
+        let damage = Math.round(terrainEvt.evt.damage
           * Skill_AdaptTerrain.getTerrainDamageMultiplier(realTarget));
         CharUtils.decreaseHp(realTarget, damage);
         if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
@@ -6725,15 +6862,7 @@
           TimeUtils.afterPlayerMovedData.state = 2;
           target.action();
         } else if (target instanceof IceBolder) {
-          MapUtils.refreshMap();
-          if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
-            AudioManager.playSe({name: 'Water5', pan: 0, pitch: 100, volume: 100});
-            LogUtils.addLog(String.format(Message.display('iceMelt'), target.name));
-          }
-          target.setPosition(-10, -10);
-          $gameMap._events[target._eventId] = null;
-          $dataMap.events[target._eventId] = null;
-          MapUtils.refreshMap();
+          IceBolder.melt(target);
           TimeUtils.afterPlayerMoved();
         } else if (target.type == 'TERRAIN') {
           // remove terrain effect
@@ -7029,7 +7158,7 @@
         ItemUtils.updateFoodStatus();
         TimeUtils.afterPlayerMovedData.state = 1;
       case 1:
-        if ($gameVariables[0].gameTime % 400 < 10) {
+        if ($gameVariables[0].gameTime % 400 < 10 && $gameVariables[$gameMap.mapId()].spawnMobs) {
           MapUtils.addMobToNowMap();
         }
         TimeUtils.eventScheduler.execute();
@@ -7682,13 +7811,13 @@
     }
     // remove object from list
     for (var id in listToCheck) {
-      if (listToCheck[id].name == item.name) {
+      if (listToCheck[id] == item) {
         listToCheck.splice(id, 1);
         break;
       }
     }
     for (var id in itemPile.objectStack) {
-      if (itemPile.objectStack[id].name == item.name) {
+      if (itemPile.objectStack[id] == item) {
         itemPile.objectStack.splice(id, 1);
         break;
       }
@@ -8183,7 +8312,7 @@
 
   ItemUtils.checkFoodTime = function(food, isInventory, itemPileEvent) {
     if (food.duration) {
-      if (food.status == 'FLESH'
+      if (food.status == 'FRESH'
         && $gameVariables[0].gameTime - food.producedTime >= food.duration * $gameVariables[0].gameTimeAmp) {
         if (isInventory) {
           LogUtils.addLog(String.format(Message.display('foodRot'), food.name));
@@ -8624,7 +8753,7 @@
     this.templateName = this.name;
     this.nutrition = nutrition;
     this.duration = duration;
-    this.status = status; // FLESH, ROTTEN
+    this.status = status; // FRESH, ROTTEN
     this.producedTime = $gameVariables[0].gameTime;
     this.weight = 50;
   }
@@ -15452,6 +15581,216 @@
     return true;
   }
 
+  //-----------------------------------------------------------------------------------
+  // Skill_DarkFireBall
+
+  Skill_DarkFireBall = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_DarkFireBall.prototype = Object.create(ItemTemplate.prototype);
+  Skill_DarkFireBall.prototype.constructor = Skill_DarkFireBall;
+
+  Skill_DarkFireBall.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[13]);
+    this.name = '闇炎彈';
+    this.description = '直線射出一顆闇火球, 擴散魔法傷害';
+    this.iconIndex = 64;
+    this.mpCost = 10;
+    this.lv = 1;
+    this.exp = 0;
+  }
+
+  Skill_DarkFireBall.prop = {
+    type: "SKILL",
+    subType: "PROJECTILE",
+    damageType: "MAGIC"
+  }
+
+  Skill_DarkFireBall.prototype.action = function(src, x, y) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    realSrc.paySkillCost(this);
+
+    // parent of this function would be ProjectileData
+    let hitCharFunc = function(vm, target) {
+      let realSrc = BattleUtils.getRealTarget(vm.src);
+      let realTarget = BattleUtils.getRealTarget(target);
+
+      let atkValue = 4 + this.skill.lv + realSrc.param(4) / 3;
+      let damage = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
+      CharUtils.decreaseHp(realTarget, damage);
+      // dark fire area generated
+      for (let i = target._x - 1; i <= target._x + 1; i++) {
+        for (let j = target._y - 1; j <= target._y + 1; j++) {
+          if (i < 0 || i >= $gameMap.width() || j < 0 || j >= $gameMap.height()) {
+            continue;
+          }
+          let tile = $gameVariables[$gameMap.mapId()].mapData[i][j].originalTile;
+          if (tile == FLOOR && MapUtils.isTilePassable($gameMap.mapId(), i, j, tile)) {
+            Terrain_DarkFire.generate(i, j);
+          }
+        }
+      }
+      if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
+        TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
+        TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
+        LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc)
+          , this.skill.name, LogUtils.getCharName(realTarget), damage));
+      }
+      BattleUtils.checkTargetAlive(realSrc, realTarget, target);
+      SkillUtils.gainSkillExp(realSrc, this.skill, SkillUtils.getMagicSkillLevelUpExp(this.skill.lv));
+    }
+    if (CharUtils.playerCanSeeBlock(src._x, src._y)) {
+      LogUtils.addLog(String.format(Message.display('shootProjectile'), LogUtils.getCharName(realSrc), this.name));
+    }
+    let imageData = new ImageData('!Flame2', 4, 1, 2);
+    let data = new ProjectileData(this, imageData, this.getDistance(), hitCharFunc);
+    new Projectile_SingleTarget(src, x, y, data);
+    return true;
+  }
+
+  Skill_DarkFireBall.prototype.getDistance = function() {
+    return 5 + Math.floor(this.lv / 2);
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Skill_DarkFireBlast
+
+  Skill_DarkFireBlast = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_DarkFireBlast.prototype = Object.create(ItemTemplate.prototype);
+  Skill_DarkFireBlast.prototype.constructor = Skill_DarkFireBlast;
+
+  Skill_DarkFireBlast.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[13]);
+    this.name = '闇炎爆';
+    this.description = '周身闇炎大爆發, 魔法傷害';
+    this.iconIndex = 64;
+    this.mpCost = 20;
+    this.lv = 1;
+    this.exp = 0;
+  }
+
+  Skill_DarkFireBlast.prop = {
+    type: "SKILL",
+    subType: "RANGE",
+    damageType: "MAGIC"
+  }
+
+  Skill_DarkFireBlast.prototype.action = function(src) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    realSrc.paySkillCost(this);
+
+    if (CharUtils.playerCanSeeChar(src)) {
+      TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 67));
+      LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
+        , LogUtils.getCharName(realSrc), this.name));
+    }
+    let atkValue = 8 + this.lv * 2 + realSrc.param(4) / 3;
+    // search area
+    for (let i = src._x - 2; i <= src._x + 2; i++) {
+      for (let j = src._y - 2; j <= src._y + 2; j++) {
+        if (i < 0 || i >= $gameMap.width() || j < 0 || j >= $gameMap.height()) {
+          continue;
+        }
+        // check characters
+        let target = MapUtils.getCharXy(i, j);
+        if (target && target != src) {
+          let realTarget = BattleUtils.getRealTarget(target);
+          let damage = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
+          CharUtils.decreaseHp(realTarget, damage);
+          if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
+            TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
+            TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
+            LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc)
+              , this.name, LogUtils.getCharName(realTarget), damage));
+          }
+          BattleUtils.checkTargetAlive(realSrc, realTarget, target);
+        }
+        let tile = $gameVariables[$gameMap.mapId()].mapData[i][j].originalTile;
+        if (tile == FLOOR && MapUtils.isTilePassable($gameMap.mapId(), i, j, tile)) {
+          Terrain_DarkFire.generate(i, j);
+        }
+      }
+    }
+    SkillUtils.gainSkillExp(realSrc, this, SkillUtils.getMagicSkillLevelUpExp(this.lv));
+    return true;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Skill_Judgement
+
+  Skill_Judgement = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_Judgement.prototype = Object.create(ItemTemplate.prototype);
+  Skill_Judgement.prototype.constructor = Skill_Judgement;
+
+  Skill_Judgement.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[13]);
+    this.name = '審判';
+    this.description = '全地圖魔法傷害, 終結一切';
+    this.iconIndex = 64;
+    this.mpCost = 40;
+    this.lv = 1;
+    this.exp = 0;
+  }
+
+  Skill_Judgement.prop = {
+    type: "SKILL",
+    subType: "RANGE",
+    damageType: "MAGIC"
+  }
+
+  Skill_Judgement.prototype.action = function(src) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    realSrc.paySkillCost(this);
+
+    if (CharUtils.playerCanSeeChar(src)) {
+      TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 67));
+      LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
+        , LogUtils.getCharName(realSrc), this.name));
+    }
+    // search characters
+    let charEvts = $gameMap.events().filter(function(evt) {
+      return evt.type == 'MOB';
+    });
+    if (src != $gamePlayer) {
+      charEvts.push($gamePlayer);
+    }
+    let mapData = $gameVariables[$gameMap.mapId()].mapData;
+    for (let id in charEvts) {
+      let target = charEvts[id];
+      if (target != src && MapUtils.checkVisible(src, 100, target._x, target._y, mapData)) {
+        let realTarget = BattleUtils.getRealTarget(target);
+        let damage = 200;
+        CharUtils.decreaseHp(realTarget, damage);
+        if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
+          TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
+          TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
+          LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc)
+            , this.name, LogUtils.getCharName(realTarget), damage));
+        }
+        BattleUtils.checkTargetAlive(realSrc, realTarget, target);
+      }
+    }
+    // search obstacles
+    let obstacles = $gameMap.events().filter(function(evt) {
+      return evt.type == 'BOLDER';
+    });
+    for (let id in obstacles) {
+      let obj = obstacles[id];
+      if (obj instanceof IceBolder) {
+        IceBolder.melt(obj);
+      }
+    }
+    SkillUtils.gainSkillExp(realSrc, this, SkillUtils.getMagicSkillLevelUpExp(this.lv));
+    return true;
+  }
+
   //-----------------------------------------------------------------------------
   // Game_SkillEffect
   //
@@ -16227,7 +16566,7 @@
   Chick.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(10) < 3) {
-      lootings.push(new Flesh(this.mob, 250, 100, 'FLESH'));
+      lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
     }
     Game_Mob.prototype.looting.call(this, lootings);
   }
@@ -16259,7 +16598,7 @@
   Dog.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(10) < 3) {
-      lootings.push(new Flesh(this.mob, 250, 100, 'FLESH'));
+      lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
     }
     Game_Mob.prototype.looting.call(this, lootings);
   }
@@ -16291,7 +16630,7 @@
   Bee.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(10) < 3) {
-      lootings.push(new Flesh(this.mob, 100, 100, 'FLESH'));
+      lootings.push(new Flesh(this.mob, 100, 100, 'FRESH'));
     }
     Game_Mob.prototype.looting.call(this, lootings);
   }
@@ -16315,7 +16654,7 @@
   Rooster.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(10) < 3) {
-      lootings.push(new Flesh(this.mob, 250, 100, 'FLESH'));
+      lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
     }
     Game_Mob.prototype.looting.call(this, lootings);
   }
@@ -16350,7 +16689,7 @@
   Rat.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(10) < 3) {
-      lootings.push(new Flesh(this.mob, 100, 100, 'FLESH'));
+      lootings.push(new Flesh(this.mob, 100, 100, 'FRESH'));
     }
     Game_Mob.prototype.looting.call(this, lootings);
   }
@@ -16392,7 +16731,7 @@
   Cat.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(10) < 3) {
-      lootings.push(new Flesh(this.mob, 250, 100, 'FLESH'));
+      lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
     }
     Game_Mob.prototype.looting.call(this, lootings);
   }
@@ -16427,7 +16766,7 @@
   Boar.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(10) < 30) {
-      lootings.push(new Flesh(this.mob, 300, 100, 'FLESH'));
+      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
     }
     Game_Mob.prototype.looting.call(this, lootings);
   }
@@ -16469,7 +16808,7 @@
   Wolf.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(100) < 30) {
-      lootings.push(new Flesh(this.mob, 300, 100, 'FLESH'));
+      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
     }
     Game_Mob.prototype.looting.call(this, lootings);
   }
@@ -16508,7 +16847,7 @@
   Turtle.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(100) < 30) {
-      lootings.push(new Flesh(this.mob, 300, 100, 'FLESH'));
+      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
     }
     Game_Mob.prototype.looting.call(this, lootings);
   }
@@ -16540,7 +16879,7 @@
   Bear.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(100) < 30) {
-      lootings.push(new Flesh(this.mob, 300, 100, 'FLESH'));
+      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
     }
     Game_Mob.prototype.looting.call(this, lootings);
   }
@@ -16579,7 +16918,7 @@
   Lion.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(100) < 30) {
-      lootings.push(new Flesh(this.mob, 300, 100, 'FLESH'));
+      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
     }
     Game_Mob.prototype.looting.call(this, lootings);
   }
@@ -16618,7 +16957,7 @@
   Buffalo.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(100) < 30) {
-      lootings.push(new Flesh(this.mob, 300, 100, 'FLESH'));
+      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
     }
     Game_Mob.prototype.looting.call(this, lootings);
   }
@@ -16651,7 +16990,7 @@
   Shark.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(100) < 30) {
-      lootings.push(new Flesh(this.mob, 300, 100, 'FLESH'));
+      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
     }
     Game_Mob.prototype.looting.call(this, lootings);
   }
@@ -16715,7 +17054,7 @@
   Jellyfish.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(100) < 30) {
-      lootings.push(new Flesh(this.mob, 200, 100, 'FLESH'));
+      lootings.push(new Flesh(this.mob, 200, 100, 'FRESH'));
     }
     Game_Mob.prototype.looting.call(this, lootings);
   }
@@ -16826,7 +17165,7 @@
   Ice_Dragon.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(10) < 3) {
-      lootings.push(new Flesh(this.mob, 500, 100, 'FLESH'));
+      lootings.push(new Flesh(this.mob, 500, 100, 'FRESH'));
     }
     Game_Mob.prototype.looting.call(this, lootings);
   }
@@ -16951,7 +17290,7 @@
   Salamander.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(100) < 30) {
-      lootings.push(new Flesh(this.mob, 200, 100, 'FLESH'));
+      lootings.push(new Flesh(this.mob, 200, 100, 'FRESH'));
     }
     Game_Mob.prototype.looting.call(this, lootings);
   }
@@ -17013,7 +17352,7 @@
   FireHorse.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(100) < 30) {
-      lootings.push(new Flesh(this.mob, 300, 100, 'FLESH'));
+      lootings.push(new Flesh(this.mob, 300, 100, 'FRESH'));
     }
     Game_Mob.prototype.looting.call(this, lootings);
   }
@@ -17129,7 +17468,7 @@
   Phoenix.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(100) < 30) {
-      lootings.push(new Flesh(this.mob, 250, 100, 'FLESH'));
+      lootings.push(new Flesh(this.mob, 250, 100, 'FRESH'));
     }
     Game_Mob.prototype.looting.call(this, lootings);
   }
@@ -17191,7 +17530,7 @@
   Fire_Dragon.prototype.looting = function () {
     var lootings = [];
     if (getRandomInt(10) < 3) {
-      lootings.push(new Flesh(this.mob, 500, 100, 'FLESH'));
+      lootings.push(new Flesh(this.mob, 500, 100, 'FRESH'));
     }
     Game_Mob.prototype.looting.call(this, lootings);
   }
@@ -18145,7 +18484,7 @@
         var func = function (item) {
           TimeUtils.afterPlayerMoved(10 * $gameVariables[0].gameTimeAmp);
           let msg = String.format(Message.display('eatingDone'), item.name);
-          if (item.status == 'FLESH' || item.status == 'PERMANENT') {
+          if (item.status == 'FRESH' || item.status == 'PERMANENT') {
             $gameActors.actor(1).nutrition += item.nutrition;
           } else {
             if ($gameParty.hasSoul(Soul_EatRot)) {
@@ -18200,7 +18539,7 @@
         var item = $gameParty._items[id];
         if (item.name.includes(groundWord)) {
           $gameParty.loseItem(item, 1);
-          item.name = item.name.substring(0, item.name.length - 4);
+          item.name = item.name.substring(0, item.name.length - groundWord.length);
           allDone = false;
           break;
         }
