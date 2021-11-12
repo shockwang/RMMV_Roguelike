@@ -1699,7 +1699,7 @@
     stairDown.x = 10;
     stairDown.y = 4;
     $gameVariables[3].preDefinedStairs.push(stairDown);
-    $gameVariables[3].preDefinedMobs.push(new PreDefinedMobData('Dog', new Coordinate(10, 10)));
+    $gameVariables[3].preDefinedMobs.push(new PreDefinedMobData('SealKing', new Coordinate(10, 10)));
 
     // initialize sub-dungeon levels
     // 0: earth, 1: ice, 2: fire
@@ -2924,9 +2924,7 @@
             CharUtils.decreaseHp($gameActors.actor(1), damage);
             BattleUtils.checkTargetAlive(null, $gameActors.actor(1), $gamePlayer);
           }
-          
-          // update mobs time at target layer
-          // TODO: implement mobs recovery mechanism
+          // system auto run: create & update mobs time at target layer
 
           $gameScreen.startFadeIn(1);
           TimeUtils.afterPlayerMoved();
@@ -3010,7 +3008,7 @@
       var coordinate = MapUtils.getNearbyCoordinate(nowX, nowY, i);
       var events = MapUtils.findEventsXyFromDataMap($gameVariables[nowMapId].rmDataMap, coordinate.x, coordinate.y);
       for (var id in events) {
-        if (events[id].type == 'MOB' && events[id].mob.moveType != 1) { // mobs in water can not change floor
+        if (events[id].type == 'MOB' && events[id].mob.moveType != 1 && !events[id].mob.layerFixed) { // mobs in water can not change floor
           var mobData = events[id];
           // check for empty space, attempt to stand on the same relative location as player
           var toCheck = MapUtils.getNearbyCoordinate(newX, newY, i);
@@ -5716,7 +5714,7 @@
             , damage, terrainEvt.evt.name));
         }
         BattleUtils.checkTargetAlive(null, realTarget, target);
-      } else if (terrainEvt instanceof Terrain_DarkFire) {
+      } else if (terrainEvt instanceof Terrain_DarkFire && !(target instanceof SealKing)) {
         let damage = Math.round(terrainEvt.evt.damage
           * Skill_AdaptTerrain.getTerrainDamageMultiplier(realTarget));
         CharUtils.decreaseHp(realTarget, damage);
@@ -13802,6 +13800,22 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Soul_OldMemory
+
+  Soul_OldMemory = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Soul_OldMemory.prototype = Object.create(ItemTemplate.prototype);
+  Soul_OldMemory.prototype.constructor = Soul_OldMemory;
+
+  Soul_OldMemory.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
+    this.name = '遠古的記憶';
+    this.description = '你終於想起來自己是誰';
+  }
+
+  //-----------------------------------------------------------------------------------
   // SkillUtils
   //
   // Skill related methods
@@ -14568,6 +14582,10 @@
     }
     func();
     return true;
+  }
+
+  Skill_Charge.prototype.getDistance = function() {
+    return 3;
   }
 
   //-----------------------------------------------------------------------------------
@@ -16164,6 +16182,13 @@
     $gameVariables[$gameMap.mapId()].rmDataMap = $dataMap;
     Game_Event.prototype.initialize.call(this, $gameMap.mapId(), eventId);
     $gameMap._events[eventId] = this;
+    // add mob recovery mechanism
+    let turnPassed = Math.floor(($gameVariables[0].gameTime - this.mob.lastTimeMoved)
+      / CharUtils.getActionTime(this.mob));
+    let regenCount = Math.floor(turnPassed / regenTurnCount);
+    for (let i = 0; i < regenCount; i++) {
+      CharUtils.regenerate(this);
+    }
     // add event to scheduler
     TimeUtils.eventScheduler.insertEvent(new ScheduleEvent(this, $gameVariables[0].gameTime));
   };
@@ -16962,6 +16987,77 @@
     Game_Mob.prototype.looting.call(this, lootings);
   }
   CharUtils.mobTemplates[0].push(Buffalo);
+
+  //-----------------------------------------------------------------------------------
+  // SealKing
+  // 
+  // Final boss
+
+  SealKing = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  SealKing.prototype = Object.create(Game_Mob.prototype);
+  SealKing.prototype.constructor = SealKing;
+
+  SealKing.prototype.isBoss = true;
+
+  SealKing.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, fromData);
+    this.setImage('Evil', 5);
+    this.mob.layerFixed = true; // can not change layer
+  }
+
+  SealKing.prototype.targetInSightAction = function(target) {
+    // if (!$gameVariables[0].eventState.fireKingEncountered) {
+    //   $gameVariables[0].eventState.fireKingEncountered = true;
+    //   MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.fireKingEncountered);
+    // } else if (AudioManager._currentBgm.name != 'Battle2') {
+    //   AudioManager.playBgm({name: 'Battle2', pan: 0, pitch: 100, volume: 100});
+    // }
+    let distance = MapUtils.getDistance(this._x, this._y, target._x, target._y);
+    if (distance < 3 && getRandomInt(100) < 40
+      && SkillUtils.canPerform(this.mob, this.mob._skills[1])) { // Skill_DarkFireBlast
+      return this.mob._skills[1].action(this);
+    }
+    return false;
+  }
+
+  SealKing.prototype.projectileAction = function(x, y, distance) {
+    let randNum = getRandomInt(100);
+    if (randNum < 50) {
+      let skill = this.mob._skills[0]; // Skill_DarkFireBall
+      if (distance <= skill.getDistance() && SkillUtils.canPerform(this.mob, skill)) {
+        skill.action(this, x, y);
+        return true;
+      }
+    }
+    if (randNum < 60) {
+      let skill = this.mob._skills[2]; // Skill_Charge
+      if (distance <= skill.getDistance() && SkillUtils.canPerform(this.mob, skill)) {
+        skill.action(this, x, y);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  SealKing.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 40 && SkillUtils.canPerform(this.mob, this.mob._skills[3])) { // Skill_Bash
+      return this.mob._skills[3].action(this, target);
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  SealKing.prototype.looting = function () {
+    var lootings = [];
+    // TODO: implements looting
+    Game_Mob.prototype.looting.call(this, lootings);
+    // setTimeout(() => {
+    //   MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.fireKingDefeated);
+    // }, 100);
+  }
 
   //-----------------------------------------------------------------------------------
   // Shark

@@ -12,6 +12,7 @@ Turtle,烏龜,10,30,30,30,5,10,6,6,0,6,0,Skill_Shield.1,Turtle_Shell.25,Soul_Shi
 Bear,熊,14,20,10,10,8,5,0,0,2d3+2,6,0,Skill_Bash.1,Bear_Skin.25;Bear_Claw.25;Bear_Bone.25,Soul_Bash.10
 Lion,獅子,16,20,10,10,18,5,0,0,1d7,8,0,Skill_Roar.1,Lion_Tooth.25;Lion_Claw.25,Soul_Roar.10
 Buffalo,水牛,15,25,10,10,15,5,0,0,1d6,7,0,Skill_Tough.1,Buffalo_Horn.25;Buffalo_Bone.25,Soul_Tough.10
+SealKing,封印之主,30,30,30,50,30,5,20,20,2d5,15,0,Skill_DarkFireBall.3;Skill_DarkFireBlast.3;Skill_Charge.3;Skill_Bash.3;Skill_Judgement.1,,Soul_OldMemory.100
 // ice
 Slime,史萊姆,10,10,15,15,10,5,5,0,0,5,0,Skill_Acid.1;Skill_AdaptWater.3,Mucus.25;Blue_Crystal.25,Soul_Acid.10
 Jellyfish,水母,6,10,30,10,10,5,0,5,0,6,1,Skill_Discharge.1;Skill_AdaptWater.3,Glue.25;Tentacle.25,Soul_Discharge.10
