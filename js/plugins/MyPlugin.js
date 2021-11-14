@@ -604,6 +604,7 @@
       terrainDamage: '{0}受到{1}點{2}傷害.',
       firePathEnabled: '{0}的腳下出現了一團火焰!',
       firePathDisabled: '{0}腳下的火焰熄滅了.',
+      charging: '{0}正在蓄力!',
       tutorialGuide: '艾比',
       tutorialMove1:
         '你好, 初次見面! 我是負責在遊戲進行中從旁進行提示教學的精'
@@ -1157,7 +1158,7 @@
     realTarget.gainMp(regenValue);
   }
 
-  CharUtils.updateTp = function(target) {
+  CharUtils.regenerateTp = function(target) {
     let realTarget = BattleUtils.getRealTarget(target);
     let tpRecover = 0;
     if (realTarget.attacked) {
@@ -1795,6 +1796,8 @@
       selinaDefeated: $dataMap.events[12],
       fireKingEncountered: $dataMap.events[34],
       fireKingDefeated: $dataMap.events[35],
+      sealKingEncountered: $dataMap.events[36],
+      sealKingDefeated: $dataMap.events[37],
       // temp setup
       skillObtainedHint: $dataMap.events[31]
     }
@@ -1948,9 +1951,11 @@
 
     $gameParty._items.push(new Soul_Bite());
     Soul_Obtained_Action.learnSkill(Skill_Bite);
-    Soul_Obtained_Action.learnSkill(Skill_DarkFireBall);
-    Soul_Obtained_Action.learnSkill(Skill_DarkFireBlast);
-    Soul_Obtained_Action.learnSkill(Skill_Judgement);
+    // Soul_Obtained_Action.learnSkill(Skill_RockMissile);
+    // Soul_Obtained_Action.learnSkill(Skill_RockPierce);
+    // Soul_Obtained_Action.learnSkill(Skill_DarkFireBall);
+    // Soul_Obtained_Action.learnSkill(Skill_DarkFireBlast);
+    // Soul_Obtained_Action.learnSkill(Skill_Judgement);
     // Soul_Obtained_Action.learnSkill(Skill_AuraFire);
     // Soul_Obtained_Action.learnSkill(Skill_FirePath);
     // Soul_Obtained_Action.learnSkill(Skill_FireBall);
@@ -1960,7 +1965,7 @@
     // Soul_Obtained_Action.learnSkill(Skill_IceBolt);
     // Soul_Obtained_Action.learnSkill(Skill_IceBreath);
     // Soul_Obtained_Action.learnSkill(Skill_Charge);
-    Soul_Obtained_Action.learnSkill(Skill_IceBolder);
+    // Soul_Obtained_Action.learnSkill(Skill_IceBolder);
     // Soul_Obtained_Action.learnSkill(Skill_Bash);
     // Soul_Obtained_Action.learnSkill(Skill_Pierce);
     // Soul_Obtained_Action.learnSkill(Skill_Barrier);
@@ -1974,16 +1979,16 @@
     // Soul_Obtained_Action.learnSkill(Skill_Hide);
 
     // modify actor status
-    let player = $gameActors.actor(1);
-    player._paramPlus[2] = 9;
-    player._paramPlus[3] = 9;
-    player._paramPlus[6] = 9;
+    // let player = $gameActors.actor(1);
+    // player._paramPlus[2] = 9;
+    // player._paramPlus[3] = 9;
+    // player._paramPlus[6] = 9;
 
-    $gameParty.gainItem(ItemUtils.createItem(Dog_Shield), 1);
-    $gameParty.gainItem(ItemUtils.createItem(Cat_Gloves), 1);
-    $gameParty.gainItem(ItemUtils.createItem(Wolf_Skin), 1);
-    $gameParty.gainItem(ItemUtils.createItem(Bear_Claw), 1);
-    $gameParty.gainItem(ItemUtils.createItem(Wolf_Shoes), 1);
+    // $gameParty.gainItem(ItemUtils.createItem(Dog_Shield), 1);
+    // $gameParty.gainItem(ItemUtils.createItem(Cat_Gloves), 1);
+    // $gameParty.gainItem(ItemUtils.createItem(Wolf_Skin), 1);
+    // $gameParty.gainItem(ItemUtils.createItem(Bear_Claw), 1);
+    // $gameParty.gainItem(ItemUtils.createItem(Wolf_Shoes), 1);
 
     // $gameParty.gainItem(ItemUtils.createItem(Salamander_Gloves), 1);
     // $gameParty.gainItem(ItemUtils.createItem(Salamander_Helmet), 1);
@@ -2021,11 +2026,11 @@
 
     $gameParty.gainItem(new Cheese(), 1);
     $gameParty.gainItem(new Cheese(), 1);
-    for (let i = 0; i < 6; i++) {
-      player.levelUp();
-    }
-    player._hp = 120;
-    player._mp = 80;
+    // for (let i = 0; i < 6; i++) {
+    //   player.levelUp();
+    // }
+    // player._hp = 120;
+    // player._mp = 80;
   }
 
   MapUtils.loadFile = function(filePath) {
@@ -5719,7 +5724,7 @@
           * Skill_AdaptTerrain.getTerrainDamageMultiplier(realTarget));
         CharUtils.decreaseHp(realTarget, damage);
         if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
-          TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
+          TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 121));
           TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
           LogUtils.addLog(String.format(Message.display('terrainDamage'), LogUtils.getCharName(realTarget)
             , damage, terrainEvt.evt.name));
@@ -7149,7 +7154,7 @@
         if (playerDashed) {
           // huge movement, do nothing
         } else {
-          CharUtils.updateTp($gamePlayer);
+          CharUtils.regenerateTp($gamePlayer);
         }
 
         // update food status
@@ -7171,7 +7176,7 @@
         // check trap
         TrapUtils.checkTrapStepped(event);
         TrapUtils.updateLastTriggered();
-        CharUtils.updateTp(event);
+        CharUtils.regenerateTp(event);
         TimeUtils.afterPlayerMovedData.state = 1;
         return TimeUtils.afterPlayerMoved();
       case 3:
@@ -7269,7 +7274,7 @@
   //             // check trap
   //             TrapUtils.checkTrapStepped(event);
   //             CharUtils.updateStatus(event);
-  //             CharUtils.updateTp(event);
+  //             CharUtils.regenerateTp(event);
   //           }
   //         }
   //       } while (!done);
@@ -7283,7 +7288,7 @@
   //     if (playerDashed) {
   //       // huge movement, do nothing
   //     } else {
-  //       CharUtils.updateTp($gamePlayer);
+  //       CharUtils.regenerateTp($gamePlayer);
   //     }
   //     MapUtils.refreshMap();
 
@@ -12524,14 +12529,18 @@
     this.initialize.apply(this, arguments);
   }
 
+  Potion_Heal.itemName = '治療藥水';
+  Potion_Heal.itemDescription = '回復些許生命力';
+  Potion_Heal.material = [{itemClass: Phoenix_Blood, amount: 2}, {itemClass: FireHorse_Tail, amount: 2}];
+
   Potion_Heal.prototype = Object.create(ItemTemplate.prototype);
   Potion_Heal.prototype.constructor = Potion_Heal;
 
   Potion_Heal.prototype.initialize = function () {
     ItemTemplate.prototype.initialize.call(this, $dataItems[6]);
     this.id = 0;
-    this.name = '治療藥水';
-    this.description = '回復些許生命力';
+    this.name = Potion_Heal.itemName;
+    this.description = Potion_Heal.itemDescription;
     this.weight = 15;
   }
 
@@ -12550,6 +12559,7 @@
       }
     }
   }
+  ItemUtils.recipes.push(Potion_Heal);
 
   //-----------------------------------------------------------------------------------
   // Potion_Mana
@@ -12563,11 +12573,15 @@
   Potion_Mana.prototype = Object.create(ItemTemplate.prototype);
   Potion_Mana.prototype.constructor = Potion_Mana;
 
+  Potion_Mana.itemName = '魔力藥水';
+  Potion_Mana.itemDescription = '回復些許魔力';
+  Potion_Mana.material = [{itemClass: Phoenix_Blood, amount: 2}, {itemClass: Tentacle, amount: 2}];
+
   Potion_Mana.prototype.initialize = function () {
     ItemTemplate.prototype.initialize.call(this, $dataItems[6]);
     this.id = 1;
-    this.name = '魔力藥水';
-    this.description = '回復些許魔力';
+    this.name = Potion_Mana.itemName;
+    this.description = Potion_Mana.itemDescription;
     this.weight = 15;
   }
 
@@ -12586,6 +12600,7 @@
       LogUtils.addLog(msg);
     }
   }
+  ItemUtils.recipes.push(Potion_Mana);
 
   //-----------------------------------------------------------------------------------
   // Potion_Blind
@@ -15292,6 +15307,126 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Skill_RockMissile
+
+  Skill_RockMissile = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_RockMissile.prototype = Object.create(ItemTemplate.prototype);
+  Skill_RockMissile.prototype.constructor = Skill_RockMissile;
+
+  Skill_RockMissile.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[13]);
+    this.name = '飛岩';
+    this.description = '直線射出一顆岩石, 物理傷害';
+    this.iconIndex = 68;
+    this.mpCost = 8;
+    this.lv = 1;
+    this.exp = 0;
+  }
+
+  Skill_RockMissile.prop = {
+    type: "SKILL",
+    subType: "PROJECTILE",
+    damageType: "MELEE"
+  }
+
+  Skill_RockMissile.prototype.action = function(src, x, y) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    realSrc.paySkillCost(this);
+
+    // parent of this function would be ProjectileData
+    let hitCharFunc = function(vm, target) {
+      let realSrc = BattleUtils.getRealTarget(vm.src);
+      let realTarget = BattleUtils.getRealTarget(target);
+      let atkValue = 4 + this.skill.lv + realSrc.param(4) / 3;
+      let damage = BattleUtils.calcPhysicalDamage(realSrc, realTarget, atkValue);
+      damage = Math.round(damage * (1 - SkillUtils.getResistance(realTarget.status.resistance.elemental.cold)));
+      CharUtils.decreaseHp(realTarget, damage);
+      if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
+        TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 86));
+        TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
+        LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc)
+          , this.skill.name, LogUtils.getCharName(realTarget), damage));
+      }
+      BattleUtils.checkTargetAlive(realSrc, realTarget, target);
+      SkillUtils.gainSkillExp(realSrc, this.skill, SkillUtils.getMagicSkillLevelUpExp(this.skill.lv));
+    }
+    if (CharUtils.playerCanSeeBlock(src._x, src._y)) {
+      LogUtils.addLog(String.format(Message.display('shootProjectile'), LogUtils.getCharName(realSrc), this.name));
+    }
+    let imageData = new ImageData('Collections3', 7, 0, 2);
+    let data = new ProjectileData(this, imageData, this.getDistance(), hitCharFunc);
+    new Projectile_SingleTarget(src, x, y, data);
+    return true;
+  }
+
+  Skill_RockMissile.prototype.getDistance = function() {
+    return 5 + Math.floor(this.lv / 2);
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Skill_RockPierce
+
+  Skill_RockPierce = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Skill_RockPierce.prototype = Object.create(ItemTemplate.prototype);
+  Skill_RockPierce.prototype.constructor = Skill_RockPierce;
+
+  Skill_RockPierce.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataSkills[13]);
+    this.name = '土龍翻滾';
+    this.description = '直線從大地升起石柱, 物理貫穿傷害';
+    this.iconIndex = 68;
+    this.mpCost = 16;
+    this.lv = 1;
+    this.exp = 0;
+  }
+
+  Skill_RockPierce.prop = {
+    type: "SKILL",
+    subType: "PROJECTILE",
+    damageType: "MELEE"
+  }
+
+  Skill_RockPierce.prototype.action = function(src, x, y) {
+    let realSrc = BattleUtils.getRealTarget(src);
+    realSrc.paySkillCost(this);
+
+    // parent of this function would be ProjectileData
+    let hitCharFunc = function(vm, target) {
+      let realSrc = BattleUtils.getRealTarget(vm.src);
+      let realTarget = BattleUtils.getRealTarget(target);
+      let atkValue = 8 + this.skill.lv * 2 + realSrc.param(4) / 3;
+      let damage = BattleUtils.calcPhysicalDamage(realSrc, realTarget, atkValue);
+      damage = Math.round(damage * (1 - SkillUtils.getResistance(realTarget.status.resistance.elemental.cold)));
+      CharUtils.decreaseHp(realTarget, damage);
+      if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
+        TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 86));
+        TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
+        LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc)
+          , this.skill.name, LogUtils.getCharName(realTarget), damage));
+      }
+      BattleUtils.checkTargetAlive(realSrc, realTarget, target);
+      SkillUtils.gainSkillExp(realSrc, this.skill, SkillUtils.getMagicSkillLevelUpExp(this.skill.lv));
+    }
+    if (CharUtils.playerCanSeeBlock(src._x, src._y)) {
+      LogUtils.addLog(String.format(Message.display('shootProjectile'), LogUtils.getCharName(realSrc), this.name));
+    }
+    let imageData = new ImageData('Collections3', 6, 1, 2);
+    let data = new ProjectileData(this, imageData, this.getDistance(), hitCharFunc);
+    new Projectile_Ray(src, x, y, data);
+    return true;
+  }
+
+  Skill_RockPierce.prototype.getDistance = function() {
+    return 5 + Math.floor(this.lv / 2);
+  }
+
+  //-----------------------------------------------------------------------------------
   // Skill_FireBall
 
   Skill_FireBall = function() {
@@ -15650,7 +15785,7 @@
         }
       }
       if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
-        TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
+        TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 121));
         TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
         LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc)
           , this.skill.name, LogUtils.getCharName(realTarget), damage));
@@ -15702,7 +15837,7 @@
     realSrc.paySkillCost(this);
 
     if (CharUtils.playerCanSeeChar(src)) {
-      TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 67));
+      TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 107));
       LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
         , LogUtils.getCharName(realSrc), this.name));
     }
@@ -15720,7 +15855,7 @@
           let damage = BattleUtils.calcMagicDamage(realSrc, realTarget, atkValue);
           CharUtils.decreaseHp(realTarget, damage);
           if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
-            TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
+            TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 121));
             TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
             LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc)
               , this.name, LogUtils.getCharName(realTarget), damage));
@@ -15767,44 +15902,23 @@
     let realSrc = BattleUtils.getRealTarget(src);
     realSrc.paySkillCost(this);
 
+    let effect = CharUtils.getTargetEffect(realSrc, Skill_Judgement);
+    if (effect) {
+      effect.effectEnd();
+      let index = realSrc.status.skillEffect.indexOf(effect);
+      realSrc.status.skillEffect.splice(index, 1);
+      TimeUtils.eventScheduler.removeEvent(src, effect);
+    }
     if (CharUtils.playerCanSeeChar(src)) {
-      TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 67));
+      TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 52));
+      TimeUtils.animeQueue.push(new AnimeObject(src, 'POP_UP', this.name));
       LogUtils.addLog(String.format(Message.display('nonDamageSkillPerformed')
         , LogUtils.getCharName(realSrc), this.name));
     }
-    // search characters
-    let charEvts = $gameMap.events().filter(function(evt) {
-      return evt.type == 'MOB';
-    });
-    if (src != $gamePlayer) {
-      charEvts.push($gamePlayer);
-    }
-    let mapData = $gameVariables[$gameMap.mapId()].mapData;
-    for (let id in charEvts) {
-      let target = charEvts[id];
-      if (target != src && MapUtils.checkVisible(src, 100, target._x, target._y, mapData)) {
-        let realTarget = BattleUtils.getRealTarget(target);
-        let damage = 200;
-        CharUtils.decreaseHp(realTarget, damage);
-        if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
-          TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
-          TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
-          LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc)
-            , this.name, LogUtils.getCharName(realTarget), damage));
-        }
-        BattleUtils.checkTargetAlive(realSrc, realTarget, target);
-      }
-    }
-    // search obstacles
-    let obstacles = $gameMap.events().filter(function(evt) {
-      return evt.type == 'BOLDER';
-    });
-    for (let id in obstacles) {
-      let obj = obstacles[id];
-      if (obj instanceof IceBolder) {
-        IceBolder.melt(obj);
-      }
-    }
+
+    let newEffect = new SkillEffect_Judgement(realSrc, this, 5, 0);
+    realSrc.status.skillEffect.push(newEffect);
+    TimeUtils.eventScheduler.addSkillEffect(src, newEffect);
     SkillUtils.gainSkillExp(realSrc, this, SkillUtils.getMagicSkillLevelUpExp(this.lv));
     return true;
   }
@@ -15942,6 +16056,64 @@
 
   SkillEffect_Tough.prototype.effectEnd = function() {
     this.realSrc._buffs[3] -= this.amount;
+  }
+
+  //-----------------------------------------------------------------------------
+  // SkillEffect_Judgement
+  //
+  // The game object class for skill: Judgement
+
+  SkillEffect_Judgement = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  SkillEffect_Judgement.prototype = Object.create(Game_SkillEffect.prototype);
+  SkillEffect_Judgement.prototype.constructor = SkillEffect_Judgement;
+
+  SkillEffect_Judgement.prototype.initialize = function(realSrc, skill, effectCount, amount) {
+    Game_SkillEffect.prototype.initialize.call(this, realSrc, skill, effectCount, amount);
+  }
+
+  SkillEffect_Judgement.prototype.effectEnd = function() {
+    this.realSrc.judgementCoolDown = 20;
+    // perform Judgement
+    let src = BattleUtils.getEventFromCharacter(this.realSrc);
+    let realSrc = this.realSrc;
+    TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 109));
+    // search characters
+    let charEvts = $gameMap.events().filter(function(evt) {
+      return evt.type == 'MOB';
+    });
+    if (src != $gamePlayer) {
+      charEvts.push($gamePlayer);
+    }
+    let mapData = $gameVariables[$gameMap.mapId()].mapData;
+    for (let id in charEvts) {
+      let target = charEvts[id];
+      if (target != src && MapUtils.checkVisible(src, 100, target._x, target._y, mapData)) {
+        let realTarget = BattleUtils.getRealTarget(target);
+        let damage = 150;
+        CharUtils.decreaseHp(realTarget, damage);
+        if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
+          TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 121));
+          TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', damage * -1));
+          LogUtils.addLog(String.format(Message.display('projectileAttack'), LogUtils.getCharName(realSrc)
+            , this.skill.name, LogUtils.getCharName(realTarget), damage));
+        }
+        BattleUtils.checkTargetAlive(realSrc, realTarget, target);
+      }
+    }
+    // search obstacles
+    let obstacles = $gameMap.events().filter(function(evt) {
+      return evt.type == 'BOLDER';
+    });
+    for (let id in obstacles) {
+      let obj = obstacles[id];
+      if (obj instanceof IceBolder) {
+        IceBolder.melt(obj);
+        TimeUtils.eventScheduler.removeEvent(obj);
+      }
+    }
   }
 
   //-----------------------------------------------------------------------------
@@ -16187,7 +16359,12 @@
       / CharUtils.getActionTime(this.mob));
     let regenCount = Math.floor(turnPassed / regenTurnCount);
     for (let i = 0; i < regenCount; i++) {
+      if (this.mob.hp == this.mob.mhp && this.mob.mp == this.mob.mmp && this.mob.tp == 100) {
+        // already full situation, break
+        break;
+      }
       CharUtils.regenerate(this);
+      CharUtils.regenerateTp(this);
     }
     // add event to scheduler
     TimeUtils.eventScheduler.insertEvent(new ScheduleEvent(this, $gameVariables[0].gameTime));
@@ -16228,6 +16405,8 @@
         } else if (this.mob.status.paralyzeEffect.turns > 0 || this.mob.status.sleepEffect.turns > 0
           || this.mob.status.faintEffect.turns > 0) {
           // do nothing
+        } else if (this.performStateAction()) {
+          // already done action
         } else if (distance < 2) {
           this.turnTowardCharacter($gamePlayer);
           if (this.targetInSightAction($gamePlayer)) {
@@ -16556,6 +16735,11 @@
       LogUtils.addLog(msg);
       TimeUtils.tutorialHandler.msg += msg + '\n';
     }
+  }
+
+  Game_Mob.prototype.performStateAction = function() {
+    // designed to process state related action, implements by each class
+    return false;
   }
 
   Game_Mob.adjustMobAbility = function(mobClass, targetLevel) {
@@ -17006,21 +17190,50 @@
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Evil', 5);
     this.mob.layerFixed = true; // can not change layer
+    if (!this.mob.judgementCoolDown) {
+      this.mob.judgementCoolDown = 0;
+    }
   }
 
   SealKing.prototype.targetInSightAction = function(target) {
-    // if (!$gameVariables[0].eventState.fireKingEncountered) {
-    //   $gameVariables[0].eventState.fireKingEncountered = true;
-    //   MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.fireKingEncountered);
-    // } else if (AudioManager._currentBgm.name != 'Battle2') {
-    //   AudioManager.playBgm({name: 'Battle2', pan: 0, pitch: 100, volume: 100});
-    // }
+    if (!$gameVariables[0].eventState.sealKingEncountered) {
+      $gameVariables[0].eventState.sealKingEncountered = true;
+      MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.sealKingEncountered);
+    } else if (AudioManager._currentBgm.name != 'Battle2') {
+      AudioManager.playBgm({name: 'Battle2', pan: 0, pitch: 100, volume: 100});
+    }
+
+    // health below half can cast judgement
+    if (this.mob.hp < this.mob.mhp / 2) {
+      if (getRandomInt(100) < 80 && this.mob.judgementCoolDown == 0
+        && SkillUtils.canPerform(this.mob, this.mob._skills[4])) {
+          return this.mob._skills[4].action(this);
+      }
+    }
+
     let distance = MapUtils.getDistance(this._x, this._y, target._x, target._y);
     if (distance < 3 && getRandomInt(100) < 40
       && SkillUtils.canPerform(this.mob, this.mob._skills[1])) { // Skill_DarkFireBlast
       return this.mob._skills[1].action(this);
     }
     return false;
+  }
+
+  SealKing.prototype.performStateAction = function() {
+    // reduce cooldown
+    if (this.mob.judgementCoolDown > 0) {
+      this.mob.judgementCoolDown--;
+    }
+    let realSrc = BattleUtils.getRealTarget(this);
+    let skillEffect = CharUtils.getTargetEffect(realSrc, Skill_Judgement);
+    if (skillEffect) {
+      if (skillEffect.effectCount > 1 && CharUtils.playerCanSeeChar(this)) {
+        TimeUtils.animeQueue.push(new AnimeObject(this, 'ANIME', 52));
+        TimeUtils.animeQueue.push(new AnimeObject(this, 'POP_UP', '蓄力'));
+        LogUtils.addLog(String.format(Message.display('charging'), LogUtils.getCharName(realSrc)));
+      }
+      return true;
+    }
   }
 
   SealKing.prototype.projectileAction = function(x, y, distance) {
@@ -17054,9 +17267,9 @@
     var lootings = [];
     // TODO: implements looting
     Game_Mob.prototype.looting.call(this, lootings);
-    // setTimeout(() => {
-    //   MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.fireKingDefeated);
-    // }, 100);
+    setTimeout(() => {
+      MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.sealKingDefeated);
+    }, 100);
   }
 
   //-----------------------------------------------------------------------------------
@@ -19109,6 +19322,7 @@
     this.addCommand('武器', 'weapon');
     this.addCommand('防具', 'armor');
     this.addCommand('飾品', 'accessory');
+    this.addCommand('藥水', 'potion');
   };
 
   //-----------------------------------------------------------------------------
@@ -19355,7 +19569,7 @@
   Scene_Craft.prototype.constructor = Scene_Craft;
 
   Scene_Craft.prototype.initialize = function() {
-    this._recipes = [[], [], []]; // 0: weapon, 1: armor, 2: accessory
+    this._recipes = [[], [], [], []]; // 0: weapon, 1: armor, 2: accessory, 3: potion
     for (let id in ItemUtils.recipes) {
       let recipe = ItemUtils.recipes[id];
       if (CraftUtils.hasMaterialFromRecipe(recipe)) {
@@ -19371,6 +19585,9 @@
             break;
           case 'ACCESSORY':
             index = 2;
+            break;
+          case 'POTION':
+            index = 3;
             break;
         }
         this._recipes[index].push(instance);
@@ -19460,6 +19677,7 @@
     this._craftTypeCommandWindow.setHandler('weapon', this.commandCraft.bind(this, 0));
     this._craftTypeCommandWindow.setHandler('armor', this.commandCraft.bind(this, 1));
     this._craftTypeCommandWindow.setHandler('accessory', this.commandCraft.bind(this, 2));
+    this._craftTypeCommandWindow.setHandler('potion', this.commandCraft.bind(this, 3));
     this._craftTypeCommandWindow.setHandler('cancel', this.onCraftTypeCancel.bind(this));
     this._craftTypeCommandWindow.hide();
     this.addWindow(this._craftTypeCommandWindow);
