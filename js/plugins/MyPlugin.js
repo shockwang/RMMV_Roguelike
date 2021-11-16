@@ -223,8 +223,12 @@
   var warFogCenter = 15;
   var pressFloor = 1654;
 
-  var dungeonDepth = 9;
+  var dungeonDepth = 11; // dungeonDepth - 1 = main dungeon depth
   var subDungeonDepth = 5;
+  var dungeonOffset = {
+    ice: 20,
+    fire: 30
+  };
 
   // door figures
   var doorClosedIcon = 512;
@@ -1236,7 +1240,7 @@
       }
       for (let id in CharUtils.mobTemplates[mobTypeIndicator]) {
         let mobClass = CharUtils.mobTemplates[mobTypeIndicator][id];
-        let spawnPercentage = CharUtils.calcMobAppearPercentage(CharUtils.calcMobSpawnLevel(mobClass), dungeonLevel);
+        let spawnPercentage = CharUtils.calcMobAppearPercentage(mobClass.mobInitData.level, dungeonLevel);
         if (spawnPercentage > 0) {
           pool.push(new SpawnMobData(mobClass, spawnPercentage));
         }
@@ -1245,7 +1249,7 @@
         // recalculate: use local dungeon creature
         for (let id in CharUtils.mobTemplates[mapTypeIndex]) {
           let mobClass = CharUtils.mobTemplates[mapTypeIndex][id];
-          let spawnPercentage = CharUtils.calcMobAppearPercentage(CharUtils.calcMobSpawnLevel(mobClass), dungeonLevel);
+          let spawnPercentage = CharUtils.calcMobAppearPercentage(mobClass.mobInitData.level, dungeonLevel);
           if (spawnPercentage > 0) {
             pool.push(new SpawnMobData(mobClass, spawnPercentage));
           }
@@ -1351,7 +1355,7 @@
 
   CharUtils.spawnMobNearPlayer = function(mobType, xOffset, yOffset) {
     return new mobType($gamePlayer._x + xOffset, $gamePlayer._y + yOffset, null
-      , CharUtils.calcMobSpawnLevel(mobType));
+      , mobType.mobInitData.level);
   }
 
   // for distance attack
@@ -1670,10 +1674,10 @@
 
   MapUtils.initialize = function () {
     // define map variables here
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 40; i++) {
       $gameVariables[i + 1] = new MapVariable(null, null, 'EARTH');
     }
-    for (let i = 1; i < 30; i++) {
+    for (let i = 1; i < 40; i++) {
       $gameVariables[i + 1].generateRandom = true;
       $gameVariables[i + 1].dungeonLevel = i;
     }
@@ -1688,27 +1692,22 @@
     $gameVariables[dungeonDepth].stairDownNum = 0;
 
     // add for test
-    $gameVariables[3].spawnMobs = false;
-    $gameVariables[3].spawnItems = false;
-    $gameVariables[3].spawnTraps = false;
+    $gameVariables[dungeonDepth].spawnMobs = false;
+    $gameVariables[dungeonDepth].spawnItems = false;
+    $gameVariables[dungeonDepth].spawnTraps = false;
     let stairUp = new StairData();
     stairUp.x = 10;
     stairUp.y = 16;
-    $gameVariables[3].preDefinedStairs.push(stairUp);
-    let stairDown = new StairData();
-    stairDown.type = 1;
-    stairDown.x = 10;
-    stairDown.y = 4;
-    $gameVariables[3].preDefinedStairs.push(stairDown);
-    $gameVariables[3].preDefinedMobs.push(new PreDefinedMobData('SealKing', new Coordinate(10, 10)));
+    $gameVariables[dungeonDepth].preDefinedStairs.push(stairUp);
+    $gameVariables[dungeonDepth].preDefinedMobs.push(new PreDefinedMobData('SealKing', new Coordinate(10, 10)));
 
     // initialize sub-dungeon levels
     // 0: earth, 1: ice, 2: fire
     $gameVariables[0] = {};
     $gameVariables[0].dungeonEntranceLevel = [0, 0, 0];
     // generate ice entrance
-    let dungeonStart = 11;
-    $gameVariables[0].dungeonEntranceLevel[1] = getRandomIntRange(4, dungeonDepth);
+    let dungeonStart = dungeonOffset.ice + 1;
+    $gameVariables[0].dungeonEntranceLevel[1] = getRandomIntRange(5, dungeonDepth - 1);
     $gameVariables[$gameVariables[0].dungeonEntranceLevel[1]].stairDownNum++;
     $gameVariables[$gameVariables[0].dungeonEntranceLevel[1]].stairToList.push(dungeonStart);
     $gameVariables[dungeonStart].stairToList.push($gameVariables[0].dungeonEntranceLevel[1]);
@@ -1724,8 +1723,8 @@
     $gameVariables[dungeonStart + subDungeonDepth - 1].preDefinedMobs.push(new PreDefinedMobData('Selina'));
 
     // generate fire entrance
-    dungeonStart = 21;
-    $gameVariables[0].dungeonEntranceLevel[2] = getRandomIntRange(4, dungeonDepth);
+    dungeonStart = dungeonOffset.fire + 1;
+    $gameVariables[0].dungeonEntranceLevel[2] = getRandomIntRange(5, dungeonDepth - 1);
     $gameVariables[$gameVariables[0].dungeonEntranceLevel[2]].stairDownNum++;
     $gameVariables[$gameVariables[0].dungeonEntranceLevel[2]].stairToList.push(dungeonStart);
     $gameVariables[dungeonStart].stairToList.push($gameVariables[0].dungeonEntranceLevel[2]);
@@ -2108,7 +2107,7 @@
 
   MapUtils.dataToMap = function(dungeonName) {
     let str = MapUtils.loadFile('data/MapData.txt');
-    let all = str.split('\n');
+    let all = str.split('\r\n');
     let index = 0;
     for (; index < all.length; index++) {
       if (all[index].contains(dungeonName)) {
@@ -2117,7 +2116,7 @@
     }
     let temps = [];
     for (let i = index + 1; i < all.length; i++) {
-      if (temps[i] == '') {
+      if (all[i] == '') {
         break;
       }
       temps.push(all[i]);
@@ -3877,13 +3876,13 @@
     // first load map
     console.log("first load map: " + mapId);
     var rawMap;
-    if (mapId == 10 + subDungeonDepth) {
+    if (mapId == dungeonOffset.ice + subDungeonDepth) {
       // ice boss room
       rawMap = MapUtils.dataToMap('iceBossRoom');
-    } else if (mapId == 20 + subDungeonDepth) {
+    } else if (mapId == dungeonOffset.fire + subDungeonDepth) {
       // fire boss room
       rawMap = MapUtils.dataToMap('fireBossRoom');
-    } else if (mapId == 3) {
+    } else if (mapId == dungeonDepth) {
       // for test only
       rawMap = MapUtils.dataToMap('earthBossRoom');
     } else {
@@ -4142,7 +4141,7 @@
                 MapUtils.generateNewMapItems(targetMapId, mapBlocks.floor.concat(mapBlocks.water));
                 MapUtils.drawEvents($gameVariables[targetMapId].mapData);
                 SceneManager.goto(Scene_Map);
-                if (targetMapId == 11) {
+                if (targetMapId == dungeonOffset.ice + 1) {
                   MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.visitIceDungeon);
                 }
               } else {
@@ -9104,7 +9103,7 @@
     } else if (modifier < 0) {
       this.traits[2].value += modifier;
     }
-    this.damageType.elemental.ice = 0.2;
+    this.damageType.elemental.cold = 0.2;
     ItemUtils.updateEquipDescription(this);
   }
   ItemUtils.lootingTemplates[1].tooth.push(IceDragon_Tooth);
@@ -9396,7 +9395,7 @@
     // randomize attributes
     this.traits[2].value = '1d4';
     this.params[4] = 8;
-    this.damageType.elemental.ice = 0.2;
+    this.damageType.elemental.cold = 0.2;
     ItemUtils.updateEquipDescription(this);
   }
   ItemUtils.lootingTemplates[1].bone.push(IceDragon_Bone);
@@ -9651,7 +9650,7 @@
     } else if (modifier < 0) {
       this.traits[2].value += modifier;
     }
-    this.damageType.elemental.ice = 0.2;
+    this.damageType.elemental.cold = 0.2;
     ItemUtils.updateEquipDescription(this);
   }
   ItemUtils.lootingTemplates[1].claw.push(IceDragon_Claw);
@@ -9879,7 +9878,7 @@
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
     ItemUtils.modifyAttr(this.traits[1], 8);
-    this.resistance.elemental.ice = 0.1;
+    this.resistance.elemental.cold = 0.1;
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.lootingTemplates[1].skin.push(IceDragon_Skin);
@@ -10980,7 +10979,7 @@
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], this.bucState);
     ItemUtils.modifyAttr(this.traits[1], this.bucState);
-    this.resistance.elemental.ice = 0.1;
+    this.resistance.elemental.cold = 0.1;
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(IceDragon_Gloves);
@@ -11013,7 +11012,7 @@
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], this.bucState);
     ItemUtils.modifyAttr(this.traits[1], this.bucState);
-    this.resistance.elemental.ice = 0.1;
+    this.resistance.elemental.cold = 0.1;
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(IceDragon_Shoes);
@@ -11046,7 +11045,7 @@
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
     ItemUtils.modifyAttr(this.traits[1], 2 + this.bucState);
-    this.resistance.elemental.ice = 0.2;
+    this.resistance.elemental.cold = 0.2;
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(IceDragon_Shield);
@@ -11079,7 +11078,7 @@
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], this.bucState);
     ItemUtils.modifyAttr(this.traits[1], this.bucState);
-    this.resistance.elemental.ice = 0.1;
+    this.resistance.elemental.cold = 0.1;
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(IceDragon_Helmet);
@@ -11112,7 +11111,7 @@
     // randomize attributes
     ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
     ItemUtils.modifyAttr(this.traits[1], 8 + this.bucState);
-    this.resistance.elemental.ice = 0.2;
+    this.resistance.elemental.cold = 0.2;
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(IceDragon_Coat);
@@ -11915,7 +11914,7 @@
       this.traits[2].value += modifier;
     }
     this.params[4] = 4;
-    this.damageType.elemental.ice = 0.2;
+    this.damageType.elemental.cold = 0.2;
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(IceDragon_Scimitar);
@@ -12149,7 +12148,7 @@
       this.traits[2].value += modifier;
     }
     this.params[4] = 4;
-    this.damageType.elemental.ice = 0.2;
+    this.damageType.elemental.cold = 0.2;
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(IceDragon_Spear);
@@ -12476,7 +12475,7 @@
       this.traits[2].value += modifier;
     }
     this.params[4] = 3;
-    this.damageType.elemental.ice = 0.2;
+    this.damageType.elemental.cold = 0.2;
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(IceDragon_Staff);
@@ -16075,7 +16074,7 @@
   }
 
   SkillEffect_Judgement.prototype.effectEnd = function() {
-    this.realSrc.judgementCoolDown = 20;
+    this.realSrc.judgementCoolDown = 10;
     // perform Judgement
     let src = BattleUtils.getEventFromCharacter(this.realSrc);
     let realSrc = this.realSrc;
@@ -16184,8 +16183,8 @@
     for (let i = 0; i < 8; i++) {
       let coordinate = MapUtils.getNearbyCoordinate(src._x, src._y, i);
       let target = MapUtils.getCharXy(coordinate.x, coordinate.y);
-      if (target) {
-        let realTarget = BattleUtils.getRealTarget(target);
+      let realTarget = (target) ? BattleUtils.getRealTarget(target) : null;
+      if (realTarget && realTarget.moveType != 1) { // target not in water
         if (!realTarget.checked) {
           let damage = Math.round(this.skill.lv
             * (1 - SkillUtils.getResistance(realTarget.status.resistance.elemental.fire)));
@@ -17319,7 +17318,7 @@
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Monster', 1);
     this.mob.status.resistance.elemental.fire = 0.3;
-    this.mob.status.resistance.elemental.ice = 0.3;
+    this.mob.status.resistance.elemental.cold = 0.3;
   }
 
   Slime.prototype.meleeAction = function(target) {
