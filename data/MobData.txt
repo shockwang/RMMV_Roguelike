@@ -7,23 +7,25 @@ Rooster,公雞,8,6,1,5,9,3,0,0,1d4,3,0,,Rooster_Tooth.25;Rooster_Claw.25;Feather
 Rat,老鼠,10,5,0,0,15,10,0,0,0,4,0,Skill_Hide.1,Cheese.25;Rat_Tail.25,Soul_EatRot.10
 Cat,貓,6,6,15,15,15,5,0,0,1d5,4,0,Skill_Clever.1;Skill_FireBall.1,Cat_Tooth.25;Cat_Claw.25;Cat_Skin.25;Cat_Bone.25,Soul_Clever.10
 Boar,野豬,12,15,0,0,8,5,0,0,'1d5',5,0,Skill_Charge.1,Boar_Tooth.25,Soul_Charge.10
-Wolf,狼,14,10,10,10,10,3,0,0,1d6,6,0,Skill_Scud.1;Skill_Bite.2,Wolf_Tooth.25;Wolf_Skin.25;Wolf_Claw.25;Wolf_Bone.25,Soul_Scud.10
+Earth_Spirit,土精靈,12,12,10,20,15,5,12,8,0,5,2,Skill_Shield.1;Skill_RockMissile.1,Earth_Crystal.25;Earth_Coat.10;Ring_Protection.5,Soul_RockMissile.10
+Wolf,狼,14,10,10,10,20,3,0,0,1d6,6,0,Skill_Scud.1;Skill_Bite.2,Wolf_Tooth.25;Wolf_Skin.25;Wolf_Claw.25;Wolf_Bone.25,Soul_Scud.10
 Turtle,烏龜,10,30,30,30,5,10,6,6,0,6,0,Skill_Shield.1,Turtle_Shell.25,Soul_Shield.10
-Bear,熊,14,20,10,10,8,5,0,0,2d3+2,6,0,Skill_Bash.1,Bear_Skin.25;Bear_Claw.25;Bear_Bone.25,Soul_Bash.10
+Bear,熊,14,20,10,10,10,5,0,0,2d3+2,6,0,Skill_Bash.1,Bear_Skin.25;Bear_Claw.25;Bear_Bone.25,Soul_Bash.10
 Lion,獅子,16,20,10,10,18,5,0,0,1d7,8,0,Skill_Roar.1,Lion_Skin.25;Lion_Tooth.25;Lion_Claw.25,Soul_Roar.10
 Buffalo,水牛,15,25,10,10,15,5,0,0,1d6,7,0,Skill_Tough.1,Buffalo_Horn.25;Buffalo_Bone.25,Soul_Tough.10
+Earth_Dragon,岩龍,18,18,18,18,10,5,16,8,1d9,10,2,Skill_Shield.3;Skill_Bash.3;Skill_RockMissile.3;Skill_RockPierce.3,EarthDragon_Tooth.25;EarthDragon_Claw.25;EarthDragon_Skin.25;EarthDragon_Bone.25,Skill_RockPierce.10
 SealKing,封印之主,35,35,35,50,35,5,20,20,2d5,15,0,Skill_DarkFireBall.3;Skill_DarkFireBlast.3;Skill_Charge.3;Skill_Bash.3;Skill_Judgement.1,,Soul_OldMemory.100
 // ice
 Slime,史萊姆,10,10,15,15,10,5,5,0,0,5,0,Skill_Acid.1;Skill_AdaptWater.3,Mucus.25;Blue_Crystal.25,Soul_Acid.10
 Jellyfish,水母,6,10,30,10,10,5,0,5,0,6,1,Skill_Discharge.1;Skill_AdaptWater.3,Glue.25;Tentacle.25,Soul_Discharge.10
 Ice_Spirit,冰精靈,10,8,20,20,20,5,8,12,0,7,2,Skill_Barrier.1;Skill_IceBolt.1,Ice_Coat.10;Ring_ColdResistance.5,Soul_IceBolt.10
 Shark,鯊魚,16,15,10,10,15,5,0,0,1d8,8,1,Skill_Bite.3;Skill_AdaptWater.3,Shark_Tooth.25,Soul_AdaptWater.10
-Ice_Dragon,冰龍,18,18,18,18,10,5,8,8,1d9,10,2,Skill_Barrier.3;Skill_Bash.3;Skill_IceBolt.3;Skill_IceBreath.3,IceDragon_Tooth.25;IceDragon_Claw.25;IceDragon_Skin.25;IceDragon_Bone.25,Soul_IceBreath.10
+Ice_Dragon,冰龍,18,18,18,18,10,5,12,12,1d9,10,2,Skill_Barrier.3;Skill_Bash.3;Skill_IceBolt.3;Skill_IceBreath.3,IceDragon_Tooth.25;IceDragon_Claw.25;IceDragon_Skin.25;IceDragon_Bone.25,Soul_IceBreath.10
 Selina,瑟蓮娜,15,20,20,20,20,5,20,20,1d5,12,0,Skill_Barrier.3;Skill_IceBolt.3;Skill_IceBreath.3;Skill_IceBolder.3;Skill_AdaptWater.3,,Soul_IceBolder.100
 // fire
 Salamander,火蜥蜴,12,12,10,10,10,5,3,3,2d3,5,0,Skill_AuraFire.3;Skill_Bite.2,Salamander_Skin.25;Salamander_Tooth.25;Salamander_Claw.25;Salamander_Bone.25,Soul_AuraFire.10
 FireHorse,烈焰馬,10,10,10,20,15,5,3,3,1d5,6,0,Skill_FirePath.3;Skill_Charge.3,FireHorse_Shoe.25;FireHorse_Tail.25,Soul_FirePath.10
 Fire_Spirit,火精靈,10,8,20,20,20,5,8,12,0,7,2,Skill_Barrier.1;Skill_FireBall.1,Fire_Coat.10;Ring_FireResistance.5,Soul_FireBall.10
 Phoenix,鳳凰,16,15,10,10,15,5,4,4,1d8,8,2,Skill_SuperRegen.3;Skill_FireBall.1;Skill_Pierce.3,Phoenix_Feather.25;Phoenix_Blood.25;Phoenix_Tooth.25,Soul_SuperRegen
-Fire_Dragon,火龍,18,18,18,18,10,5,8,8,1d9,10,2,Skill_Barrier.3;Skill_Bash.3;Skill_FireBall.3;Skill_FireBreath.3,FireDragon_Tooth.25;FireDragon_Claw.25;FireDragon_Skin.25;FireDragon_Bone.25,Soul_FireBreath.10
+Fire_Dragon,火龍,18,18,18,18,10,5,12,12,1d9,10,2,Skill_Barrier.3;Skill_Bash.3;Skill_FireBall.3;Skill_FireBreath.3,FireDragon_Tooth.25;FireDragon_Claw.25;FireDragon_Skin.25;FireDragon_Bone.25,Soul_FireBreath.10
 FireKing,亞里斯多康,15,20,20,20,20,5,20,20,1d5,12,0,Skill_Barrier.3;Skill_FireBall.3;Skill_FireBreath.3;Skill_AuraFire.5,,Soul_AdaptTerrain.100

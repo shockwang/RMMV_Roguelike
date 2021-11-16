@@ -54,6 +54,7 @@
     this.spawnTraps = true; // spawn random traps
     this.spawnMobs = true; // spawn random mobs
     this.spawnItems = true; // spawn random items
+    this.bgm = null; // setup map bgm
     this.dungeonLevel = 1; // determine the level difficulty
     this.stairDownNum = 1;
     this.stairUpNum = 1;
@@ -1680,6 +1681,7 @@
     for (let i = 1; i < 40; i++) {
       $gameVariables[i + 1].generateRandom = true;
       $gameVariables[i + 1].dungeonLevel = i;
+      $gameVariables[i + 1].bgm = 'Dungeon1';
     }
     $gameVariables[1].stairUpNum = 0;
     $gameVariables[1].stairToList.push(2);
@@ -1691,7 +1693,7 @@
     $gameVariables[dungeonDepth].stairToList.push(dungeonDepth - 1);
     $gameVariables[dungeonDepth].stairDownNum = 0;
 
-    // add for test
+    // setup final boss layer
     $gameVariables[dungeonDepth].spawnMobs = false;
     $gameVariables[dungeonDepth].spawnItems = false;
     $gameVariables[dungeonDepth].spawnTraps = false;
@@ -1716,6 +1718,7 @@
       $gameVariables[i].stairToList.push(i + 1);
       $gameVariables[i].mapType = 'ICE';
       $gameVariables[i].dungeonLevel = i - dungeonStart + $gameVariables[0].dungeonEntranceLevel[1];
+      $gameVariables[i].bgm = 'Dungeon3';
     }
     $gameVariables[dungeonStart].stairToList.splice(1, 1);
     $gameVariables[dungeonStart + subDungeonDepth - 1].stairToList.pop();
@@ -1733,6 +1736,7 @@
       $gameVariables[i].stairToList.push(i + 1);
       $gameVariables[i].mapType = 'FIRE';
       $gameVariables[i].dungeonLevel = i - dungeonStart + $gameVariables[0].dungeonEntranceLevel[2];
+      $gameVariables[i].bgm = 'Dungeon2';
     }
     $gameVariables[dungeonStart].stairToList.splice(1, 1);
     $gameVariables[dungeonStart + subDungeonDepth - 1].stairToList.pop();
@@ -1795,12 +1799,14 @@
       selinaDefeated: $dataMap.events[12],
       fireKingEncountered: $dataMap.events[34],
       fireKingDefeated: $dataMap.events[35],
+      visitFireDungeon: $dataMap.events[38],
       sealKingEncountered: $dataMap.events[36],
+      judgementPerformed: $dataMap.events[39],
       sealKingDefeated: $dataMap.events[37],
       // temp setup
       skillObtainedHint: $dataMap.events[31]
     }
-    $gameVariables[0].skillObtainedHintFlag = true; // set to true for debug purpose
+    $gameVariables[0].skillObtainedHintFlag = false; // set to true for debug purpose
     // tutorial
     $gameVariables[0].tutorialOn = true;
     $gameVariables[0].tutorialEvents = {
@@ -1881,7 +1887,9 @@
     $gameVariables[0].eventState = {
       pressFloorDiscovered: false,
       selinaEncountered: false,
-      fireKingEncountered: false
+      fireKingEncountered: false,
+      sealKingEncountered: false,
+      judgementPerformed: false
     }
     // define last savefileId
     $gameVariables[0].lastSavefileId = 0;
@@ -1979,9 +1987,9 @@
 
     // modify actor status
     // let player = $gameActors.actor(1);
-    // player._paramPlus[2] = 9;
-    // player._paramPlus[3] = 9;
-    // player._paramPlus[6] = 9;
+    // for (let i = 2; i <= 6; i++) {
+    //   player._paramPlus[i] = 10;
+    // }
 
     // $gameParty.gainItem(ItemUtils.createItem(Dog_Shield), 1);
     // $gameParty.gainItem(ItemUtils.createItem(Cat_Gloves), 1);
@@ -2000,11 +2008,6 @@
 
     // $gameParty.gainItem(ItemUtils.createItem(Fire_Coat), 1);
     // $gameParty.gainItem(ItemUtils.createItem(Ring_FireResistance), 1);
-
-    // $gameParty.gainItem(ItemUtils.createItem(IceDragon_Skin), 1);
-    // $gameParty.gainItem(ItemUtils.createItem(IceDragon_Bone), 1);
-    // $gameParty.gainItem(ItemUtils.createItem(IceDragon_Claw), 1);
-    // $gameParty.gainItem(ItemUtils.createItem(IceDragon_Tooth), 1);
 
     // $gameParty.gainItem(ItemUtils.createItem(FireDragon_Bone), 1);
     // $gameParty.gainItem(ItemUtils.createItem(FireDragon_Claw), 1);
@@ -4017,6 +4020,9 @@
       if ($gameMap.mapId() > 0) {
         var targetMapId = ($gameVariables[0].transferInfo) ? $gameVariables[0].transferInfo.toMapId : $gameMap.mapId();
         if ($gameVariables[targetMapId].generateRandom) {
+          // play background music
+          let bgm = {name: $gameVariables[targetMapId].bgm, pan: 0, pitch: 100, volume: 100};
+          AudioManager.playBgm(bgm);
           if (!$gameVariables[targetMapId].mapData) {
             var nowMapId = $gameMap.mapId();
             // first time assign data
@@ -4143,6 +4149,8 @@
                 SceneManager.goto(Scene_Map);
                 if (targetMapId == dungeonOffset.ice + 1) {
                   MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.visitIceDungeon);
+                } else if (targetMapId == dungeonOffset.fire + 1) {
+                  MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.visitFireDungeon);
                 }
               } else {
                 setTimeout(setupEvents.bind(null, nowMapId, targetMapId, nowStair), 100);
@@ -7121,7 +7129,7 @@
         // block player from moving
         $gamePlayer._vehicleGettingOn = true;
         // check player action done
-        if (!TimeUtils.actionDone) {
+        if (!TimeUtils.actionDone || !$dataMap) { // block situation that $dataMap not ready yet
           setTimeout(TimeUtils.afterPlayerMoved, 1);
           return;
         }
@@ -8478,31 +8486,45 @@
       params: [0, 0, 0, 0, 0, 0, 0],
       traits: [0, 0]
     }
+    // record effect material count
+    let effectCount = {
+      params: [0, 0, 0, 0, 0, 0, 0],
+      traits: [0, 0]
+    }
     for (let i = 0; i < materials.length; i++) {
       let toAdd = materials[i];
       // update params
       if (toAdd.params) {
         for (let j = 2; j <= 6; j++) {
-          tempValue.params[j] += toAdd.params[j];
+          if (toAdd.params[j] != 0) {
+            tempValue.params[j] += toAdd.params[j];
+            effectCount.params[j]++;
+          }
         }
       }
 
       // update attrs (weapon damage not included)
       if (toAdd.traits) {
         for (let j = 0; j < 2; j++) {
-          tempValue.traits[j] += toAdd.traits[j].value;
+          if (toAdd.traits[j].value != 0) {
+            tempValue.traits[j] += toAdd.traits[j].value;
+            effectCount.traits[j]++;
+          }
         }
       }
     }
     // average them & apply to this equipment
-    let len = materials.length;
     for (let i = 2; i <= 6; i++) {
-      tempValue.params[i] = Math.round(tempValue.params[i] / len);
-      this.params[i] += tempValue.params[i];
+      if (effectCount.params[i] > 0) {
+        tempValue.params[i] = Math.round(tempValue.params[i] / effectCount.params[i]);
+        this.params[i] += tempValue.params[i];
+      }
     }
     for (let i = 0; i < 2; i++) {
-      tempValue.traits[i] /= len;
-      this.traits[i].value += tempValue.traits[i];
+      if (effectCount.traits[i] > 0) {
+        tempValue.traits[i] /= effectCount.traits[i];
+        this.traits[i].value += tempValue.traits[i];
+      }
     }
     ItemUtils.updateEquipDescription(this);
   }
@@ -8567,6 +8589,27 @@
     this.weight = 5;
   }
   ItemUtils.lootingTemplates[0].material.push(Buffalo_Horn);
+
+  //-----------------------------------------------------------------------------------
+  // Earth_Crystal
+  //
+  // type: MATERIAL
+
+  Earth_Crystal = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Earth_Crystal.spawnLevel = 5;
+
+  Earth_Crystal.prototype = Object.create(ItemTemplate.prototype);
+  Earth_Crystal.prototype.constructor = Earth_Crystal;
+
+  Earth_Crystal.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[18]);
+    this.name = '大地結晶';
+    this.description = '深邃且堅硬的結晶';
+    this.weight = 5;
+  }
+  ItemUtils.lootingTemplates[0].material.push(Earth_Crystal);
 
   //-----------------------------------------------------------------------------------
   // Mucus
@@ -9042,6 +9085,39 @@
   ItemUtils.lootingTemplates[0].tooth.push(Lion_Tooth);
 
   //-----------------------------------------------------------------------------------
+  // EarthDragon_Tooth
+  //
+  // weapon type: TOOTH
+
+  EarthDragon_Tooth = function() {
+    this.initialize.apply(this, arguments);
+  }
+  EarthDragon_Tooth.spawnLevel = 10;
+
+  EarthDragon_Tooth.prototype = Object.create(EquipTemplate.prototype);
+  EarthDragon_Tooth.prototype.constructor = EarthDragon_Tooth;
+
+  EarthDragon_Tooth.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[11]);
+    this.name = '龍牙(岩)';
+    this.description = '神秘且充滿力量的牙齒';
+    this.templateName = this.name;
+    this.weight = 4;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(2, 5);
+    modifier += this.bucState;
+    this.traits[2].value = '1d9';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    ItemUtils.updateEquipDescription(this);
+  }
+  ItemUtils.lootingTemplates[0].tooth.push(EarthDragon_Tooth);
+
+  //-----------------------------------------------------------------------------------
   // Shark_Tooth
   //
   // weapon type: TOOTH
@@ -9373,6 +9449,33 @@
   ItemUtils.lootingTemplates[0].bone.push(Lion_Bone);
 
   //-----------------------------------------------------------------------------------
+  // EarthDragon_Bone
+  //
+  // weapon type: BONE
+
+  EarthDragon_Bone = function() {
+    this.initialize.apply(this, arguments);
+  }
+  EarthDragon_Bone.spawnLevel = 10;
+
+  EarthDragon_Bone.prototype = Object.create(EquipTemplate.prototype);
+  EarthDragon_Bone.prototype.constructor = EarthDragon_Bone;
+
+  EarthDragon_Bone.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[12]);
+    this.name = '龍骨(岩)';
+    this.description = '充滿古老的魔法力量';
+    this.templateName = this.name;
+    this.weight = 5;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    this.traits[2].value = '1d4+2';
+    this.params[4] = 8;
+    ItemUtils.updateEquipDescription(this);
+  }
+  ItemUtils.lootingTemplates[0].bone.push(EarthDragon_Bone);
+
+  //-----------------------------------------------------------------------------------
   // IceDragon_Bone
   //
   // weapon type: BONE
@@ -9622,6 +9725,39 @@
   ItemUtils.lootingTemplates[0].claw.push(Lion_Claw);
 
   //-----------------------------------------------------------------------------------
+  // EarthDragon_Claw
+  //
+  // weapon type: CLAW
+
+  EarthDragon_Claw = function() {
+    this.initialize.apply(this, arguments);
+  }
+  EarthDragon_Claw.spawnLevel = 10;
+
+  EarthDragon_Claw.prototype = Object.create(EquipTemplate.prototype);
+  EarthDragon_Claw.prototype.constructor = EarthDragon_Claw;
+
+  EarthDragon_Claw.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[13]);
+    this.name = '龍爪(岩)';
+    this.description = '古老又神秘的爪';
+    this.templateName = this.name;
+    this.weight = 5;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(3, 6);
+    modifier += this.bucState;
+    this.traits[2].value = '2d4';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    ItemUtils.updateEquipDescription(this);
+  }
+  ItemUtils.lootingTemplates[0].claw.push(EarthDragon_Claw);
+
+  //-----------------------------------------------------------------------------------
   // IceDragon_Claw
   //
   // weapon type: CLAW
@@ -9854,6 +9990,33 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.lootingTemplates[0].skin.push(Lion_Skin);
+
+  //-----------------------------------------------------------------------------------
+  // EarthDragon_Skin
+  //
+  // armor type: SKIN
+
+  EarthDragon_Skin = function() {
+    this.initialize.apply(this, arguments);
+  }
+  EarthDragon_Skin.spawnLevel = 10;
+
+  EarthDragon_Skin.prototype = Object.create(EquipTemplate.prototype);
+  EarthDragon_Skin.prototype.constructor = EarthDragon_Skin;
+
+  EarthDragon_Skin.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[11]);
+    this.name = '龍皮(岩)';
+    this.description = '古老又神秘的毛皮';
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 14 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 4);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.lootingTemplates[0].skin.push(EarthDragon_Skin);
 
   //-----------------------------------------------------------------------------------
   // IceDragon_Skin
@@ -10953,6 +11116,196 @@
   ItemUtils.equipTemplates[0].coat.push(Lion_Coat);
 
   //-----------------------------------------------------------------------------------
+  // Earth_Coat
+  //
+  // armor type: COAT
+
+  Earth_Coat = function() {
+    this.initialize.apply(this, arguments);
+  }
+  Earth_Coat.spawnLevel = 5;
+
+  Earth_Coat.itemName = '大地之衣';
+  Earth_Coat.itemDescription = '厚實的衣裝, 彷彿能聞到土地的氣味';
+
+  Earth_Coat.prototype = Object.create(EquipTemplate.prototype);
+  Earth_Coat.prototype.constructor = Earth_Coat;
+
+  Earth_Coat.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[16]);
+    this.name = Earth_Coat.itemName;
+    this.description = Earth_Coat.itemDescription;
+    this.templateName = this.name;
+    this.weight = 40;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 10 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 2 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.equipTemplates[0].coat.push(Earth_Coat);
+
+  //-----------------------------------------------------------------------------------
+  // EarthDragon_Gloves
+  //
+  // armor type: GLOVES
+
+  EarthDragon_Gloves = function() {
+    this.initialize.apply(this, arguments);
+  }
+  EarthDragon_Gloves.spawnLevel = 10;
+
+  EarthDragon_Gloves.itemName = '龍皮手套(岩)';
+  EarthDragon_Gloves.itemDescription = '蘊含神秘力量的手套';
+  EarthDragon_Gloves.material = [{itemClass: EarthDragon_Skin, amount: 4}];
+
+  EarthDragon_Gloves.prototype = Object.create(EquipTemplate.prototype);
+  EarthDragon_Gloves.prototype.constructor = EarthDragon_Gloves;
+
+  EarthDragon_Gloves.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[12]);
+    this.name = EarthDragon_Gloves.itemName;
+    this.description = EarthDragon_Gloves.itemDescription;
+    this.templateName = this.name;
+    this.weight = 10;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(EarthDragon_Gloves);
+  ItemUtils.equipTemplates[0].gloves.push(EarthDragon_Gloves);
+
+  //-----------------------------------------------------------------------------------
+  // EarthDragon_Shoes
+  //
+  // armor type: SHOES
+
+  EarthDragon_Shoes = function() {
+    this.initialize.apply(this, arguments);
+  }
+  EarthDragon_Shoes.spawnLevel = 10;
+
+  EarthDragon_Shoes.itemName = '龍皮靴(岩)';
+  EarthDragon_Shoes.itemDescription = '蘊含神秘力量的靴子';
+  EarthDragon_Shoes.material = [{itemClass: EarthDragon_Skin, amount: 4}];
+
+  EarthDragon_Shoes.prototype = Object.create(EquipTemplate.prototype);
+  EarthDragon_Shoes.prototype.constructor = EarthDragon_Shoes;
+
+  EarthDragon_Shoes.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[13]);
+    this.name = EarthDragon_Shoes.itemName;
+    this.description = EarthDragon_Shoes.itemDescription;
+    this.templateName = this.name;
+    this.weight = 10;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(EarthDragon_Shoes);
+  ItemUtils.equipTemplates[0].shoes.push(EarthDragon_Shoes);
+
+  //-----------------------------------------------------------------------------------
+  // EarthDragon_Shield
+  //
+  // armor type: SHIELD
+
+  EarthDragon_Shield = function() {
+    this.initialize.apply(this, arguments);
+  }
+  EarthDragon_Shield.spawnLevel = 10;
+
+  EarthDragon_Shield.itemName = '龍皮盾(岩)';
+  EarthDragon_Shield.itemDescription = '蘊含神秘力量的皮盾';
+  EarthDragon_Shield.material = [{itemClass: EarthDragon_Skin, amount: 3}, {itemClass: EarthDragon_Bone, amount: 3}];
+
+  EarthDragon_Shield.prototype = Object.create(EquipTemplate.prototype);
+  EarthDragon_Shield.prototype.constructor = EarthDragon_Shield;
+
+  EarthDragon_Shield.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[14]);
+    this.name = EarthDragon_Shield.itemName;
+    this.description = EarthDragon_Shield.itemDescription;
+    this.templateName = this.name;
+    this.weight = 50;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 2 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 2 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(EarthDragon_Shield);
+  ItemUtils.equipTemplates[0].shield.push(EarthDragon_Shield);
+
+  //-----------------------------------------------------------------------------------
+  // EarthDragon_Helmet
+  //
+  // armor type: HELMET
+
+  EarthDragon_Helmet = function() {
+    this.initialize.apply(this, arguments);
+  }
+  EarthDragon_Helmet.spawnLevel = 10;
+
+  EarthDragon_Helmet.itemName = '龍皮帽(岩)';
+  EarthDragon_Helmet.itemDescription = '蘊含神秘力量的皮帽';
+  EarthDragon_Helmet.material = [{itemClass: EarthDragon_Skin, amount: 4}];
+
+  EarthDragon_Helmet.prototype = Object.create(EquipTemplate.prototype);
+  EarthDragon_Helmet.prototype.constructor = EarthDragon_Helmet;
+
+  EarthDragon_Helmet.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[15]);
+    this.name = EarthDragon_Helmet.itemName;
+    this.description = EarthDragon_Helmet.itemDescription;
+    this.templateName = this.name;
+    this.weight = 10;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(EarthDragon_Helmet);
+  ItemUtils.equipTemplates[0].helmet.push(EarthDragon_Helmet);
+
+  //-----------------------------------------------------------------------------------
+  // EarthDragon_Coat
+  //
+  // armor type: COAT
+
+  EarthDragon_Coat = function() {
+    this.initialize.apply(this, arguments);
+  }
+  EarthDragon_Coat.spawnLevel = 10;
+
+  EarthDragon_Coat.itemName = '龍皮大衣(岩)';
+  EarthDragon_Coat.itemDescription = '蘊含神秘力量的大衣';
+  EarthDragon_Coat.material = [{itemClass: EarthDragon_Skin, amount: 8}];
+
+  EarthDragon_Coat.prototype = Object.create(EquipTemplate.prototype);
+  EarthDragon_Coat.prototype.constructor = EarthDragon_Coat;
+
+  EarthDragon_Coat.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataArmors[16]);
+    this.name = EarthDragon_Coat.itemName;
+    this.description = EarthDragon_Coat.itemDescription;
+    this.templateName = this.name;
+    this.weight = 120;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    ItemUtils.modifyAttr(this.traits[0], 8 + this.bucState);
+    ItemUtils.modifyAttr(this.traits[1], 8 + this.bucState);
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(EarthDragon_Coat);
+  ItemUtils.equipTemplates[0].coat.push(EarthDragon_Coat);
+
+  //-----------------------------------------------------------------------------------
   // IceDragon_Gloves
   //
   // armor type: GLOVES
@@ -11179,6 +11532,7 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Salamander_Gloves);
+  ItemUtils.equipTemplates[2].gloves.push(Salamander_Gloves);
 
   //-----------------------------------------------------------------------------------
   // Salamander_Shoes
@@ -11211,6 +11565,7 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Salamander_Shoes);
+  ItemUtils.equipTemplates[2].shoes.push(Salamander_Shoes);
 
   //-----------------------------------------------------------------------------------
   // Salamander_Shield
@@ -11243,6 +11598,7 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Salamander_Shield);
+  ItemUtils.equipTemplates[2].shield.push(Salamander_Shield);
 
   //-----------------------------------------------------------------------------------
   // Salamander_Helmet
@@ -11275,6 +11631,7 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Salamander_Helmet);
+  ItemUtils.equipTemplates[2].helmet.push(Salamander_Helmet);
 
   //-----------------------------------------------------------------------------------
   // Salamander_Coat
@@ -11307,6 +11664,7 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Salamander_Coat);
+  ItemUtils.equipTemplates[2].coat.push(Salamander_Coat);
 
   //-----------------------------------------------------------------------------------
   // FireDragon_Gloves
@@ -11339,6 +11697,7 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(FireDragon_Gloves);
+  ItemUtils.equipTemplates[2].gloves.push(FireDragon_Gloves);
 
   //-----------------------------------------------------------------------------------
   // FireDragon_Shoes
@@ -11371,6 +11730,7 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(FireDragon_Shoes);
+  ItemUtils.equipTemplates[2].shoes.push(FireDragon_Shoes);
 
   //-----------------------------------------------------------------------------------
   // FireDragon_Shield
@@ -11403,6 +11763,7 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(FireDragon_Shield);
+  ItemUtils.equipTemplates[2].shield.push(FireDragon_Shield);
 
   //-----------------------------------------------------------------------------------
   // FireDragon_Helmet
@@ -11435,6 +11796,7 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(FireDragon_Helmet);
+  ItemUtils.equipTemplates[2].helmet.push(FireDragon_Helmet);
 
   //-----------------------------------------------------------------------------------
   // FireDragon_Coat
@@ -11467,6 +11829,7 @@
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(FireDragon_Coat);
+  ItemUtils.equipTemplates[2].coat.push(FireDragon_Coat);
 
   //-----------------------------------------------------------------------------------
   // Fire_Coat
@@ -11758,7 +12121,6 @@
     } else if (modifier < 0) {
       this.traits[2].value += modifier;
     }
-    this.params[4] = 2;
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Cat_Scimitar);
@@ -11797,7 +12159,6 @@
     } else if (modifier < 0) {
       this.traits[2].value += modifier;
     }
-    this.params[4] = 1;
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Wolf_Scimitar);
@@ -11874,11 +12235,48 @@
     } else if (modifier < 0) {
       this.traits[2].value += modifier;
     }
-    this.params[4] = 3;
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Lion_Scimitar);
   ItemUtils.equipTemplates[0].weapon.push(Lion_Scimitar);
+
+  //-----------------------------------------------------------------------------------
+  // EarthDragon_Scimitar
+  //
+  // weapon type: SCIMITAR
+
+  EarthDragon_Scimitar = function() {
+    this.initialize.apply(this, arguments);
+  }
+  EarthDragon_Scimitar.spawnLevel = 10;
+
+  EarthDragon_Scimitar.itemName = '龍骨刃(岩)';
+  EarthDragon_Scimitar.itemDescription = '閃著黑光的長刀';
+  EarthDragon_Scimitar.material = [{itemClass: EarthDragon_Bone, amount: 2}, {itemClass: EarthDragon_Claw, amount: 4}];
+
+  EarthDragon_Scimitar.prototype = Object.create(EquipTemplate.prototype);
+  EarthDragon_Scimitar.prototype.constructor = EarthDragon_Scimitar;
+
+  EarthDragon_Scimitar.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[14]);
+    this.name = EarthDragon_Scimitar.itemName;
+    this.description = EarthDragon_Scimitar.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(3, 6);
+    modifier += this.bucState;
+    this.traits[2].value = '3d4';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(EarthDragon_Scimitar);
+  ItemUtils.equipTemplates[0].weapon.push(EarthDragon_Scimitar);
 
   //-----------------------------------------------------------------------------------
   // IceDragon_Scimitar
@@ -11913,7 +12311,6 @@
     } else if (modifier < 0) {
       this.traits[2].value += modifier;
     }
-    this.params[4] = 4;
     this.damageType.elemental.cold = 0.2;
     ItemUtils.updateEquipDescription(this);
   };
@@ -11953,11 +12350,50 @@
     } else if (modifier < 0) {
       this.traits[2].value += modifier;
     }
-    this.params[4] = 4;
     this.damageType.elemental.fire = 0.2;
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Salamander_Scimitar);
+  ItemUtils.equipTemplates[2].weapon.push(Salamander_Scimitar);
+
+  //-----------------------------------------------------------------------------------
+  // FireDragon_Scimitar
+  //
+  // weapon type: SCIMITAR
+
+  FireDragon_Scimitar = function() {
+    this.initialize.apply(this, arguments);
+  }
+  FireDragon_Scimitar.spawnLevel = 10;
+
+  FireDragon_Scimitar.itemName = '龍骨刃(火)';
+  FireDragon_Scimitar.itemDescription = '散發著高熱的長刀';
+  FireDragon_Scimitar.material = [{itemClass: FireDragon_Bone, amount: 2}, {itemClass: FireDragon_Claw, amount: 4}];
+
+  FireDragon_Scimitar.prototype = Object.create(EquipTemplate.prototype);
+  FireDragon_Scimitar.prototype.constructor = FireDragon_Scimitar;
+
+  FireDragon_Scimitar.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[14]);
+    this.name = FireDragon_Scimitar.itemName;
+    this.description = FireDragon_Scimitar.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(1, 4);
+    modifier += this.bucState;
+    this.traits[2].value = '3d4';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    this.damageType.elemental.fire = 0.2;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(FireDragon_Scimitar);
+  ItemUtils.equipTemplates[2].weapon.push(FireDragon_Scimitar);
 
   //-----------------------------------------------------------------------------------
   // Dog_Spear
@@ -12030,7 +12466,6 @@
     } else if (modifier < 0) {
       this.traits[2].value += modifier;
     }
-    this.params[4] = 2;
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Cat_Spear);
@@ -12069,7 +12504,6 @@
     } else if (modifier < 0) {
       this.traits[2].value += modifier;
     }
-    this.params[4] = 1;
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Wolf_Spear);
@@ -12108,11 +12542,48 @@
     } else if (modifier < 0) {
       this.traits[2].value += modifier;
     }
-    this.params[4] = 3;
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Lion_Spear);
   ItemUtils.equipTemplates[0].weapon.push(Lion_Spear);
+
+  //-----------------------------------------------------------------------------------
+  // EarthDragon_Spear
+  //
+  // weapon type: SPEAR
+
+  EarthDragon_Spear = function() {
+    this.initialize.apply(this, arguments);
+  }
+  EarthDragon_Spear.spawnLevel = 10;
+
+  EarthDragon_Spear.itemName = '龍骨矛(岩)';
+  EarthDragon_Spear.itemDescription = '閃著黑光的長矛';
+  EarthDragon_Spear.material = [{itemClass: EarthDragon_Bone, amount: 2}, {itemClass: EarthDragon_Tooth, amount: 4}];
+
+  EarthDragon_Spear.prototype = Object.create(EquipTemplate.prototype);
+  EarthDragon_Spear.prototype.constructor = EarthDragon_Spear;
+
+  EarthDragon_Spear.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[15]);
+    this.name = EarthDragon_Spear.itemName;
+    this.description = EarthDragon_Spear.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(2, 4);
+    modifier += this.bucState;
+    this.traits[2].value = '2d6';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(EarthDragon_Spear);
+  ItemUtils.equipTemplates[0].weapon.push(EarthDragon_Spear);
 
   //-----------------------------------------------------------------------------------
   // IceDragon_Spear
@@ -12147,7 +12618,6 @@
     } else if (modifier < 0) {
       this.traits[2].value += modifier;
     }
-    this.params[4] = 4;
     this.damageType.elemental.cold = 0.2;
     ItemUtils.updateEquipDescription(this);
   };
@@ -12187,11 +12657,50 @@
     } else if (modifier < 0) {
       this.traits[2].value += modifier;
     }
-    this.params[4] = 4;
     this.damageType.elemental.fire = 0.2;
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Salamander_Spear);
+  ItemUtils.equipTemplates[2].weapon.push(Salamander_Spear);
+
+  //-----------------------------------------------------------------------------------
+  // FireDragon_Spear
+  //
+  // weapon type: SPEAR
+
+  FireDragon_Spear = function() {
+    this.initialize.apply(this, arguments);
+  }
+  FireDragon_Spear.spawnLevel = 10;
+
+  FireDragon_Spear.itemName = '龍骨矛(火)';
+  FireDragon_Spear.itemDescription = '散發著高熱的長矛';
+  FireDragon_Spear.material = [{itemClass: FireDragon_Bone, amount: 2}, {itemClass: FireDragon_Tooth, amount: 4}];
+
+  FireDragon_Spear.prototype = Object.create(EquipTemplate.prototype);
+  FireDragon_Spear.prototype.constructor = FireDragon_Spear;
+
+  FireDragon_Spear.prototype.initialize = function () {
+    EquipTemplate.prototype.initialize.call(this, $dataWeapons[15]);
+    this.name = FireDragon_Spear.itemName;
+    this.description = FireDragon_Spear.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    let modifier = getRandomIntRange(0, 2);
+    modifier += this.bucState;
+    this.traits[2].value = '2d6';
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    this.damageType.elemental.fire = 0.2;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(FireDragon_Spear);
+  ItemUtils.equipTemplates[2].weapon.push(FireDragon_Spear);
 
   //-----------------------------------------------------------------------------------
   // StaffTemplate
@@ -12246,7 +12755,7 @@
     } else if (modifier < 0) {
       this.traits[2].value += modifier;
     }
-    this.params[4] = 3;
+    this.params[4] = 4;
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Dog_Staff);
@@ -12284,7 +12793,7 @@
     } else if (modifier < 0) {
       this.traits[2].value += modifier;
     }
-    this.params[4] = 3;
+    this.params[4] = 4;
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Cat_Staff);
@@ -12322,7 +12831,7 @@
     } else if (modifier < 0) {
       this.traits[2].value += modifier;
     }
-    this.params[4] = 3;
+    this.params[4] = 4;
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Wolf_Staff);
@@ -12360,7 +12869,7 @@
     } else if (modifier < 0) {
       this.traits[2].value += modifier;
     }
-    this.params[4] = 3;
+    this.params[4] = 4;
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Bear_Staff);
@@ -12398,7 +12907,7 @@
     } else if (modifier < 0) {
       this.traits[2].value += modifier;
     }
-    this.params[4] = 3;
+    this.params[4] = 4;
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Buffalo_Staff);
@@ -12436,11 +12945,49 @@
     } else if (modifier < 0) {
       this.traits[2].value += modifier;
     }
-    this.params[4] = 3;
+    this.params[4] = 4;
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Lion_Staff);
   ItemUtils.equipTemplates[0].weapon.push(Lion_Staff);
+
+  //-----------------------------------------------------------------------------------
+  // EarthDragon_Staff
+  //
+  // weapon type: STAFF
+
+  EarthDragon_Staff = function() {
+    this.initialize.apply(this, arguments);
+  }
+  EarthDragon_Staff.spawnLevel = 10;
+
+  EarthDragon_Staff.itemName = '龍骨杖(岩)';
+  EarthDragon_Staff.itemDescription = '閃著黑光的法杖';
+  EarthDragon_Staff.material = [{itemClass: EarthDragon_Bone, amount: 4}];
+
+  EarthDragon_Staff.prototype = Object.create(StaffTemplate.prototype);
+  EarthDragon_Staff.prototype.constructor = EarthDragon_Staff;
+
+  EarthDragon_Staff.prototype.initialize = function () {
+    StaffTemplate.prototype.initialize.call(this, 35);
+    this.name = EarthDragon_Staff.itemName;
+    this.description = EarthDragon_Staff.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    this.traits[2].value = '1d8+2';
+    let modifier = this.bucState;
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    this.params[4] = 4;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(EarthDragon_Staff);
+  ItemUtils.equipTemplates[0].weapon.push(EarthDragon_Staff);
 
   //-----------------------------------------------------------------------------------
   // IceDragon_Staff
@@ -12474,7 +13021,7 @@
     } else if (modifier < 0) {
       this.traits[2].value += modifier;
     }
-    this.params[4] = 3;
+    this.params[4] = 4;
     this.damageType.elemental.cold = 0.2;
     ItemUtils.updateEquipDescription(this);
   };
@@ -12513,11 +13060,51 @@
     } else if (modifier < 0) {
       this.traits[2].value += modifier;
     }
-    this.params[4] = 3;
+    this.params[4] = 4;
     this.damageType.elemental.fire = 0.2;
     ItemUtils.updateEquipDescription(this);
   };
   ItemUtils.recipes.push(Salamander_Staff);
+  ItemUtils.equipTemplates[2].weapon.push(Salamander_Staff);
+
+  //-----------------------------------------------------------------------------------
+  // FireDragon_Staff
+  //
+  // weapon type: STAFF
+
+  FireDragon_Staff = function() {
+    this.initialize.apply(this, arguments);
+  }
+  FireDragon_Staff.spawnLevel = 10;
+
+  FireDragon_Staff.itemName = '龍骨杖(火)';
+  FireDragon_Staff.itemDescription = '散發著高熱的法杖';
+  FireDragon_Staff.material = [{itemClass: FireDragon_Bone, amount: 4}];
+
+  FireDragon_Staff.prototype = Object.create(StaffTemplate.prototype);
+  FireDragon_Staff.prototype.constructor = FireDragon_Staff;
+
+  FireDragon_Staff.prototype.initialize = function () {
+    StaffTemplate.prototype.initialize.call(this, 35);
+    this.name = FireDragon_Staff.itemName;
+    this.description = FireDragon_Staff.itemDescription;
+    this.templateName = this.name;
+    this.weight = 15;
+    ItemUtils.updateEquipName(this);
+    // randomize attributes
+    this.traits[2].value = '1d8';
+    let modifier = this.bucState;
+    if (modifier > 0) {
+      this.traits[2].value += '+' + modifier;
+    } else if (modifier < 0) {
+      this.traits[2].value += modifier;
+    }
+    this.params[4] = 4;
+    this.damageType.elemental.fire = 0.2;
+    ItemUtils.updateEquipDescription(this);
+  };
+  ItemUtils.recipes.push(FireDragon_Staff);
+  ItemUtils.equipTemplates[2].weapon.push(FireDragon_Staff);
 
   //-----------------------------------------------------------------------------------
   // Potion_Heal
@@ -13619,6 +14206,38 @@
     ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
     this.name = '堅韌';
     this.description = '你的身體變得強韌';
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Soul_RockMissile
+
+  Soul_RockMissile = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Soul_RockMissile.prototype = Object.create(ItemTemplate.prototype);
+  Soul_RockMissile.prototype.constructor = Soul_RockMissile;
+
+  Soul_RockMissile.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
+    this.name = '飛岩';
+    this.description = '你學會操縱大地元素';
+  }
+
+  //-----------------------------------------------------------------------------------
+  // Soul_RockPierce
+
+  Soul_RockPierce = function() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Soul_RockPierce.prototype = Object.create(ItemTemplate.prototype);
+  Soul_RockPierce.prototype.constructor = Soul_RockPierce;
+
+  Soul_RockPierce.prototype.initialize = function () {
+    ItemTemplate.prototype.initialize.call(this, $dataItems[8]);
+    this.name = '土龍亂舞';
+    this.description = '你能夠驅使大地為你作戰';
   }
 
   //-----------------------------------------------------------------------------------
@@ -16981,6 +17600,53 @@
   CharUtils.mobTemplates[0].push(Boar);
 
   //-----------------------------------------------------------------------------------
+  // Earth_Spirit
+
+  Earth_Spirit = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Earth_Spirit.prototype = Object.create(Game_Mob.prototype);
+  Earth_Spirit.prototype.constructor = Earth_Spirit;
+
+  Earth_Spirit.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, fromData);
+    this.setImage('Fairy', 7);
+  }
+
+  Earth_Spirit.prototype.targetInSightAction = function(target) {
+    if (getRandomInt(100) < 40) { // Skill_Shield
+      return this.performBuffIfNotPresent(this.mob._skills[0]);
+    }
+    return false;
+  }
+
+  Earth_Spirit.prototype.projectileAction = function(x, y, distance) {
+    if (getRandomInt(100) < 80) { // Skill_RockMissile
+      let skill = this.mob._skills[1];
+      if (distance <= skill.getDistance() && SkillUtils.canPerform(this.mob, skill)) {
+        skill.action(this, x, y);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Earth_Spirit.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 40 && SkillUtils.canPerform(this.mob, this.mob._skills[1])) { // Skill_RockMissile
+      return this.mob._skills[1].action(this, target._x, target._y);
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  Earth_Spirit.prototype.looting = function () {
+    var lootings = [];
+    Game_Mob.prototype.looting.call(this, lootings);
+  }
+  CharUtils.mobTemplates[0].push(Earth_Spirit);
+
+  //-----------------------------------------------------------------------------------
   // Wolf
 
   Wolf = function () {
@@ -17172,6 +17838,67 @@
   CharUtils.mobTemplates[0].push(Buffalo);
 
   //-----------------------------------------------------------------------------------
+  // Earth_Dragon
+
+  Earth_Dragon = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Earth_Dragon.prototype = Object.create(Game_Mob.prototype);
+  Earth_Dragon.prototype.constructor = Earth_Dragon;
+
+  Earth_Dragon.prototype.initialize = function (x, y, fromData) {
+    Game_Mob.prototype.initialize.call(this, x, y, fromData);
+    this.setImage('Dragon', 2);
+  }
+
+  Earth_Dragon.prototype.targetInSightAction = function(target) {
+    if (getRandomInt(100) < 40) { // Skill_Shield
+      return this.performBuffIfNotPresent(this.mob._skills[0]);
+    }
+    return false;
+  }
+
+  Earth_Dragon.prototype.projectileAction = function(x, y, distance) {
+    if (getRandomInt(100) < 80) {
+      skill = this.mob._skills[2]; // Skill_RockMissile
+      if (distance <= skill.getDistance() && SkillUtils.canPerform(this.mob, skill)) {
+        skill.action(this, x, y);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Earth_Dragon.prototype.penetrateAction = function(x, y, distance) {
+    if (getRandomInt(100) < 80) {
+      let skill = this.mob._skills[3]; // Skill_RockPierce
+      if (distance <= skill.getDistance() && SkillUtils.canPerform(this.mob, skill)) {
+        skill.action(this, x, y);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Earth_Dragon.prototype.meleeAction = function(target) {
+    if (getRandomInt(100) < 30 && SkillUtils.canPerform(this.mob, this.mob._skills[1])) { // Skill_Bash
+      return this.mob._skills[1].action(this, target);
+    } else {
+      return BattleUtils.meleeAttack(this, target);
+    }
+  }
+
+  Earth_Dragon.prototype.looting = function () {
+    var lootings = [];
+    if (getRandomInt(10) < 3) {
+      lootings.push(new Flesh(this.mob, 500, 100, 'FRESH'));
+    }
+    Game_Mob.prototype.looting.call(this, lootings);
+  }
+  CharUtils.mobTemplates[0].push(Earth_Dragon);
+
+  //-----------------------------------------------------------------------------------
   // SealKing
   // 
   // Final boss
@@ -17198,15 +17925,19 @@
     if (!$gameVariables[0].eventState.sealKingEncountered) {
       $gameVariables[0].eventState.sealKingEncountered = true;
       MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.sealKingEncountered);
-    } else if (AudioManager._currentBgm.name != 'Battle2') {
-      AudioManager.playBgm({name: 'Battle2', pan: 0, pitch: 100, volume: 100});
+    } else if (AudioManager._currentBgm.name != 'Battle3') {
+      AudioManager.playBgm({name: 'Battle3', pan: 0, pitch: 100, volume: 100});
     }
 
     // health below half can cast judgement
     if (this.mob.hp < this.mob.mhp / 2) {
       if (getRandomInt(100) < 80 && this.mob.judgementCoolDown == 0
         && SkillUtils.canPerform(this.mob, this.mob._skills[4])) {
-          return this.mob._skills[4].action(this);
+        if (!$gameVariables[0].eventState.judgementPerformed) {
+          $gameVariables[0].eventState.judgementPerformed = true;
+          MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.judgementPerformed);
+        }
+        return this.mob._skills[4].action(this);
       }
     }
 
@@ -19930,7 +20661,7 @@
   // modify this so we can assign exp per level
   Game_Actor.prototype.expForLevel = function(level) {
     // define player level up exp gap
-    let expPerLevel = [0, 20, 40, 80, 160, 320, 640, 1280, 2560, 4880];
+    let expPerLevel = [0, 20, 40, 100, 200, 400, 800, 1200, 1600, 2000, 2500, 3000];
     return expPerLevel[level - 1];
   };
 
