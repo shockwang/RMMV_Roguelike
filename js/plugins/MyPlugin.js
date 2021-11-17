@@ -813,13 +813,27 @@
       + '接施放技能. 在選定的技能上再按一次快捷鍵可取消綁定.',
       tutorialHotKey3:
         '熟練快捷鍵的使用, 將會使遊戲流暢度大大提升.',
+      tutorialWeapon1:
+        '你撿到可以作為武器的素材了!',
+      tutorialWeapon2:
+        '素材可以直接握在手上當作武器, 也可以透過合成變成更進階的'
+      + '兵器. 目前遊戲中的合成武器有刀、槍、杖三種, 也存在其對應'
+      + '的武器熟練度. 空手或者拿素材當武器的情況則歸類於武術.',
+      tutorialWeapon3:
+        '刀能夠機率造成敵人出血; 槍能夠透過"F"指令攻擊'
+      + '1格外的敵人, 並機率造成破甲; 杖能夠在裝備時減低魔力的消耗, '
+      + '武器等級越高能夠擁有越高的減免比率; 武術則能夠機率擊退敵人.',
+      tutorialWeapon4:
+        '武器的熟練度累積是透過直接攻擊敵人, 不包括使用戰技. 杖比較特殊, '
+      + '在消耗魔力的同時也能夠累積熟練度. 更高的武器熟練度能夠增強攻擊力'
+      + '或是提高杖的MP減免比率, 根據自己的戰鬥風格選擇合適的武器吧!',
       helpMsg: '移動角色:\n'
         + '數字小鍵盤(2468: 下左右上, 1379: 左下、右下、左上、\n'
         + '右上, 5:原地等待一回合)\n'
         + '或是使用方向鍵下左右上、End、PgDn、Home、PgUp\n\n'
-        + '戰鬥操作:\n'
+        + '戰鬥操作: (按鍵有大小寫之分)\n'
         + '對著目標按移動鍵: 普通攻擊  W: 發動戰技  C: 施放魔法\n'
-        + 'f: 投擲物品  Q: 預設投射物\n\n'
+        + 'F: 選擇方向進行普通攻擊  f: 投擲物品  Q: 預設投射物\n\n'
         + '其他操作:\n'
         + '>: 向下走一層    <: 向上走一層    Enter: 走樓梯快捷鍵\n'
         + 'i: 查看物品欄    g: 撿起地上物品  d: 丟下身上物品\n'
@@ -1882,6 +1896,10 @@
         triggered: false,
         evt: $dataMap.events[30]
       },
+      weapon: {
+        triggered: false,
+        evt: $dataMap.events[40]
+      }
     },
     // define event related states
     $gameVariables[0].eventState = {
@@ -6933,6 +6951,10 @@
       if (DataManager.isWeapon(item) || DataManager.isArmor(item)) {
         // tutorial: equip
         TimeUtils.tutorialHandler.queue.push("equip");
+        if (DataManager.isWeapon(item)) {
+          // tutorial: weapon
+          TimeUtils.tutorialHandler.queue.push("weapon");
+        }
       } else {
         let prop = JSON.parse(item.note);
         switch (prop.type) {
@@ -21316,6 +21338,7 @@
   Window_HelpCommand.list[17] = ['tutorialSave1'];
   Window_HelpCommand.list[18] = ['tutorialCarry1'];
   Window_HelpCommand.list[19] = ['tutorialHotKey1', 'tutorialHotKey2', 'tutorialHotKey3'];
+  Window_HelpCommand.list[20] = ['tutorialWeapon2', 'tutorialWeapon3', 'tutorialWeapon4'];
 
   Window_HelpCommand.prototype = Object.create(Window_Command.prototype);
   Window_HelpCommand.prototype.constructor = Window_HelpCommand;
@@ -21345,6 +21368,7 @@
     this.addCommand('存檔', 'save', true);
     this.addCommand('負重', 'carry', true);
     this.addCommand('技能快捷鍵', 'hotKey', true);
+    this.addCommand('武器系統', 'weapon', true);
   }
 
   Window_HelpCommand.prototype.windowWidth = function() {
