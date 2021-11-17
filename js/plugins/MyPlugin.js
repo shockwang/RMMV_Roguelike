@@ -15097,6 +15097,7 @@
     } else {
       TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '昏迷'));
       realTarget.status.faintEffect.turns++;
+      TimeUtils.eventScheduler.addStatusEffect(target, 'faintEffect');
       LogUtils.addLog(String.format(Message.display('bumpKnockFaint'), LogUtils.getCharName(realTarget)));
     }
   }
@@ -15960,7 +15961,6 @@
       let realTarget = BattleUtils.getRealTarget(target);
       let atkValue = 4 + this.skill.lv + realSrc.param(4) / 3;
       let damage = BattleUtils.calcPhysicalDamage(realSrc, realTarget, atkValue);
-      damage = Math.round(damage * (1 - SkillUtils.getResistance(realTarget.status.resistance.elemental.cold)));
       CharUtils.decreaseHp(realTarget, damage);
       if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
         TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 86));
@@ -16020,7 +16020,6 @@
       let realTarget = BattleUtils.getRealTarget(target);
       let atkValue = 8 + this.skill.lv * 2 + realSrc.param(4) / 3;
       let damage = BattleUtils.calcPhysicalDamage(realSrc, realTarget, atkValue);
-      damage = Math.round(damage * (1 - SkillUtils.getResistance(realTarget.status.resistance.elemental.cold)));
       CharUtils.decreaseHp(realTarget, damage);
       if (CharUtils.playerCanSeeBlock(target._x, target._y)) {
         TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 86));
@@ -17999,7 +17998,7 @@
     Game_Mob.prototype.looting.call(this, lootings);
     setTimeout(() => {
       MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.sealKingDefeated);
-    }, 100);
+    }, 200);
   }
 
   //-----------------------------------------------------------------------------------
@@ -18288,7 +18287,7 @@
     Game_Mob.prototype.looting.call(this, lootings);
     setTimeout(() => {
       MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.selinaDefeated);
-    }, 100);
+    }, 200);
   }
 
   //-----------------------------------------------------------------------------------
@@ -18647,7 +18646,7 @@
     Game_Mob.prototype.looting.call(this, lootings);
     setTimeout(() => {
       MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.fireKingDefeated);
-    }, 100);
+    }, 200);
   }
 
   //-----------------------------------------------------------------------------------
