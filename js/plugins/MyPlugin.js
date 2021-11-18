@@ -8403,26 +8403,28 @@
 
   // adjust equipment attributes by level
   ItemUtils.adjustEquipByLevel = function(equip, delta) {
-    // update def & mdef
-    for (let i = 0; i < 2; i++) {
-      if (equip.traits[i].value != 0) {
-        ItemUtils.modifyAttr(equip.traits[i], delta);
-        equip.traits[i].value = (equip.traits[i].value < 0) ? 0 : equip.traits[i].value;
+    if (equip instanceof EquipTemplate) { // only update equipment
+      // update def & mdef
+      for (let i = 0; i < 2; i++) {
+        if (equip.traits[i].value != 0) {
+          ItemUtils.modifyAttr(equip.traits[i], delta);
+          equip.traits[i].value = (equip.traits[i].value < 0) ? 0 : equip.traits[i].value;
+        }
       }
-    }
-    // update weapon atk if equip is weapon
-    if (equip.traits[2]) {
-      ItemUtils.enchantEquip(equip, delta);
-    }
+      // update weapon atk if equip is weapon
+      if (equip.traits[2]) {
+        ItemUtils.enchantEquip(equip, delta);
+      }
 
-    // update params
-    for (let i = 2; i <= 6; i++) {
-      if (equip.params[i] != 0) {
-        equip.params[i] += delta;
-        equip.params[i] = (equip.params[i] < 0) ? 0 : equip.params[i];
+      // update params
+      for (let i = 2; i <= 6; i++) {
+        if (equip.params[i] != 0) {
+          equip.params[i] += delta;
+          equip.params[i] = (equip.params[i] < 0) ? 0 : equip.params[i];
+        }
       }
+      ItemUtils.updateEquipDescription(equip);
     }
-    ItemUtils.updateEquipDescription(equip);
     return equip;
   }
 
@@ -14974,7 +14976,7 @@
       CharUtils.decreaseHp(realTarget, value);
       // check if causes faint
       if (Math.random() < this.lv / 15) {
-        realTarget.status.faintEffect.turns += dice(1, 1 + this.lv);
+        realTarget.status.faintEffect.turns += dice(1, 1 + Math.floor(this.lv / 2));
         TimeUtils.eventScheduler.addStatusEffect(target, 'faintEffect');
         TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '昏迷'));
         LogUtils.addLog(String.format(Message.display('faint'), LogUtils.getCharName(realTarget)));
@@ -15377,7 +15379,7 @@
       // check if causes paralysis
       if (Math.random() < 0.2 + this.lv / 2) {
         if (realTarget.status.resistance.state.paralyze == 0) {
-          realTarget.status.paralyzeEffect.turns += dice(1, 3 + this.lv);
+          realTarget.status.paralyzeEffect.turns += dice(1, 3 + Math.floor(this.lv / 2));
           TimeUtils.eventScheduler.addStatusEffect(target, 'paralyzeEffect');
           TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '麻痺'));
           LogUtils.addLog(String.format(Message.display('paralyze'), LogUtils.getCharName(realTarget)));
@@ -16714,7 +16716,6 @@
   }
 
   SkillEffect_Judgement.prototype.effectEnd = function() {
-    this.realSrc.judgementCoolDown = 10;
     // perform Judgement
     let src = BattleUtils.getEventFromCharacter(this.realSrc);
     let realSrc = this.realSrc;
@@ -17937,10 +17938,13 @@
     Game_Mob.prototype.initialize.call(this, x, y, fromData);
     this.setImage('Evil', 5);
     this.mob.layerFixed = true; // can not change layer
-    if (!this.mob.judgementCoolDown) {
-      this.mob.judgementCoolDown = 0;
+    if (!this.mob.judgementTimeStamp) {
+      this.mob.judgementTimeStamp = 0;
     }
   }
+
+  // setup judgement cooldown (10 turns)
+  SealKing.coolDown = 130;
 
   SealKing.prototype.targetInSightAction = function(target) {
     if (!$gameVariables[0].eventState.sealKingEncountered) {
@@ -17952,13 +17956,17 @@
 
     // health below half can cast judgement
     if (this.mob.hp < this.mob.mhp / 2) {
-      if (getRandomInt(100) < 80 && this.mob.judgementCoolDown == 0
+      if (getRandomInt(100) < 80 && $gameVariables[0].gameTime - this.mob.judgementTimeStamp > SealKing.coolDown
         && SkillUtils.canPerform(this.mob, this.mob._skills[4])) {
         if (!$gameVariables[0].eventState.judgementPerformed) {
           $gameVariables[0].eventState.judgementPerformed = true;
           MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.judgementPerformed);
         }
-        return this.mob._skills[4].action(this);
+        let performed = this.mob._skills[4].action(this);
+        if (performed) {
+          this.mob.judgementTimeStamp = $gameVariables[0].gameTime;
+        }
+        return performed;
       }
     }
 
@@ -17971,10 +17979,6 @@
   }
 
   SealKing.prototype.performStateAction = function() {
-    // reduce cooldown
-    if (this.mob.judgementCoolDown > 0) {
-      this.mob.judgementCoolDown--;
-    }
     let realSrc = BattleUtils.getRealTarget(this);
     let skillEffect = CharUtils.getTargetEffect(realSrc, Skill_Judgement);
     if (skillEffect) {
@@ -18482,18 +18486,20 @@
     this.setImage('Phoenix', 0);
     this.mob.status.resistance.elemental.fire = 0.8;
     this.mob.status.resistance.elemental.cold = -0.3;
+    if (!this.mob.superRegenTimestamp) {
+      this.mob.superRegenTimestamp = 0;
+    }
   }
 
   // set cooldown for Skill_SuperRegen
-  Phoenix.prototype.superRegenTimestamp = 0;
   Phoenix.coolDown = 400;
 
   Phoenix.prototype.performSuperRegen = function() {
     if (this.mob.hp < this.mob.mhp * 0.5
-      && $gameVariables[0].gameTime - this.superRegenTimestamp > Phoenix.coolDown) { // Skill_SuperRegen
+      && $gameVariables[0].gameTime - this.mob.superRegenTimestamp > Phoenix.coolDown) { // Skill_SuperRegen
       let performed = this.performBuffIfNotPresent(this.mob._skills[0]);
       if (performed) {
-        this.superRegenTimestamp = $gameVariables[0].gameTime;
+        this.mob.superRegenTimestamp = $gameVariables[0].gameTime;
         return true;
       }
     }
