@@ -211,7 +211,8 @@
     fire: {
       ceilingCenter: 8098,
       floorCenter: 3584,
-      waterCenter: 2240, // water in fire stage is lava
+      lavaCenter: 2240,
+      waterCenter: 2048, // use water tile from earth dungeon
       hollowCenter: 3776
     },
     air: {
@@ -2754,9 +2755,13 @@
               new Game_Door(i, j);
             }
             break;
-          case WATER: case LAVA:
+          case WATER:
             mapData[i][j].base = refineMapTile(mapId, rawData, i, j
               , $gameVariables[0].currentDungeonTiles.waterCenter, rawData[i][j]);
+            break;
+          case LAVA:
+            mapData[i][j].base = refineMapTile(mapId, rawData, i, j
+              , $gameVariables[0].currentDungeonTiles.lavaCenter, rawData[i][j]);
             break;
           case PRESS:
             mapData[i][j].base = pressFloor;
@@ -3180,6 +3185,10 @@
             case WATER:
               tileCenter = $gameVariables[0].currentDungeonTiles.waterCenter;
               tileType = WATER;
+              break;
+            case LAVA:
+              tileCenter = $gameVariables[0].currentDungeonTiles.lavaCenter;
+              tileType = LAVA;
               break;
             case HOLLOW:
               tileCenter = $gameVariables[0].currentDungeonTiles.hollowCenter;
@@ -4974,6 +4983,22 @@
     Game_Event.prototype.initialize.call(this, $gameMap.mapId(), eventId);
     this.name = '地形效果';
     $gameMap._events[eventId] = this;
+    // event image setup
+    this._originalPattern = 1;
+    this.setPattern(1);
+    this.setDirection(2);
+    this.setOpacity(128);
+    // deal with event scheduler
+    if (this.evt.damage && this.evt.expire) {
+      // check if terrain already disappear
+      if (this.evt.expire < $gameVariables[0].gameTime) {
+        // move it to unreachable place, because event initialization is done
+        // before TimeUtils.eventScheduler.execute(), cause player can be damaged
+        // by terrain effect in the past
+        this.setPosition(-10, -10);
+      }
+      TimeUtils.eventScheduler.insertEvent(new ScheduleEvent(this, this.evt.expire));
+    }
   };
 
   //-----------------------------------------------------------------------------------
@@ -5000,14 +5025,7 @@
   Terrain_Fire.prototype.initialize = function (x, y, fromData) {
     Game_Terrain.prototype.initialize.call(this, x, y, fromData);
     // setup image
-    this._originalPattern = 1;
-    this.setPattern(1);
-    this.setDirection(2);
     this.setImage('!Flame', 3);
-    this.setOpacity(128);
-    if (this.evt.damage && this.evt.expire) {
-      TimeUtils.eventScheduler.insertEvent(new ScheduleEvent(this, this.evt.expire));
-    }
   }
 
   //-----------------------------------------------------------------------------------
@@ -5042,14 +5060,7 @@
   Terrain_DarkFire.prototype.initialize = function (x, y, fromData) {
     Game_Terrain.prototype.initialize.call(this, x, y, fromData);
     // setup image
-    this._originalPattern = 1;
-    this.setPattern(1);
-    this.setDirection(2);
     this.setImage('!Flame2', 3);
-    this.setOpacity(128);
-    if (this.evt.damage && this.evt.expire) {
-      TimeUtils.eventScheduler.insertEvent(new ScheduleEvent(this, this.evt.expire));
-    }
   }
 
   //-----------------------------------------------------------------------------------
@@ -5718,7 +5729,13 @@
     // check if target in the lava
     if ($gameVariables[$gameMap.mapId()].mapData[target._x][target._y].originalTile == LAVA
       && realTarget.moveType != 2) {
-      let value = Math.round(40 * (1 - SkillUtils.getResistance(realTarget.status.resistance.elemental.fire))
+      let baseDamage = 40;
+      if (realTarget.status.wetEffect.turns > 0) {
+        // remove effect & reduce damage
+        realTarget.status.wetEffect.turns = 1;
+        baseDamage /= 2;
+      }
+      let value = Math.round(baseDamage * (1 - SkillUtils.getResistance(realTarget.status.resistance.elemental.fire))
         * Skill_AdaptTerrain.getTerrainDamageMultiplier(realTarget));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 67));
       TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', value * -1));
