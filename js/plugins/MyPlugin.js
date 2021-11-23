@@ -648,7 +648,8 @@
       + '所以要時刻注意耐力的殘量哦!',
       tutorialMeleeAttack3:
         '耐力在不進行攻擊的時候就會自動回復, 特別是在原地休息的時'
-      + '候回復最多.',
+      + '候回復最多. 另外若是需要較強力的攻擊手段, 就選擇施展戰技(W)'
+      + '或魔法(C)吧!',
       tutorialGetDrop1:
         '地上發現物品的時候, 物品的名稱會顯示在左下角, 這時候按下'
       + '"g"就可以把地上的物品撿起來哦.',
@@ -687,7 +688,7 @@
       tutorialSoul2:
         '其中戰技是主要消耗耐力(EN)的技能, 透過"W"來施展; 魔法則'
       + '是主要消耗魔力(MP)的技能, 透過"C"來施展; 常駐技能不能主'
-      + '動施展, 但是會持續影響角色的狀態.',
+      + '動施展, 但是會持續影響角色的狀態. (按鍵有大小寫之分!)',
       tutorialSoul3:
         '主動技能分為範圍、指向、投射三種類型. 範圍技能在施展的當'
       + '下隨即生效, 效果持續一段時間; 指向技能在施展後需要指定方'
@@ -2103,7 +2104,7 @@
         for (let j = 0; j < lootingList.length; j++) {
           let lootingData = lootingList[j].split('.');
           // setup mob related material to mob level
-          window[lootingData[0]].originalSpawnLevel = window[lootingData[0]].spawnLevel;
+          window[lootingData[0]].originalSpawnLevel = mobClass.mobInitData.originalLevel;
           window[lootingData[0]].spawnLevel = spawnLevel;
           mobClass.lootings.push(new LootingData(lootingData[0], parseInt(lootingData[1])));
         }
@@ -2117,12 +2118,15 @@
     // update crafted items' spawnLevel by material (calculate by highest level material)
     for (let i = 0; i < ItemUtils.recipes.length; i++) {
       let recipe = ItemUtils.recipes[i];
-      let spawnLevel = 1;
+      let spawnLevel = 1, originalSpawnLevel = 1;
       for (let j = 0; j < recipe.material.length; j++) {
         let materialSpawnLevel = recipe.material[j].itemClass.spawnLevel;
+        let materialOriginalSpawnLevel = recipe.material[j].itemClass.originalSpawnLevel;
         spawnLevel = (materialSpawnLevel > spawnLevel) ? materialSpawnLevel : spawnLevel;
+        originalSpawnLevel = (materialOriginalSpawnLevel > originalSpawnLevel)
+          ? materialOriginalSpawnLevel : originalSpawnLevel;
       }
-      recipe.originalSpawnLevel = recipe.spawnLevel;
+      recipe.originalSpawnLevel = originalSpawnLevel;
       recipe.spawnLevel = spawnLevel;
     }
   }
@@ -8578,7 +8582,6 @@
   Feather = function() {
     this.initialize.apply(this, arguments);
   }
-  Feather.spawnLevel = 3;
 
   Feather.prototype = Object.create(ItemTemplate.prototype);
   Feather.prototype.constructor = Feather;
@@ -8597,7 +8600,6 @@
   Rat_Tail = function() {
     this.initialize.apply(this, arguments);
   }
-  Rat_Tail.spawnLevel = 4;
 
   Rat_Tail.prototype = Object.create(ItemTemplate.prototype);
   Rat_Tail.prototype.constructor = Rat_Tail;
@@ -8618,7 +8620,6 @@
   Buffalo_Horn = function() {
     this.initialize.apply(this, arguments);
   }
-  Buffalo_Horn.spawnLevel = 7;
 
   Buffalo_Horn.prototype = Object.create(ItemTemplate.prototype);
   Buffalo_Horn.prototype.constructor = Buffalo_Horn;
@@ -8639,7 +8640,6 @@
   Earth_Crystal = function() {
     this.initialize.apply(this, arguments);
   }
-  Earth_Crystal.spawnLevel = 5;
 
   Earth_Crystal.prototype = Object.create(ItemTemplate.prototype);
   Earth_Crystal.prototype.constructor = Earth_Crystal;
@@ -8660,7 +8660,6 @@
   Mucus = function() {
     this.initialize.apply(this, arguments);
   }
-  Mucus.spawnLevel = 5;
 
   Mucus.prototype = Object.create(ItemTemplate.prototype);
   Mucus.prototype.constructor = Mucus;
@@ -8681,7 +8680,6 @@
   Blue_Crystal = function() {
     this.initialize.apply(this, arguments);
   }
-  Blue_Crystal.spawnLevel = 5;
 
   Blue_Crystal.prototype = Object.create(ItemTemplate.prototype);
   Blue_Crystal.prototype.constructor = Blue_Crystal;
@@ -8702,7 +8700,6 @@
   Glue = function() {
     this.initialize.apply(this, arguments);
   }
-  Glue.spawnLevel = 6;
 
   Glue.prototype = Object.create(ItemTemplate.prototype);
   Glue.prototype.constructor = Glue;
@@ -8723,7 +8720,6 @@
   Tentacle = function() {
     this.initialize.apply(this, arguments);
   }
-  Tentacle.spawnLevel = 6;
 
   Tentacle.prototype = Object.create(ItemTemplate.prototype);
   Tentacle.prototype.constructor = Tentacle;
@@ -8744,7 +8740,6 @@
   FireHorse_Shoe = function() {
     this.initialize.apply(this, arguments);
   }
-  FireHorse_Shoe.spawnLevel = 6;
 
   FireHorse_Shoe.prototype = Object.create(ItemTemplate.prototype);
   FireHorse_Shoe.prototype.constructor = FireHorse_Shoe;
@@ -8765,7 +8760,6 @@
   FireHorse_Tail = function() {
     this.initialize.apply(this, arguments);
   }
-  FireHorse_Tail.spawnLevel = 6;
 
   FireHorse_Tail.prototype = Object.create(ItemTemplate.prototype);
   FireHorse_Tail.prototype.constructor = FireHorse_Tail;
@@ -8786,7 +8780,6 @@
   Phoenix_Feather = function() {
     this.initialize.apply(this, arguments);
   }
-  Phoenix_Feather.spawnLevel = 8;
 
   Phoenix_Feather.prototype = Object.create(ItemTemplate.prototype);
   Phoenix_Feather.prototype.constructor = Phoenix_Feather;
@@ -8807,7 +8800,6 @@
   Phoenix_Blood = function() {
     this.initialize.apply(this, arguments);
   }
-  Phoenix_Blood.spawnLevel = 8;
 
   Phoenix_Blood.prototype = Object.create(ItemTemplate.prototype);
   Phoenix_Blood.prototype.constructor = Phoenix_Blood;
@@ -8852,7 +8844,6 @@
   Honey = function() {
     this.initialize.apply(this, arguments);
   }
-  Honey.spawnLevel = 2;
 
   Honey.prototype = Object.create(ItemTemplate.prototype);
   Honey.prototype.constructor = Honey;
@@ -8877,7 +8868,6 @@
   Cheese = function() {
     this.initialize.apply(this, arguments);
   }
-  Cheese.spawnLevel = 4;
 
   Cheese.prototype = Object.create(ItemTemplate.prototype);
   Cheese.prototype.constructor = Cheese;
@@ -8902,7 +8892,6 @@
   Bee_Sting = function() {
     this.initialize.apply(this, arguments);
   }
-  Bee_Sting.spawnLevel = 1;
 
   Bee_Sting.prototype = Object.create(EquipTemplate.prototype);
   Bee_Sting.prototype.constructor = Bee_Sting;
@@ -8935,7 +8924,6 @@
   Dog_Tooth = function() {
     this.initialize.apply(this, arguments);
   }
-  Dog_Tooth.spawnLevel = 2;
 
   Dog_Tooth.prototype = Object.create(EquipTemplate.prototype);
   Dog_Tooth.prototype.constructor = Dog_Tooth;
@@ -8968,7 +8956,6 @@
   Rooster_Tooth = function() {
     this.initialize.apply(this, arguments);
   }
-  Rooster_Tooth.spawnLevel = 3;
 
   Rooster_Tooth.prototype = Object.create(EquipTemplate.prototype);
   Rooster_Tooth.prototype.constructor = Rooster_Tooth;
@@ -9001,7 +8988,6 @@
   Cat_Tooth = function() {
     this.initialize.apply(this, arguments);
   }
-  Cat_Tooth.spawnLevel = 4;
 
   Cat_Tooth.prototype = Object.create(EquipTemplate.prototype);
   Cat_Tooth.prototype.constructor = Cat_Tooth;
@@ -9034,7 +9020,6 @@
   Boar_Tooth = function() {
     this.initialize.apply(this, arguments);
   }
-  Boar_Tooth.spawnLevel = 5;
 
   Boar_Tooth.prototype = Object.create(EquipTemplate.prototype);
   Boar_Tooth.prototype.constructor = Boar_Tooth;
@@ -9067,7 +9052,6 @@
   Wolf_Tooth = function() {
     this.initialize.apply(this, arguments);
   }
-  Wolf_Tooth.spawnLevel = 6;
 
   Wolf_Tooth.prototype = Object.create(EquipTemplate.prototype);
   Wolf_Tooth.prototype.constructor = Wolf_Tooth;
@@ -9100,7 +9084,6 @@
   Lion_Tooth = function() {
     this.initialize.apply(this, arguments);
   }
-  Lion_Tooth.spawnLevel = 8;
 
   Lion_Tooth.prototype = Object.create(EquipTemplate.prototype);
   Lion_Tooth.prototype.constructor = Lion_Tooth;
@@ -9133,7 +9116,6 @@
   EarthDragon_Tooth = function() {
     this.initialize.apply(this, arguments);
   }
-  EarthDragon_Tooth.spawnLevel = 10;
 
   EarthDragon_Tooth.prototype = Object.create(EquipTemplate.prototype);
   EarthDragon_Tooth.prototype.constructor = EarthDragon_Tooth;
@@ -9166,7 +9148,6 @@
   Shark_Tooth = function() {
     this.initialize.apply(this, arguments);
   }
-  Shark_Tooth.spawnLevel = 8;
 
   Shark_Tooth.prototype = Object.create(EquipTemplate.prototype);
   Shark_Tooth.prototype.constructor = Shark_Tooth;
@@ -9199,7 +9180,6 @@
   IceDragon_Tooth = function() {
     this.initialize.apply(this, arguments);
   }
-  IceDragon_Tooth.spawnLevel = 10;
 
   IceDragon_Tooth.prototype = Object.create(EquipTemplate.prototype);
   IceDragon_Tooth.prototype.constructor = IceDragon_Tooth;
@@ -9233,7 +9213,6 @@
   Salamander_Tooth = function() {
     this.initialize.apply(this, arguments);
   }
-  Salamander_Tooth.spawnLevel = 5;
 
   Salamander_Tooth.prototype = Object.create(EquipTemplate.prototype);
   Salamander_Tooth.prototype.constructor = Salamander_Tooth;
@@ -9267,7 +9246,6 @@
   Phoenix_Tooth = function() {
     this.initialize.apply(this, arguments);
   }
-  Phoenix_Tooth.spawnLevel = 8;
 
   Phoenix_Tooth.prototype = Object.create(EquipTemplate.prototype);
   Phoenix_Tooth.prototype.constructor = Phoenix_Tooth;
@@ -9301,7 +9279,6 @@
   FireDragon_Tooth = function() {
     this.initialize.apply(this, arguments);
   }
-  FireDragon_Tooth.spawnLevel = 10;
 
   FireDragon_Tooth.prototype = Object.create(EquipTemplate.prototype);
   FireDragon_Tooth.prototype.constructor = FireDragon_Tooth;
@@ -9335,7 +9312,6 @@
   Dog_Bone = function() {
     this.initialize.apply(this, arguments);
   }
-  Dog_Bone.spawnLevel = 2;
 
   Dog_Bone.prototype = Object.create(EquipTemplate.prototype);
   Dog_Bone.prototype.constructor = Dog_Bone;
@@ -9362,7 +9338,6 @@
   Cat_Bone = function() {
     this.initialize.apply(this, arguments);
   }
-  Cat_Bone.spawnLevel = 4;
 
   Cat_Bone.prototype = Object.create(EquipTemplate.prototype);
   Cat_Bone.prototype.constructor = Cat_Bone;
@@ -9389,7 +9364,6 @@
   Wolf_Bone = function() {
     this.initialize.apply(this, arguments);
   }
-  Wolf_Bone.spawnLevel = 6;
 
   Wolf_Bone.prototype = Object.create(EquipTemplate.prototype);
   Wolf_Bone.prototype.constructor = Wolf_Bone;
@@ -9416,7 +9390,6 @@
   Bear_Bone = function() {
     this.initialize.apply(this, arguments);
   }
-  Bear_Bone.spawnLevel = 6;
 
   Bear_Bone.prototype = Object.create(EquipTemplate.prototype);
   Bear_Bone.prototype.constructor = Bear_Bone;
@@ -9443,7 +9416,6 @@
   Buffalo_Bone = function() {
     this.initialize.apply(this, arguments);
   }
-  Buffalo_Bone.spawnLevel = 8;
 
   Buffalo_Bone.prototype = Object.create(EquipTemplate.prototype);
   Buffalo_Bone.prototype.constructor = Buffalo_Bone;
@@ -9470,7 +9442,6 @@
   Lion_Bone = function() {
     this.initialize.apply(this, arguments);
   }
-  Lion_Bone.spawnLevel = 8;
 
   Lion_Bone.prototype = Object.create(EquipTemplate.prototype);
   Lion_Bone.prototype.constructor = Lion_Bone;
@@ -9497,7 +9468,6 @@
   EarthDragon_Bone = function() {
     this.initialize.apply(this, arguments);
   }
-  EarthDragon_Bone.spawnLevel = 10;
 
   EarthDragon_Bone.prototype = Object.create(EquipTemplate.prototype);
   EarthDragon_Bone.prototype.constructor = EarthDragon_Bone;
@@ -9524,7 +9494,6 @@
   IceDragon_Bone = function() {
     this.initialize.apply(this, arguments);
   }
-  IceDragon_Bone.spawnLevel = 10;
 
   IceDragon_Bone.prototype = Object.create(EquipTemplate.prototype);
   IceDragon_Bone.prototype.constructor = IceDragon_Bone;
@@ -9552,7 +9521,6 @@
   Salamander_Bone = function() {
     this.initialize.apply(this, arguments);
   }
-  Salamander_Bone.spawnLevel = 5;
 
   Salamander_Bone.prototype = Object.create(EquipTemplate.prototype);
   Salamander_Bone.prototype.constructor = Salamander_Bone;
@@ -9580,7 +9548,6 @@
   FireDragon_Bone = function() {
     this.initialize.apply(this, arguments);
   }
-  FireDragon_Bone.spawnLevel = 10;
 
   FireDragon_Bone.prototype = Object.create(EquipTemplate.prototype);
   FireDragon_Bone.prototype.constructor = FireDragon_Bone;
@@ -9608,7 +9575,6 @@
   Rooster_Claw = function() {
     this.initialize.apply(this, arguments);
   }
-  Rooster_Claw.spawnLevel = 3;
 
   Rooster_Claw.prototype = Object.create(EquipTemplate.prototype);
   Rooster_Claw.prototype.constructor = Rooster_Claw;
@@ -9641,7 +9607,6 @@
   Cat_Claw = function() {
     this.initialize.apply(this, arguments);
   }
-  Cat_Claw.spawnLevel = 4;
 
   Cat_Claw.prototype = Object.create(EquipTemplate.prototype);
   Cat_Claw.prototype.constructor = Cat_Claw;
@@ -9674,7 +9639,6 @@
   Wolf_Claw = function() {
     this.initialize.apply(this, arguments);
   }
-  Wolf_Claw.spawnLevel = 6;
 
   Wolf_Claw.prototype = Object.create(EquipTemplate.prototype);
   Wolf_Claw.prototype.constructor = Wolf_Claw;
@@ -9707,7 +9671,6 @@
   Bear_Claw = function() {
     this.initialize.apply(this, arguments);
   }
-  Bear_Claw.spawnLevel = 6;
 
   Bear_Claw.prototype = Object.create(EquipTemplate.prototype);
   Bear_Claw.prototype.constructor = Bear_Claw;
@@ -9740,7 +9703,6 @@
   Lion_Claw = function() {
     this.initialize.apply(this, arguments);
   }
-  Lion_Claw.spawnLevel = 8;
 
   Lion_Claw.prototype = Object.create(EquipTemplate.prototype);
   Lion_Claw.prototype.constructor = Lion_Claw;
@@ -9773,7 +9735,6 @@
   EarthDragon_Claw = function() {
     this.initialize.apply(this, arguments);
   }
-  EarthDragon_Claw.spawnLevel = 10;
 
   EarthDragon_Claw.prototype = Object.create(EquipTemplate.prototype);
   EarthDragon_Claw.prototype.constructor = EarthDragon_Claw;
@@ -9806,7 +9767,6 @@
   IceDragon_Claw = function() {
     this.initialize.apply(this, arguments);
   }
-  IceDragon_Claw.spawnLevel = 10;
 
   IceDragon_Claw.prototype = Object.create(EquipTemplate.prototype);
   IceDragon_Claw.prototype.constructor = IceDragon_Claw;
@@ -9840,7 +9800,6 @@
   Salamander_Claw = function() {
     this.initialize.apply(this, arguments);
   }
-  Salamander_Claw.spawnLevel = 5;
 
   Salamander_Claw.prototype = Object.create(EquipTemplate.prototype);
   Salamander_Claw.prototype.constructor = Salamander_Claw;
@@ -9873,7 +9832,6 @@
   FireDragon_Claw = function() {
     this.initialize.apply(this, arguments);
   }
-  FireDragon_Claw.spawnLevel = 10;
 
   FireDragon_Claw.prototype = Object.create(EquipTemplate.prototype);
   FireDragon_Claw.prototype.constructor = FireDragon_Claw;
@@ -9907,7 +9865,6 @@
   Dog_Skin = function() {
     this.initialize.apply(this, arguments);
   }
-  Dog_Skin.spawnLevel = 2;
 
   Dog_Skin.prototype = Object.create(EquipTemplate.prototype);
   Dog_Skin.prototype.constructor = Dog_Skin;
@@ -9933,7 +9890,6 @@
   Cat_Skin = function() {
     this.initialize.apply(this, arguments);
   }
-  Cat_Skin.spawnLevel = 4;
 
   Cat_Skin.prototype = Object.create(EquipTemplate.prototype);
   Cat_Skin.prototype.constructor = Cat_Skin;
@@ -9960,7 +9916,6 @@
   Wolf_Skin = function() {
     this.initialize.apply(this, arguments);
   }
-  Wolf_Skin.spawnLevel = 6;
 
   Wolf_Skin.prototype = Object.create(EquipTemplate.prototype);
   Wolf_Skin.prototype.constructor = Wolf_Skin;
@@ -9987,7 +9942,6 @@
   Bear_Skin = function() {
     this.initialize.apply(this, arguments);
   }
-  Bear_Skin.spawnLevel = 6;
 
   Bear_Skin.prototype = Object.create(EquipTemplate.prototype);
   Bear_Skin.prototype.constructor = Bear_Skin;
@@ -10013,7 +9967,6 @@
   Lion_Skin = function() {
     this.initialize.apply(this, arguments);
   }
-  Lion_Skin.spawnLevel = 8;
 
   Lion_Skin.prototype = Object.create(EquipTemplate.prototype);
   Lion_Skin.prototype.constructor = Lion_Skin;
@@ -10040,7 +9993,6 @@
   EarthDragon_Skin = function() {
     this.initialize.apply(this, arguments);
   }
-  EarthDragon_Skin.spawnLevel = 10;
 
   EarthDragon_Skin.prototype = Object.create(EquipTemplate.prototype);
   EarthDragon_Skin.prototype.constructor = EarthDragon_Skin;
@@ -10067,7 +10019,6 @@
   IceDragon_Skin = function() {
     this.initialize.apply(this, arguments);
   }
-  IceDragon_Skin.spawnLevel = 10;
 
   IceDragon_Skin.prototype = Object.create(EquipTemplate.prototype);
   IceDragon_Skin.prototype.constructor = IceDragon_Skin;
@@ -10095,7 +10046,6 @@
   Salamander_Skin = function() {
     this.initialize.apply(this, arguments);
   }
-  Salamander_Skin.spawnLevel = 5;
 
   Salamander_Skin.prototype = Object.create(EquipTemplate.prototype);
   Salamander_Skin.prototype.constructor = Salamander_Skin;
@@ -10123,7 +10073,6 @@
   FireDragon_Skin = function() {
     this.initialize.apply(this, arguments);
   }
-  FireDragon_Skin.spawnLevel = 10;
 
   FireDragon_Skin.prototype = Object.create(EquipTemplate.prototype);
   FireDragon_Skin.prototype.constructor = FireDragon_Skin;
@@ -10151,7 +10100,6 @@
   Turtle_Shell = function() {
     this.initialize.apply(this, arguments);
   }
-  Turtle_Shell.spawnLevel = 6;
 
   Turtle_Shell.prototype = Object.create(EquipTemplate.prototype);
   Turtle_Shell.prototype.constructor = Turtle_Shell;
@@ -10178,7 +10126,6 @@
   Dart_Lv1_T1 = function() {
     this.initialize.apply(this, arguments);
   }
-  Dart_Lv1_T1.spawnLevel = 1;
 
   Dart_Lv1_T1.itemName = '飛鏢Lv1';
   Dart_Lv1_T1.itemDescription = '射向敵人造成傷害';
@@ -10206,7 +10153,6 @@
   Dart_Lv1_T2 = function() {
     this.initialize.apply(this, arguments);
   }
-  Dart_Lv1_T2.spawnLevel = 1;
 
   Dart_Lv1_T2.itemName = '飛鏢Lv1';
   Dart_Lv1_T2.itemDescription = '射向敵人造成傷害';
@@ -10234,7 +10180,6 @@
   Dart_Lv1_T3 = function() {
     this.initialize.apply(this, arguments);
   }
-  Dart_Lv1_T3.spawnLevel = 1;
 
   Dart_Lv1_T3.itemName = '飛鏢Lv1';
   Dart_Lv1_T3.itemDescription = '射向敵人造成傷害';
@@ -10262,7 +10207,6 @@
   Dart_Lv2_T1 = function() {
     this.initialize.apply(this, arguments);
   }
-  Dart_Lv2_T1.spawnLevel = 4;
 
   Dart_Lv2_T1.itemName = '飛鏢Lv2';
   Dart_Lv2_T1.itemDescription = '射向敵人造成傷害';
@@ -10290,7 +10234,6 @@
   Dart_Lv2_T2 = function() {
     this.initialize.apply(this, arguments);
   }
-  Dart_Lv2_T2.spawnLevel = 4;
 
   Dart_Lv2_T2.itemName = '飛鏢Lv2';
   Dart_Lv2_T2.itemDescription = '射向敵人造成傷害';
@@ -10318,7 +10261,6 @@
   Dart_Fire_T1 = function() {
     this.initialize.apply(this, arguments);
   }
-  Dart_Fire_T1.spawnLevel = 8;
 
   Dart_Fire_T1.itemName = '火焰飛鏢';
   Dart_Fire_T1.itemDescription = '射向敵人造成傷害';
@@ -10345,7 +10287,6 @@
   Dart_Fire_T2 = function() {
     this.initialize.apply(this, arguments);
   }
-  Dart_Fire_T2.spawnLevel = 8;
 
   Dart_Fire_T2.itemName = '火焰飛鏢';
   Dart_Fire_T2.itemDescription = '射向敵人造成傷害';
@@ -10372,7 +10313,6 @@
   Dog_Gloves = function() {
     this.initialize.apply(this, arguments);
   }
-  Dog_Gloves.spawnLevel = 2;
 
   Dog_Gloves.itemName = '狗皮手套';
   Dog_Gloves.itemDescription = '輕薄的手套';
@@ -10403,7 +10343,6 @@
   Dog_Shoes = function() {
     this.initialize.apply(this, arguments);
   }
-  Dog_Shoes.spawnLevel = 2;
 
   Dog_Shoes.itemName = '狗皮靴子';
   Dog_Shoes.itemDescription = '輕薄的靴子';
@@ -10434,7 +10373,6 @@
   Dog_Shield = function() {
     this.initialize.apply(this, arguments);
   }
-  Dog_Shield.spawnLevel = 2;
 
   Dog_Shield.itemName = '狗皮盾';
   Dog_Shield.itemDescription = '簡單的輕盾';
@@ -10466,7 +10404,6 @@
   Dog_Helmet = function() {
     this.initialize.apply(this, arguments);
   }
-  Dog_Helmet.spawnLevel = 2;
 
   Dog_Helmet.itemName = '狗皮帽';
   Dog_Helmet.itemDescription = '輕薄的皮帽';
@@ -10497,7 +10434,6 @@
   Dog_Coat = function() {
     this.initialize.apply(this, arguments);
   }
-  Dog_Coat.spawnLevel = 2;
 
   Dog_Coat.itemName = '狗皮大衣';
   Dog_Coat.itemDescription = '輕薄的大衣';
@@ -10528,7 +10464,6 @@
   Cat_Gloves = function() {
     this.initialize.apply(this, arguments);
   }
-  Cat_Gloves.spawnLevel = 4;
 
   Cat_Gloves.itemName = '貓皮手套';
   Cat_Gloves.itemDescription = '泛著光澤的手套';
@@ -10560,7 +10495,6 @@
   Cat_Shoes = function() {
     this.initialize.apply(this, arguments);
   }
-  Cat_Shoes.spawnLevel = 4;
 
   Cat_Shoes.itemName = '貓皮靴子';
   Cat_Shoes.itemDescription = '泛著光澤的靴子';
@@ -10592,7 +10526,6 @@
   Cat_Helmet = function() {
     this.initialize.apply(this, arguments);
   }
-  Cat_Helmet.spawnLevel = 4;
 
   Cat_Helmet.itemName = '貓皮帽';
   Cat_Helmet.itemDescription = '泛著光澤的皮帽';
@@ -10624,7 +10557,6 @@
   Cat_Coat = function() {
     this.initialize.apply(this, arguments);
   }
-  Cat_Coat.spawnLevel = 4;
 
   Cat_Coat.itemName = '貓皮大衣';
   Cat_Coat.itemDescription = '泛著光澤的大衣';
@@ -10656,7 +10588,6 @@
   Cat_Shield = function() {
     this.initialize.apply(this, arguments);
   }
-  Cat_Shield.spawnLevel = 4;
 
   Cat_Shield.itemName = '貓皮盾';
   Cat_Shield.itemDescription = '泛著光澤的輕盾';
@@ -10688,7 +10619,6 @@
   Wolf_Gloves = function() {
     this.initialize.apply(this, arguments);
   }
-  Wolf_Gloves.spawnLevel = 6;
 
   Wolf_Gloves.itemName = '狼皮手套';
   Wolf_Gloves.itemDescription = '堅韌的手套';
@@ -10720,7 +10650,6 @@
   Wolf_Shoes = function() {
     this.initialize.apply(this, arguments);
   }
-  Wolf_Shoes.spawnLevel = 6;
 
   Wolf_Shoes.itemName = '狼皮靴子';
   Wolf_Shoes.itemDescription = '堅韌的靴子';
@@ -10752,7 +10681,6 @@
   Wolf_Shield = function() {
     this.initialize.apply(this, arguments);
   }
-  Wolf_Shield.spawnLevel = 6;
 
   Wolf_Shield.itemName = '狼皮盾';
   Wolf_Shield.itemDescription = '堅韌的輕盾';
@@ -10784,7 +10712,6 @@
   Wolf_Helmet = function() {
     this.initialize.apply(this, arguments);
   }
-  Wolf_Helmet.spawnLevel = 6;
 
   Wolf_Helmet.itemName = '狼皮帽';
   Wolf_Helmet.itemDescription = '堅韌的皮帽';
@@ -10816,7 +10743,6 @@
   Wolf_Coat = function() {
     this.initialize.apply(this, arguments);
   }
-  Wolf_Coat.spawnLevel = 6;
 
   Wolf_Coat.itemName = '狼皮大衣';
   Wolf_Coat.itemDescription = '堅韌的大衣';
@@ -10848,7 +10774,6 @@
   Bear_Gloves = function() {
     this.initialize.apply(this, arguments);
   }
-  Bear_Gloves.spawnLevel = 6;
 
   Bear_Gloves.itemName = '熊皮手套';
   Bear_Gloves.itemDescription = '厚實的手套';
@@ -10879,7 +10804,6 @@
   Bear_Shoes = function() {
     this.initialize.apply(this, arguments);
   }
-  Bear_Shoes.spawnLevel = 6;
 
   Bear_Shoes.itemName = '熊皮靴';
   Bear_Shoes.itemDescription = '厚實的靴子';
@@ -10910,7 +10834,6 @@
   Bear_Shield = function() {
     this.initialize.apply(this, arguments);
   }
-  Bear_Shield.spawnLevel = 6;
 
   Bear_Shield.itemName = '熊皮盾';
   Bear_Shield.itemDescription = '厚實的盾';
@@ -10942,7 +10865,6 @@
   Bear_Helmet = function() {
     this.initialize.apply(this, arguments);
   }
-  Bear_Helmet.spawnLevel = 6;
 
   Bear_Helmet.itemName = '熊皮帽';
   Bear_Helmet.itemDescription = '厚實的皮帽';
@@ -10973,7 +10895,6 @@
   Bear_Coat = function() {
     this.initialize.apply(this, arguments);
   }
-  Bear_Coat.spawnLevel = 6;
 
   Bear_Coat.itemName = '熊皮大衣';
   Bear_Coat.itemDescription = '厚實的大衣';
@@ -11004,7 +10925,6 @@
   Lion_Gloves = function() {
     this.initialize.apply(this, arguments);
   }
-  Lion_Gloves.spawnLevel = 8;
 
   Lion_Gloves.itemName = '獅皮手套';
   Lion_Gloves.itemDescription = '大貓皮手套';
@@ -11036,7 +10956,6 @@
   Lion_Shoes = function() {
     this.initialize.apply(this, arguments);
   }
-  Lion_Shoes.spawnLevel = 8;
 
   Lion_Shoes.itemName = '獅皮靴';
   Lion_Shoes.itemDescription = '大貓皮靴子';
@@ -11068,7 +10987,6 @@
   Lion_Shield = function() {
     this.initialize.apply(this, arguments);
   }
-  Lion_Shield.spawnLevel = 8;
 
   Lion_Shield.itemName = '獅皮盾';
   Lion_Shield.itemDescription = '大貓皮盾';
@@ -11100,7 +11018,6 @@
   Lion_Helmet = function() {
     this.initialize.apply(this, arguments);
   }
-  Lion_Helmet.spawnLevel = 8;
 
   Lion_Helmet.itemName = '獅皮帽';
   Lion_Helmet.itemDescription = '大貓皮帽';
@@ -11132,7 +11049,6 @@
   Lion_Coat = function() {
     this.initialize.apply(this, arguments);
   }
-  Lion_Coat.spawnLevel = 8;
 
   Lion_Coat.itemName = '獅皮大衣';
   Lion_Coat.itemDescription = '大貓皮大衣';
@@ -11164,7 +11080,6 @@
   Earth_Coat = function() {
     this.initialize.apply(this, arguments);
   }
-  Earth_Coat.spawnLevel = 5;
 
   Earth_Coat.itemName = '大地之衣';
   Earth_Coat.itemDescription = '厚實的衣裝, 彷彿能聞到土地的氣味';
@@ -11194,7 +11109,6 @@
   EarthDragon_Gloves = function() {
     this.initialize.apply(this, arguments);
   }
-  EarthDragon_Gloves.spawnLevel = 10;
 
   EarthDragon_Gloves.itemName = '龍皮手套(岩)';
   EarthDragon_Gloves.itemDescription = '蘊含神秘力量的手套';
@@ -11226,7 +11140,6 @@
   EarthDragon_Shoes = function() {
     this.initialize.apply(this, arguments);
   }
-  EarthDragon_Shoes.spawnLevel = 10;
 
   EarthDragon_Shoes.itemName = '龍皮靴(岩)';
   EarthDragon_Shoes.itemDescription = '蘊含神秘力量的靴子';
@@ -11258,7 +11171,6 @@
   EarthDragon_Shield = function() {
     this.initialize.apply(this, arguments);
   }
-  EarthDragon_Shield.spawnLevel = 10;
 
   EarthDragon_Shield.itemName = '龍皮盾(岩)';
   EarthDragon_Shield.itemDescription = '蘊含神秘力量的皮盾';
@@ -11290,7 +11202,6 @@
   EarthDragon_Helmet = function() {
     this.initialize.apply(this, arguments);
   }
-  EarthDragon_Helmet.spawnLevel = 10;
 
   EarthDragon_Helmet.itemName = '龍皮帽(岩)';
   EarthDragon_Helmet.itemDescription = '蘊含神秘力量的皮帽';
@@ -11322,7 +11233,6 @@
   EarthDragon_Coat = function() {
     this.initialize.apply(this, arguments);
   }
-  EarthDragon_Coat.spawnLevel = 10;
 
   EarthDragon_Coat.itemName = '龍皮大衣(岩)';
   EarthDragon_Coat.itemDescription = '蘊含神秘力量的大衣';
@@ -11354,7 +11264,6 @@
   IceDragon_Gloves = function() {
     this.initialize.apply(this, arguments);
   }
-  IceDragon_Gloves.spawnLevel = 10;
 
   IceDragon_Gloves.itemName = '龍皮手套(冰)';
   IceDragon_Gloves.itemDescription = '蘊含神秘力量的手套';
@@ -11387,7 +11296,6 @@
   IceDragon_Shoes = function() {
     this.initialize.apply(this, arguments);
   }
-  IceDragon_Shoes.spawnLevel = 10;
 
   IceDragon_Shoes.itemName = '龍皮靴(冰)';
   IceDragon_Shoes.itemDescription = '蘊含神秘力量的靴子';
@@ -11420,7 +11328,6 @@
   IceDragon_Shield = function() {
     this.initialize.apply(this, arguments);
   }
-  IceDragon_Shield.spawnLevel = 10;
 
   IceDragon_Shield.itemName = '龍皮盾(冰)';
   IceDragon_Shield.itemDescription = '蘊含神秘力量的皮盾';
@@ -11453,7 +11360,6 @@
   IceDragon_Helmet = function() {
     this.initialize.apply(this, arguments);
   }
-  IceDragon_Helmet.spawnLevel = 10;
 
   IceDragon_Helmet.itemName = '龍皮帽(冰)';
   IceDragon_Helmet.itemDescription = '蘊含神秘力量的皮帽';
@@ -11486,7 +11392,6 @@
   IceDragon_Coat = function() {
     this.initialize.apply(this, arguments);
   }
-  IceDragon_Coat.spawnLevel = 10;
 
   IceDragon_Coat.itemName = '龍皮大衣(冰)';
   IceDragon_Coat.itemDescription = '蘊含神秘力量的大衣';
@@ -11519,7 +11424,6 @@
   Ice_Coat = function() {
     this.initialize.apply(this, arguments);
   }
-  Ice_Coat.spawnLevel = 7;
 
   Ice_Coat.itemName = '冰雪之衣';
   Ice_Coat.itemDescription = '冰涼的輕薄衣裝';
@@ -11550,7 +11454,6 @@
   Salamander_Gloves = function() {
     this.initialize.apply(this, arguments);
   }
-  Salamander_Gloves.spawnLevel = 5;
 
   Salamander_Gloves.itemName = '火蜥蜴皮手套';
   Salamander_Gloves.itemDescription = '發燙的手套';
@@ -11583,7 +11486,6 @@
   Salamander_Shoes = function() {
     this.initialize.apply(this, arguments);
   }
-  Salamander_Shoes.spawnLevel = 5;
 
   Salamander_Shoes.itemName = '火蜥蜴皮靴';
   Salamander_Shoes.itemDescription = '發燙的靴子';
@@ -11616,7 +11518,6 @@
   Salamander_Shield = function() {
     this.initialize.apply(this, arguments);
   }
-  Salamander_Shield.spawnLevel = 5;
 
   Salamander_Shield.itemName = '火蜥蜴皮盾';
   Salamander_Shield.itemDescription = '發燙的皮盾';
@@ -11649,7 +11550,6 @@
   Salamander_Helmet = function() {
     this.initialize.apply(this, arguments);
   }
-  Salamander_Helmet.spawnLevel = 5;
 
   Salamander_Helmet.itemName = '火蜥蜴皮帽';
   Salamander_Helmet.itemDescription = '發燙的皮帽';
@@ -11682,7 +11582,6 @@
   Salamander_Coat = function() {
     this.initialize.apply(this, arguments);
   }
-  Salamander_Coat.spawnLevel = 5;
 
   Salamander_Coat.itemName = '火蜥蜴皮大衣';
   Salamander_Coat.itemDescription = '發燙的大衣';
@@ -11715,7 +11614,6 @@
   FireDragon_Gloves = function() {
     this.initialize.apply(this, arguments);
   }
-  FireDragon_Gloves.spawnLevel = 10;
 
   FireDragon_Gloves.itemName = '龍皮手套(火)';
   FireDragon_Gloves.itemDescription = '蘊含神秘力量的手套';
@@ -11748,7 +11646,6 @@
   FireDragon_Shoes = function() {
     this.initialize.apply(this, arguments);
   }
-  FireDragon_Shoes.spawnLevel = 10;
 
   FireDragon_Shoes.itemName = '龍皮靴(火)';
   FireDragon_Shoes.itemDescription = '蘊含神秘力量的靴子';
@@ -11781,7 +11678,6 @@
   FireDragon_Shield = function() {
     this.initialize.apply(this, arguments);
   }
-  FireDragon_Shield.spawnLevel = 10;
 
   FireDragon_Shield.itemName = '龍皮盾(火)';
   FireDragon_Shield.itemDescription = '蘊含神秘力量的皮盾';
@@ -11814,7 +11710,6 @@
   FireDragon_Helmet = function() {
     this.initialize.apply(this, arguments);
   }
-  FireDragon_Helmet.spawnLevel = 10;
 
   FireDragon_Helmet.itemName = '龍皮帽(火)';
   FireDragon_Helmet.itemDescription = '蘊含神秘力量的皮帽';
@@ -11847,7 +11742,6 @@
   FireDragon_Coat = function() {
     this.initialize.apply(this, arguments);
   }
-  FireDragon_Coat.spawnLevel = 10;
 
   FireDragon_Coat.itemName = '龍皮大衣(火)';
   FireDragon_Coat.itemDescription = '蘊含神秘力量的大衣';
@@ -11880,7 +11774,6 @@
   Fire_Coat = function() {
     this.initialize.apply(this, arguments);
   }
-  Fire_Coat.spawnLevel = 7;
 
   Fire_Coat.itemName = '火焰之衣';
   Fire_Coat.itemDescription = '燃燒的溫熱衣裝';
@@ -11911,7 +11804,6 @@
   Ring_FireResistance = function() {
     this.initialize.apply(this, arguments);
   }
-  Ring_FireResistance.spawnLevel = 7;
 
   Ring_FireResistance.itemName = '耐火戒指';
   Ring_FireResistance.itemDescription = '減低火屬性傷害';
@@ -11941,7 +11833,6 @@
   Ring_Protection = function() {
     this.initialize.apply(this, arguments);
   }
-  Ring_Protection.spawnLevel = 7;
 
   Ring_Protection.itemName = '守護戒指';
   Ring_Protection.itemDescription = '提高護甲強度';
@@ -11973,7 +11864,6 @@
   Ring_MagicResistance = function() {
     this.initialize.apply(this, arguments);
   }
-  Ring_MagicResistance.spawnLevel = 7;
 
   Ring_MagicResistance.itemName = '抗魔戒指';
   Ring_MagicResistance.itemDescription = '提高魔法防禦';
@@ -12005,7 +11895,6 @@
   Ring_ParalyzeResistance = function() {
     this.initialize.apply(this, arguments);
   }
-  Ring_ParalyzeResistance.spawnLevel = 7;
 
   Ring_ParalyzeResistance.itemName = '抗麻戒指';
   Ring_ParalyzeResistance.itemDescription = '橡膠觸感的戒指';
@@ -12037,7 +11926,6 @@
   Ring_AcidResistance = function() {
     this.initialize.apply(this, arguments);
   }
-  Ring_AcidResistance.spawnLevel = 7;
 
   Ring_AcidResistance.itemName = '抗酸戒指';
   Ring_AcidResistance.itemDescription = '酸蝕傷害減半, 裝備不受酸蝕傷害';
@@ -12069,7 +11957,6 @@
   Ring_ColdResistance = function() {
     this.initialize.apply(this, arguments);
   }
-  Ring_ColdResistance.spawnLevel = 7;
 
   Ring_ColdResistance.itemName = '抗寒戒指';
   Ring_ColdResistance.itemDescription = '減低冰屬性傷害';
@@ -12099,7 +11986,6 @@
   Dog_Scimitar = function() {
     this.initialize.apply(this, arguments);
   }
-  Dog_Scimitar.spawnLevel = 2;
 
   Dog_Scimitar.itemName = '骨刃(犬)';
   Dog_Scimitar.itemDescription = '輕薄的長刀';
@@ -12137,7 +12023,6 @@
   Cat_Scimitar = function() {
     this.initialize.apply(this, arguments);
   }
-  Cat_Scimitar.spawnLevel = 4;
 
   Cat_Scimitar.itemName = '骨刃(貓)';
   Cat_Scimitar.itemDescription = '泛著光澤的長刀';
@@ -12175,7 +12060,6 @@
   Wolf_Scimitar = function() {
     this.initialize.apply(this, arguments);
   }
-  Wolf_Scimitar.spawnLevel = 6;
 
   Wolf_Scimitar.itemName = '骨刃(狼)';
   Wolf_Scimitar.itemDescription = '堅韌的長刀';
@@ -12213,7 +12097,6 @@
   Bear_Scimitar = function() {
     this.initialize.apply(this, arguments);
   }
-  Bear_Scimitar.spawnLevel = 6;
 
   Bear_Scimitar.itemName = '骨刃(熊)';
   Bear_Scimitar.itemDescription = '厚實的長刀';
@@ -12251,7 +12134,6 @@
   Lion_Scimitar = function() {
     this.initialize.apply(this, arguments);
   }
-  Lion_Scimitar.spawnLevel = 8;
 
   Lion_Scimitar.itemName = '骨刃(獅)';
   Lion_Scimitar.itemDescription = '大貓骨長刀';
@@ -12289,7 +12171,6 @@
   EarthDragon_Scimitar = function() {
     this.initialize.apply(this, arguments);
   }
-  EarthDragon_Scimitar.spawnLevel = 10;
 
   EarthDragon_Scimitar.itemName = '龍骨刃(岩)';
   EarthDragon_Scimitar.itemDescription = '閃著黑光的長刀';
@@ -12327,7 +12208,6 @@
   IceDragon_Scimitar = function() {
     this.initialize.apply(this, arguments);
   }
-  IceDragon_Scimitar.spawnLevel = 10;
 
   IceDragon_Scimitar.itemName = '龍骨刃(冰)';
   IceDragon_Scimitar.itemDescription = '寒氣逼人的長刀';
@@ -12366,7 +12246,6 @@
   Salamander_Scimitar = function() {
     this.initialize.apply(this, arguments);
   }
-  Salamander_Scimitar.spawnLevel = 5;
 
   Salamander_Scimitar.itemName = '火蜥蜴刃';
   Salamander_Scimitar.itemDescription = '發燙的長刀';
@@ -12405,7 +12284,6 @@
   FireDragon_Scimitar = function() {
     this.initialize.apply(this, arguments);
   }
-  FireDragon_Scimitar.spawnLevel = 10;
 
   FireDragon_Scimitar.itemName = '龍骨刃(火)';
   FireDragon_Scimitar.itemDescription = '散發著高熱的長刀';
@@ -12444,7 +12322,6 @@
   Dog_Spear = function() {
     this.initialize.apply(this, arguments);
   }
-  Dog_Spear.spawnLevel = 2;
 
   Dog_Spear.itemName = '骨矛(犬)';
   Dog_Spear.itemDescription = '輕薄的長矛';
@@ -12482,7 +12359,6 @@
   Cat_Spear = function() {
     this.initialize.apply(this, arguments);
   }
-  Cat_Spear.spawnLevel = 4;
 
   Cat_Spear.itemName = '骨矛(貓)';
   Cat_Spear.itemDescription = '泛著光澤的長矛';
@@ -12520,7 +12396,6 @@
   Wolf_Spear = function() {
     this.initialize.apply(this, arguments);
   }
-  Wolf_Spear.spawnLevel = 6;
 
   Wolf_Spear.itemName = '骨矛(狼)';
   Wolf_Spear.itemDescription = '堅韌的長矛';
@@ -12558,7 +12433,6 @@
   Lion_Spear = function() {
     this.initialize.apply(this, arguments);
   }
-  Lion_Spear.spawnLevel = 8;
 
   Lion_Spear.itemName = '骨矛(獅)';
   Lion_Spear.itemDescription = '大貓骨長矛';
@@ -12596,7 +12470,6 @@
   EarthDragon_Spear = function() {
     this.initialize.apply(this, arguments);
   }
-  EarthDragon_Spear.spawnLevel = 10;
 
   EarthDragon_Spear.itemName = '龍骨矛(岩)';
   EarthDragon_Spear.itemDescription = '閃著黑光的長矛';
@@ -12634,7 +12507,6 @@
   IceDragon_Spear = function() {
     this.initialize.apply(this, arguments);
   }
-  IceDragon_Spear.spawnLevel = 10;
 
   IceDragon_Spear.itemName = '龍骨矛(冰)';
   IceDragon_Spear.itemDescription = '寒氣逼人的長矛';
@@ -12673,7 +12545,6 @@
   Salamander_Spear = function() {
     this.initialize.apply(this, arguments);
   }
-  Salamander_Spear.spawnLevel = 5;
 
   Salamander_Spear.itemName = '火蜥蜴矛';
   Salamander_Spear.itemDescription = '發燙的長矛';
@@ -12712,7 +12583,6 @@
   FireDragon_Spear = function() {
     this.initialize.apply(this, arguments);
   }
-  FireDragon_Spear.spawnLevel = 10;
 
   FireDragon_Spear.itemName = '龍骨矛(火)';
   FireDragon_Spear.itemDescription = '散發著高熱的長矛';
@@ -12772,7 +12642,6 @@
   Dog_Staff = function() {
     this.initialize.apply(this, arguments);
   }
-  Dog_Staff.spawnLevel = 2;
 
   Dog_Staff.itemName = '骨杖(犬)';
   Dog_Staff.itemDescription = '輕薄的法杖';
@@ -12810,7 +12679,6 @@
   Cat_Staff = function() {
     this.initialize.apply(this, arguments);
   }
-  Cat_Staff.spawnLevel = 4;
 
   Cat_Staff.itemName = '骨杖(貓)';
   Cat_Staff.itemDescription = '泛著光澤的法杖';
@@ -12848,7 +12716,6 @@
   Wolf_Staff = function() {
     this.initialize.apply(this, arguments);
   }
-  Wolf_Staff.spawnLevel = 6;
 
   Wolf_Staff.itemName = '骨杖(狼)';
   Wolf_Staff.itemDescription = '堅韌的法杖';
@@ -12886,7 +12753,6 @@
   Bear_Staff = function() {
     this.initialize.apply(this, arguments);
   }
-  Bear_Staff.spawnLevel = 6;
 
   Bear_Staff.itemName = '骨杖(熊)';
   Bear_Staff.itemDescription = '厚實的法杖';
@@ -12924,7 +12790,6 @@
   Buffalo_Staff = function() {
     this.initialize.apply(this, arguments);
   }
-  Buffalo_Staff.spawnLevel = 7;
 
   Buffalo_Staff.itemName = '骨杖(牛)';
   Buffalo_Staff.itemDescription = '拿著就會有牛脾氣?';
@@ -12962,7 +12827,6 @@
   Lion_Staff = function() {
     this.initialize.apply(this, arguments);
   }
-  Lion_Staff.spawnLevel = 8;
 
   Lion_Staff.itemName = '骨杖(獅)';
   Lion_Staff.itemDescription = '大貓骨杖';
@@ -13000,7 +12864,6 @@
   EarthDragon_Staff = function() {
     this.initialize.apply(this, arguments);
   }
-  EarthDragon_Staff.spawnLevel = 10;
 
   EarthDragon_Staff.itemName = '龍骨杖(岩)';
   EarthDragon_Staff.itemDescription = '閃著黑光的法杖';
@@ -13038,7 +12901,6 @@
   IceDragon_Staff = function() {
     this.initialize.apply(this, arguments);
   }
-  IceDragon_Staff.spawnLevel = 10;
 
   IceDragon_Staff.itemName = '龍骨杖(冰)';
   IceDragon_Staff.itemDescription = '寒氣逼人的法杖';
@@ -13077,7 +12939,6 @@
   Salamander_Staff = function() {
     this.initialize.apply(this, arguments);
   }
-  Salamander_Staff.spawnLevel = 5;
 
   Salamander_Staff.itemName = '火蜥蜴杖';
   Salamander_Staff.itemDescription = '發燙的法杖';
@@ -13116,7 +12977,6 @@
   FireDragon_Staff = function() {
     this.initialize.apply(this, arguments);
   }
-  FireDragon_Staff.spawnLevel = 10;
 
   FireDragon_Staff.itemName = '龍骨杖(火)';
   FireDragon_Staff.itemDescription = '散發著高熱的法杖';
@@ -17402,6 +17262,7 @@
   Game_Mob.adjustMobAbility = function(mobClass, targetLevel) {
     let mobInitData = mobClass.mobInitData;
     let delta = targetLevel - mobInitData.level;
+    mobInitData.originalLevel = mobInitData.level;
     mobInitData.level = targetLevel;
     if (delta != 0) {
       // deal with attributes except AGI
