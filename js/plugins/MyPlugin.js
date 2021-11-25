@@ -184,6 +184,11 @@
     this.coordinate = coordinate; // random place if null
   }
 
+  var TutorialData = function(evtId) {
+    this.evtId = evtId;
+    this.triggered = false;
+  }
+
   var FLOOR = '□';
   var WALL = '■';
   var DOOR = 'Ｄ';
@@ -845,7 +850,30 @@
         + 'S: 存檔頁面      k: 用腳踹       h/?: 開啟此頁面\n'
         + 'x/Esc/數字小鍵盤0: 取消動作/開啟主菜單\n\n'
         + '技能快捷鍵:\n'
-        + '鍵盤左側數字0~9'
+        + '鍵盤左側數字0~9',
+      easyMsg:
+        '適合第一次接觸Roguelike遊戲的玩家, 以體驗遊戲玩法、流程為\n'
+      + '主.\n\n'
+      + '- 擁有額外的護甲強度&魔法抗性\n'
+      + '- 飢餓速度減緩30%\n'
+      + '- 獲得經驗值提升30%',
+      normalMsg:
+        '適合對Roguelike遊戲有基礎認識的玩家, 透過慎重的遊玩以及對\n'
+      + '角色的培養, 就能夠穩妥的過關.',
+      hardMsg:
+        '適合熟悉此遊戲的玩家, 更具有挑戰性.\n\n'
+      + '- 護甲強度&魔法抗性降低30%\n'
+      + '- 獲得經驗值降低30%\n'
+      + '- 關卡頭目擁有更高的HP&MP\n'
+      + '- 敵人隨探索地圖數量逐步加強',
+      extremeMsg:
+        '適合追求極限挑戰與刺激的玩家遊玩.\n\n'
+        + '- 護甲強度&魔法抗性降低30%\n'
+        + '- 獲得經驗值降低30%\n'
+        + '- 關卡頭目擁有更高的HP&MP\n'
+        + '- 敵人隨探索地圖數量逐步加強\n'
+        + '- 敵人隨遊戲回合逐步加強\n'
+        + '- 敵人數量更多, 素材掉落機率同步降低\n'
     },
     display: function(msgName) {
       switch (Message.language) {
@@ -1412,13 +1440,19 @@
   CharUtils.decreaseNutrition = function(target) {
     let realTarget = BattleUtils.getRealTarget(target);
     let isPlayer = (realTarget == $gameActors.actor(1)) ? true : false;
-    realTarget.nutrition--;
+    let multiplier = 1;
+    // check difficulty effect
+    if (isPlayer && $gameVariables[0].difficulty == 'EASY') {
+      multiplier = 0.7;
+    }
+
+    realTarget.nutrition -= multiplier;
     switch (realTarget.carryStatus) {
       case 2:
-        realTarget.nutrition -= 0.5;
+        realTarget.nutrition -= 0.5 * multiplier;
         break;
       case 3: case 4:
-        realTarget.nutrition -= 1;
+        realTarget.nutrition -= multiplier;
         break;
     }
     if (realTarget.nutrition >= $gameVariables[0].satiety.full) {
@@ -1768,6 +1802,8 @@
     $gameVariables[0].messageFlag = false;
     $gameVariables[0].projectileMoving = false;
     $gameVariables[0].logList = []; // only 18 lines can be displayed
+    $gameVariables[0].difficulty = 'EASY'; // EASY, NORMAL, HARD, EXTREME
+    $gameVariables[0].exploredLayerCount = 0;
     // define game time (counts * gameTimeAmp for possible future extends)
     $gameVariables[0].gameTime = 0;
     $gameVariables[0].gameTimeAmp = 20;
@@ -1800,108 +1836,51 @@
     $gameActors.actor(1).carryStatus = 0; // 0: normal, 1: burdened, 2: stressed, 3: strained, 4: overloaded
     // initialize template events
     $gameVariables[0].templateEvents = {
-      monster: $dataMap.events[3],
-      door: $dataMap.events[4],
-      projectile: $dataMap.events[5],
-      itemPile: $dataMap.events[6],
-      trap: $dataMap.events[7],
-      goHome: $dataMap.events[1],
-      bolder: $dataMap.events[8],
-      aura: $dataMap.events[32],
-      terrain: $dataMap.events[33],
-      visitIceDungeon: $dataMap.events[9],
-      discoverPressFloor: $dataMap.events[10],
-      selinaEncountered: $dataMap.events[11],
-      selinaDefeated: $dataMap.events[12],
-      fireKingEncountered: $dataMap.events[34],
-      fireKingDefeated: $dataMap.events[35],
-      visitFireDungeon: $dataMap.events[38],
-      sealKingEncountered: $dataMap.events[36],
-      judgementPerformed: $dataMap.events[39],
-      sealKingDefeated: $dataMap.events[37],
+      monster: 3,
+      door: 4,
+      projectile: 5,
+      itemPile: 6,
+      trap: 7,
+      goHome: 1,
+      bolder: 8,
+      aura: 32,
+      terrain: 33,
+      visitIceDungeon: 9,
+      discoverPressFloor: 10,
+      selinaEncountered: 11,
+      selinaDefeated: 12,
+      fireKingEncountered: 34,
+      fireKingDefeated: 35,
+      visitFireDungeon: 38,
+      sealKingEncountered: 36,
+      judgementPerformed: 39,
+      sealKingDefeated: 37,
       // temp setup
-      skillObtainedHint: $dataMap.events[31]
+      skillObtainedHint: 31
     }
     $gameVariables[0].skillObtainedHintFlag = false; // set to true for debug purpose
     // tutorial
     $gameVariables[0].tutorialOn = true;
     $gameVariables[0].tutorialEvents = {
-      move: {
-        triggered: false,
-        evt: $dataMap.events[13]
-      },
-      getDrop: {
-        triggered: false,
-        evt: $dataMap.events[15]
-      },
-      inventory: {
-        triggered: false,
-        evt: $dataMap.events[16]
-      },
-      meleeAttack: {
-        triggered: false,
-        evt: $dataMap.events[14]
-      },
-      soul: {
-        triggered: false,
-        evt: $dataMap.events[18]
-      },
-      equip: {
-        triggered: false,
-        evt: $dataMap.events[17]
-      },
-      door: {
-        triggered: false,
-        evt: $dataMap.events[19]
-      },
-      secretDoor: {
-        triggered: false,
-        evt: $dataMap.events[20]
-      },
-      trap: {
-        triggered: false,
-        evt: $dataMap.events[21]
-      },
-      log: {
-        triggered: false,
-        evt: $dataMap.events[22]
-      },
-      scroll: {
-        triggered: false,
-        evt: $dataMap.events[23]
-      },
-      potion: {
-        triggered: false,
-        evt: $dataMap.events[24]
-      },
-      stair: {
-        triggered: false,
-        evt: $dataMap.events[25]
-      },
-      belly: {
-        triggered: false,
-        evt: $dataMap.events[26]
-      },
-      mix: {
-        triggered: false,
-        evt: $dataMap.events[27]
-      },
-      dart: {
-        triggered: false,
-        evt: $dataMap.events[28]
-      },
-      save: {
-        triggered: false,
-        evt: $dataMap.events[29]
-      },
-      carry: {
-        triggered: false,
-        evt: $dataMap.events[30]
-      },
-      weapon: {
-        triggered: false,
-        evt: $dataMap.events[40]
-      }
+      move: new TutorialData(13),
+      getDrop: new TutorialData(15),
+      inventory: new TutorialData(16),
+      meleeAttack: new TutorialData(14),
+      soul: new TutorialData(18),
+      equip: new TutorialData(17),
+      door: new TutorialData(19),
+      secretDoor: new TutorialData(20),
+      trap: new TutorialData(21),
+      log: new TutorialData(22),
+      scroll: new TutorialData(23),
+      potion: new TutorialData(24),
+      stair: new TutorialData(25),
+      belly: new TutorialData(26),
+      mix: new TutorialData(27),
+      dart: new TutorialData(28),
+      save: new TutorialData(29),
+      carry: new TutorialData(30),
+      weapon: new TutorialData(40)
     },
     // define event related states
     $gameVariables[0].eventState = {
@@ -2064,6 +2043,12 @@
       result = xmlhttp.responseText;
     }
     return result;
+  }
+
+  // load events template
+  MapUtils.loadMapEvent = function(evtId) {
+    let jsonObj = JSON.parse(MapUtils.loadFile('data/Map001.json'));
+    return jsonObj.events[evtId];
   }
 
   // use for initialize mob
@@ -3206,9 +3191,9 @@
     }
   }
 
-  MapUtils.playEventFromTemplate = function(evtTemplate) {
+  MapUtils.playEventFromTemplate = function(evtTemplateId) {
     let eventId = $dataMap.events.length;
-    $dataMap.events.push(newDataMapEvent(evtTemplate, eventId, 0, 0));
+    $dataMap.events.push(newDataMapEvent(evtTemplateId, eventId, 0, 0));
     let evt = new Game_Event($gameMap.mapId(), eventId);
     $gameMap._events[eventId] = evt;
     evt.start();
@@ -3909,6 +3894,7 @@
   MapUtils.setupNewMap = function (mapId) {
     // first load map
     console.log("first load map: " + mapId);
+    $gameVariables[0].exploredLayerCount++;
     var rawMap;
     if (mapId == dungeonOffset.ice + subDungeonDepth) {
       // ice boss room
@@ -4610,8 +4596,8 @@
     return JSON.parse(JSON.stringify(obj));
   }
 
-  function newDataMapEvent(fromObj, id, x, y) {
-    var newObj = cloneObject(fromObj);
+  function newDataMapEvent(evtId, id, x, y) {
+    var newObj = cloneObject(MapUtils.loadMapEvent(evtId));
     newObj.id = id;
     newObj.x = x;
     newObj.y = y;
@@ -6515,7 +6501,7 @@
               let originalTile = $gameVariables[$gameMap.mapId()].mapData[x][y].originalTile;
               if (originalTile == WALL) {
                 let damage = dice(1, 4);
-                realSrc._hp -= damage;
+                CharUtils.decreaseHp(realSrc, damage);
                 LogUtils.addLog(String.format(Message.display('kickWall'), damage));
                 TimeUtils.animeQueue.push(new AnimeObject(character, 'ANIME', 1));
                 TimeUtils.animeQueue.push(new AnimeObject(character, 'POP_UP', damage * -1));
@@ -6683,6 +6669,9 @@
             break;
           case '.': // wait action
             TimeUtils.afterPlayerMoved();
+            break;
+          case 'v': // for test
+            SceneManager.push(Scene_Difficulty);
             break;
         }
       } else if (moveStatus == 1) {
@@ -6962,7 +6951,7 @@
           let tutorialEvt = $gameVariables[0].tutorialEvents[vm.queue[vm.indicator]];
           if (!tutorialEvt.triggered) {
             tutorialEvt.triggered = true;
-            MapUtils.playEventFromTemplate(tutorialEvt.evt);
+            MapUtils.playEventFromTemplate(tutorialEvt.evtId);
           }
           vm.indicator++;
           vm.execute();
@@ -13889,7 +13878,17 @@
 
   // only used by player
   Soul_Chick.expAfterAmplify = function(value) {
-    return ($gameParty.hasSoul(Soul_Chick) ? value * 1.05 : value);
+    let result = ($gameParty.hasSoul(Soul_Chick) ? value * 1.05 : value);
+    // check difficulty effect
+    switch ($gameVariables[0].difficulty) {
+      case 'EASY':
+        result *= 1.3;
+        break;
+      case 'HARD': case 'EXTREME':
+        result *= 0.7;
+        break;
+    }
+    return result;
   }
 
   //-----------------------------------------------------------------------------------
@@ -14827,7 +14826,7 @@
         , LogUtils.getPerformedTargetName(realSrc, realTarget), this.name, value));
       CharUtils.decreaseHp(realTarget, value);
       // check if causes faint
-      if (Math.random() < this.lv / 15) {
+      if (Math.random() < this.lv / 25) {
         realTarget.status.faintEffect.turns += dice(1, 1 + Math.floor(this.lv / 2));
         TimeUtils.eventScheduler.addStatusEffect(target, 'faintEffect');
         TimeUtils.animeQueue.push(new AnimeObject(target, 'POP_UP', '昏迷'));
@@ -15229,7 +15228,7 @@
         , LogUtils.getPerformedTargetName(realSrc, realTarget), this.name, value));
       CharUtils.decreaseHp(realTarget, value);
       // check if causes paralysis
-      if (Math.random() < 0.2 + this.lv / 2) {
+      if (Math.random() < 0.2 + this.lv / 50) {
         if (realTarget.status.resistance.state.paralyze == 0) {
           realTarget.status.paralyzeEffect.turns += dice(1, 3 + Math.floor(this.lv / 2));
           TimeUtils.eventScheduler.addStatusEffect(target, 'paralyzeEffect');
@@ -17202,12 +17201,26 @@
   }
 
   Game_Mob.prototype.initAttribute = function() {
+    // check difficulty effect
+    let delta = 0;
+    switch ($gameVariables[0].difficulty) {
+      case 'HARD': case 'EXTREME':
+        delta = Math.floor($gameVariables[0].exploredLayerCount / 4);
+        break;
+    }
+    Game_Mob.adjustSingleMobAbility(this.mob, delta);
     CharUtils.updateHpMp(this.mob);
     // amplify HP/MP if target is boss
     if (this.isBoss) {
-      this.mob._paramPlus[0] = Math.round(this.mob._paramPlus[0] * bossHpMpMultiplier);
+      let multiplier = bossHpMpMultiplier;
+      switch ($gameVariables[0].difficulty) {
+        case 'HARD': case 'EXTREME':
+          multiplier = 2;
+          break;
+      }
+      this.mob._paramPlus[0] = Math.round(this.mob._paramPlus[0] * multiplier);
       this.mob._hp = this.mob.mhp;
-      this.mob._paramPlus[1] = Math.round(this.mob._paramPlus[1] * bossHpMpMultiplier);
+      this.mob._paramPlus[1] = Math.round(this.mob._paramPlus[1] * multiplier);
       this.mob._mp = this.mob.mmp;
     }
   }
@@ -17247,6 +17260,13 @@
       }
       // deal with AGI
       mobInitData.params[6] += Math.round(delta / 2);
+    }
+  }
+
+  Game_Mob.adjustSingleMobAbility = function(mob, delta) {
+    mob.level += delta;
+    for (let i = 2; i <= 6; i++) {
+      mob._params[i] += delta;
     }
   }
 
@@ -18938,7 +18958,18 @@
     if (xparamId == 2 && this.traits[2]) {
       return this.traits(Game_BattlerBase.TRAIT_XPARAM)[2].value;
     } else {
-      return this.traitsSum(Game_BattlerBase.TRAIT_XPARAM, xparamId);
+      let value = this.traitsSum(Game_BattlerBase.TRAIT_XPARAM, xparamId);
+      // check difficulty effect
+      if (this._actorId && xparamId < 2) {
+        switch ($gameVariables[0].difficulty) {
+          case 'EASY':
+            value += 0.1;
+            break;
+          case 'HARD': case 'EXTREME':
+            value *= 0.7;
+        }
+      }
+      return value;
     }
   };
 
@@ -20525,7 +20556,7 @@
     } else if (modifier < -5) {
       modifier = -5;
     }
-    this.gainExp(exp * (1 + 0.2 * modifier));
+    this.gainExp(Soul_Chick.expAfterAmplify(exp * (1 + 0.2 * modifier)));
   };
 
   // modify for skill instance
@@ -21221,7 +21252,7 @@
   Window_HelpCommand.prototype.constructor = Window_HelpCommand;
 
   Window_HelpCommand.prototype.initialize = function(x, y) {
-      Window_Command.prototype.initialize.call(this, x, y);
+    Window_Command.prototype.initialize.call(this, x, y);
   };
 
   Window_HelpCommand.prototype.makeCommandList = function() {
@@ -21314,6 +21345,132 @@
     this._commandWindow.setHandler('cancel', this.popScene.bind(this));
     this._commandWindow.setHelpWindow(this._helpWindow);
     this.addWindow(this._commandWindow);
+  }
+
+  //-----------------------------------------------------------------------------
+  // Window_DifficultyHelp
+  //
+  // The window for showing difficulty help
+
+  function Window_DifficultyHelp() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_DifficultyHelp.prototype = Object.create(Window_Help.prototype);
+  Window_DifficultyHelp.prototype.constructor = Window_DifficultyHelp;
+
+  Window_DifficultyHelp.prototype.initialize = function(leftIndent, topIndent) {
+    var width = Graphics.boxWidth - leftIndent;
+    var height = Graphics.boxHeight - topIndent;
+    Window_Base.prototype.initialize.call(this, leftIndent, topIndent, width, height);
+    this._text = '';
+  }
+
+  //-----------------------------------------------------------------------------
+  // Window_DifficultyCommand
+  //
+  // The window for selecting a game difficulty
+
+  function Window_DifficultyCommand() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_DifficultyCommand.prototype = Object.create(Window_Command.prototype);
+  Window_DifficultyCommand.prototype.constructor = Window_DifficultyCommand;
+
+  Window_DifficultyCommand.prototype.initialize = function(x, y) {
+    Window_Command.prototype.initialize.call(this, x, y);
+  };
+
+  Window_DifficultyCommand.list = [];
+  Window_DifficultyCommand.list[0] = 'easyMsg';
+  Window_DifficultyCommand.list[1] = 'normalMsg';
+  Window_DifficultyCommand.list[2] = 'hardMsg';
+  Window_DifficultyCommand.list[3] = 'extremeMsg';
+
+  Window_DifficultyCommand.prototype.makeCommandList = function() {
+    this.addCommand('簡單', 'easy', true);
+    this.addCommand('一般', 'normal', true);
+    this.addCommand('困難', 'hard', true);
+    this.addCommand('極限', 'extreme', true);
+  }
+
+  Window_DifficultyCommand.prototype.windowWidth = function() {
+    return 150;
+  };
+
+  Window_DifficultyCommand.prototype.callUpdateHelp = function() {
+    if (this._helpWindow) {
+      this._helpWindow.setText(Message.display(Window_DifficultyCommand.list[this._index]));
+    }
+  }
+
+  //-----------------------------------------------------------------------------
+  // Scene_Difficulty
+  //
+  // The scene class of difficulty selection at the beginning
+
+  Scene_Difficulty = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Scene_Difficulty.prototype = Object.create(Scene_Base.prototype);
+  Scene_Difficulty.prototype.constructor = Scene_Difficulty;
+
+  Scene_Difficulty.prototype.initialize = function() {
+    Scene_Base.prototype.initialize.call(this);
+  }
+
+  Scene_Difficulty.prototype.create = function() {
+    Scene_Base.prototype.create.call(this);
+    this.createBackground();
+    this.createWindowLayer();
+    this.createTitleWindow();
+    this.createHelpWindow();
+    this.createCommandWindow();
+  }
+
+  Scene_Difficulty.prototype.createBackground = function() {
+    this._backgroundSprite = new Sprite();
+    this._backgroundSprite.bitmap = SceneManager.backgroundBitmap();
+    this.addChild(this._backgroundSprite);
+  }
+
+  Scene_Difficulty.prototype.createTitleWindow = function() {
+    this._titleWindow = new Window_Help();
+    this._titleWindow.setText('請選擇遊戲難度', 0, 0);
+    this.addWindow(this._titleWindow);
+  }
+
+  Scene_Difficulty.prototype.createHelpWindow = function() {
+    this._helpWindow = new Window_DifficultyHelp(150, this._titleWindow.height);
+    this.addWindow(this._helpWindow);
+  }
+
+  Scene_Difficulty.prototype.createCommandWindow = function() {
+    this._commandWindow = new Window_DifficultyCommand(0, this._titleWindow.height);
+    this._commandWindow.setHandler('ok', this.setDifficulty.bind(this));
+    this._commandWindow.setHandler('cancel', this.popScene.bind(this));
+    this._commandWindow.setHelpWindow(this._helpWindow);
+    this.addWindow(this._commandWindow);
+  }
+
+  Scene_Difficulty.prototype.setDifficulty = function() {
+    switch (this._commandWindow.index()) {
+      case 0:
+        $gameVariables[0].difficulty = 'EASY';
+        break;
+      case 1:
+        $gameVariables[0].difficulty = 'NORMAL';
+        break;
+      case 2:
+        $gameVariables[0].difficulty = 'HARD';
+        break;
+      case 3:
+        $gameVariables[0].difficulty = 'EXTREME';
+        break;
+    }
+    this.popScene();
   }
 
   //-----------------------------------------------------------------------------

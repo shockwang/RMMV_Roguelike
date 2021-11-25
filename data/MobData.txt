@@ -26,6 +26,6 @@ Selina,瑟蓮娜,15,20,20,20,20,5,20,20,1d5,12,0,Skill_Barrier.3;Skill_IceBolt.3
 Salamander,火蜥蜴,12,12,10,10,10,5,3,3,2d3,5,0,Skill_AuraFire.3;Skill_Bite.2,Salamander_Skin.25;Salamander_Tooth.25;Salamander_Claw.25;Salamander_Bone.25,Soul_AuraFire.10
 FireHorse,烈焰馬,10,10,10,20,15,5,3,3,1d5,6,0,Skill_FirePath.3;Skill_Charge.3,FireHorse_Shoe.25;FireHorse_Tail.25,Soul_FirePath.10
 Fire_Spirit,火精靈,10,8,20,20,20,5,8,12,0,7,2,Skill_Barrier.1;Skill_FireBall.1,Fire_Coat.10;Ring_FireResistance.5,Soul_FireBall.10
-Phoenix,鳳凰,16,15,10,10,15,5,4,4,1d8,8,2,Skill_SuperRegen.3;Skill_FireBall.1;Skill_Pierce.3,Phoenix_Feather.25;Phoenix_Blood.25;Phoenix_Tooth.25,Soul_SuperRegen
+Phoenix,鳳凰,16,15,10,10,15,5,4,4,1d8,8,2,Skill_SuperRegen.3;Skill_FireBall.1;Skill_Pierce.3,Phoenix_Feather.25;Phoenix_Blood.25;Phoenix_Tooth.25,Soul_SuperRegen.10
 Fire_Dragon,火龍,18,18,18,18,10,5,12,12,1d9,10,2,Skill_Barrier.3;Skill_Bash.3;Skill_FireBall.3;Skill_FireBreath.3,FireDragon_Tooth.25;FireDragon_Claw.25;FireDragon_Skin.25;FireDragon_Bone.25,Soul_FireBreath.10
 FireKing,亞里斯多康,15,20,20,20,20,5,20,20,1d5,12,0,Skill_Barrier.3;Skill_FireBall.3;Skill_FireBreath.3;Skill_AuraFire.5,,Soul_AdaptTerrain.100
