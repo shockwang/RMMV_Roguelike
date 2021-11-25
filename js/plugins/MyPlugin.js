@@ -1923,7 +1923,7 @@
     // temp data for projectile
     $gameVariables[0].fireProjectileInfo = {
       item: null,
-      skillId: null
+      skill: null
     }
 
     // recognize currentDungeonTiles
@@ -2010,6 +2010,11 @@
     // for (let i = 2; i <= 6; i++) {
     //   player._paramPlus[i] = 10;
     // }
+    // for (let i = 0; i < 6; i++) {
+    //   player.levelUp();
+    // }
+    // player._hp = 120;
+    // player._mp = 80;
 
     // $gameParty.gainItem(ItemUtils.createItem(Dog_Shield), 1);
     // $gameParty.gainItem(ItemUtils.createItem(Cat_Gloves), 1);
@@ -2048,11 +2053,6 @@
 
     $gameParty.gainItem(new Cheese(), 1);
     $gameParty.gainItem(new Cheese(), 1);
-    // for (let i = 0; i < 6; i++) {
-    //   player.levelUp();
-    // }
-    // player._hp = 120;
-    // player._mp = 80;
   }
 
   MapUtils.loadFile = function(filePath) {
@@ -5046,7 +5046,7 @@
 
   Terrain_DarkFire.generate = function(x, y) {
     let terrainEvt = new Terrain_DarkFire(x, y);
-    terrainEvt.evt.damage = 6;
+    terrainEvt.evt.damage = 8;
     terrainEvt.evt.expire = $gameVariables[0].gameTime + 2000;
     terrainEvt.updateDataMap();
     TimeUtils.eventScheduler.insertEvent(new ScheduleEvent(terrainEvt, terrainEvt.evt.expire));
@@ -5243,6 +5243,12 @@
 
   Game_Projectile.prototype.initStatus = function (event) {
     event.type = 'PROJECTILE';
+    event.mob = {
+      name: function() {
+        return this._name;
+      }
+    }
+    event.mob.status = CharUtils.initStatus();
   }
 
   Game_Projectile.prototype.initialize = function (src, x, y) {
@@ -5259,20 +5265,8 @@
 
     // setup projectile movement
     this.src = src; // recognize for log purpose
-    let displacementData = MapUtils.getDisplacementData(src._x, src._y, x, y);
-    switch (displacementData.moveFunc) {
-      case '':
-        this.moveFunc = function() {};
-        break;
-      case 'moveStraight':
-        this.moveFunc = this.moveStraight;
-        break;
-      case 'moveDiagonally':
-        this.moveFunc = this.moveDiagonally;
-        break;
-    }
-    this.param1 = displacementData.param1;
-    this.param2 = displacementData.param2;
+    this.directionX = x - src._x;
+    this.directionY = y - src._y;
     MapUtils.refreshMap();
   };
 
@@ -5285,39 +5279,60 @@
 
   Game_Projectile.prototype.action = function () {
     this.distanceCount = 0;
-    let originalX = this._x, originalY = this._y;
-    let vanish = false;
-    for (; this.distanceCount < this.distance; this.distanceCount++) {
-      this.moveFunc(this.param1, this.param2);
-      if ($gamePlayer.pos(this._x, this._y)) {
-        vanish = this.hitCharacter(this, $gamePlayer);
-      } else {
-        let events = $gameMap.eventsXy(this._x, this._y);
-        for (let id in events) {
-          let evt = events[id];
-          if (evt.type == 'DOOR' && evt.status != 2) { // hit closed door
-            vanish = this.hitDoor(this);
-          } else if ($gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(this._x, this._y)]
-            && !$gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(this._x, this._y)].isRevealed) {
-            // secret door not revealed yet
-            vanish = this.hitDoor(this);
-          } else if (evt.type == 'MOB') { // hit character
-            vanish = this.hitCharacter(this, evt);
+    this.vanish = false;
+    TimeUtils.actionDone = false;
+    let vm = this;
+    this.shadows = []; // for ray situation
+    let func = function() {
+      if (vm.distanceCount < vm.distance) {
+        vm.distanceCount++;
+        if (vm.projectileData && vm.projectileData.isRay) {
+          let evt = new Game_Projectile(vm, vm._x, vm._y);
+          let imageData = vm.projectileData.imageData;
+          evt._originalPattern = imageData.pattern;
+          evt.setPattern(imageData.pattern);
+          evt._direction = imageData.direction;
+          evt.setImage(imageData.image, imageData.imageIndex);
+          vm.shadows.push(evt);
+        }
+        vm.setPosition(vm._x + vm.directionX, vm._y + vm.directionY);
+        if ($gamePlayer.pos(vm._x, vm._y)) {
+          vm.vanish = vm.hitCharacter(vm, $gamePlayer);
+        } else {
+          let events = $gameMap.eventsXy(vm._x, vm._y);
+          for (let id in events) {
+            let evt = events[id];
+            if (evt.type == 'DOOR' && evt.status != 2) { // hit closed door
+              vm.vanish = vm.hitDoor(vm);
+            } else if ($gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(vm._x, vm._y)]
+              && !$gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(vm._x, vm._y)].isRevealed) {
+              // secret door not revealed yet
+              vm.vanish = vm.hitDoor(vm);
+            } else if (evt.type == 'MOB') { // hit character
+              vm.vanish = vm.hitCharacter(vm, evt);
+            } else if (evt.type == 'TRAP' && evt instanceof Trap_Teleport) {
+              vm.vanish = vm.hitTeleportTrap(vm, evt);
+            }
           }
         }
-      }
-      // hit wall
-      if (!vanish && $gameVariables[$gameMap._mapId].mapData[this._x][this._y].originalTile == WALL) {
-        vanish = this.hitWall(this);
-      }
-      if (vanish) {
-        break;
+        // hit wall
+        if (!vm.vanish && $gameVariables[$gameMap._mapId].mapData[vm._x][vm._y].originalTile == WALL) {
+          vm.vanish = vm.hitWall(vm);
+        }
+        if (vm.vanish) {
+          vm.afterAction();
+          vm.removeEvent();
+          TimeUtils.actionDone = true;
+          return;
+        }
+        setTimeout(func, 50);
+      } else {
+        vm.afterAction();
+        vm.removeEvent();
+        TimeUtils.actionDone = true;
       }
     }
-    TimeUtils.animeQueue.push(new AnimeObject(this, 'PROJECTILE', this.distanceCount));
-    // set event to original place, so anime can start from the correct position
-    this.setPosition(originalX, originalY);
-    return vanish;
+    func();
   }
 
   Game_Projectile.prototype.hitCharacter = function(vm, evt) {
@@ -5330,6 +5345,31 @@
 
   Game_Projectile.prototype.hitWall = function(vm) {
     return true;
+  }
+
+  Game_Projectile.prototype.hitTeleportTrap = function(vm, trap) {
+    trap.triggered(vm);
+    return false;
+  }
+
+  // deal with checks with vanish
+  Game_Projectile.prototype.afterAction = function() {
+    // implements by each class
+  }
+
+  // remove event
+  Game_Projectile.prototype.removeEvent = function() {
+    if (this.projectileData && this.projectileData.isRay) {
+      for (let i = 0; i < this.shadows.length; i++) {
+        let evt = this.shadows[i];
+        evt.setPosition(-10, -10);
+        $gameMap._events[evt._eventId] = null;
+        $dataMap.events[evt._eventId] = null;
+      }
+    }
+    this.setPosition(-10, -10);
+    $gameMap._events[this._eventId] = null;
+    $dataMap.events[this._eventId] = null;
   }
 
   //-----------------------------------------------------------------------------------
@@ -5358,6 +5398,7 @@
 
   Projectile_Potion.prototype.createProjectile = function(src, x, y) {
     let projectile = new Projectile_Potion(src, x, y);
+    projectile.mob._name = ItemUtils.getItemDisplayName($gameVariables[0].fireProjectileInfo.item);
     if ($gameVariables[$gameMap._mapId].mapData[src._x][src._y].isVisible) {
       let realSrc = BattleUtils.getRealTarget(src);
       LogUtils.addLog(String.format(Message.display('throwItem'), LogUtils.getCharName(realSrc)
@@ -5399,9 +5440,8 @@
     return this.hitDoor(vm);
   }
 
-  Projectile_Potion.prototype.action = function () {
-    let vanish = Game_Projectile.prototype.action.call(this);
-    if (!vanish) {
+  Projectile_Potion.prototype.afterAction = function() {
+    if (!this.vanish) {
       this.hitDoor(this);
     }
   }
@@ -5420,6 +5460,7 @@
 
   Projectile_SingleTarget.prototype.initialize = function (src, x, y, projectileData) {
     Game_Projectile.prototype.initialize.call(this, src, x, y);
+    this.mob._name = projectileData.skill.name;
     let imageData = projectileData.imageData;
     this._originalPattern = imageData.pattern;
     this.setPattern(imageData.pattern);
@@ -5522,6 +5563,7 @@
 
   Projectile_Item.prototype.createProjectile = function(src, x, y) {
     let projectile = new Projectile_Item(src, x, y);
+    projectile.mob._name = ItemUtils.getItemDisplayName($gameVariables[0].fireProjectileInfo.item);
     if ($gameVariables[$gameMap._mapId].mapData[src._x][src._y].isVisible) {
       let realSrc = BattleUtils.getRealTarget(src);
       LogUtils.addLog(String.format(Message.display('throwItem'), LogUtils.getCharName(realSrc)
@@ -5538,31 +5580,6 @@
     return true;
   }
 
-  // calculate last position before hit door/wall
-  Projectile_Item.prototype.calcLastPosition = function(vm) {
-    let lastX = vm._x, lastY = vm._y;
-    if (!vm.param2) {
-      switch (vm.param1) {
-        case 2:
-          lastY--;
-          break;
-        case 8:
-          lastY++;
-          break;
-        case 6:
-          lastX--;
-          break;
-        case 4:
-          lastX++;
-          break;
-      }
-    } else {
-      lastX = (vm.param1 == 4) ? lastX + 1 : lastX - 1;
-      lastY = (vm.param2 == 8) ? lastY + 1 : lastY - 1;
-    }
-    return {x: lastX, y: lastY};
-  }
-
   Projectile_Item.prototype.hitCharacter = function(vm, evt) {
     TimeUtils.animeQueue.push(new AnimeObject(null, 'SE', "Slash3"));
     BattleUtils.projectileAttack(vm.src, evt, $gameVariables[0].fireProjectileInfo.item);
@@ -5571,13 +5588,13 @@
   }
 
   Projectile_Item.prototype.hitDoor = function(vm) {
-    let lastPos = this.calcLastPosition(vm);
     TimeUtils.animeQueue.push(new AnimeObject(null, 'SE', "Sword1"));
     if ($gameVariables[$gameMap._mapId].mapData[vm._x][vm._y].isVisible) {
       LogUtils.addLog(String.format(Message.display('throwItemHitObstacle')
         , ItemUtils.getItemDisplayName($gameVariables[0].fireProjectileInfo.item)));
     }
-    Projectile_Item.checkItemBroken(vm, lastPos.x, lastPos.y);
+    // Projectile_Item.checkItemBroken(vm, lastPos.x, lastPos.y);
+    Projectile_Item.checkItemBroken(vm, this._x - this.directionX, this._y - this.directionY);
     return true;
   }
 
@@ -5585,13 +5602,9 @@
     return this.hitDoor(vm);
   }
 
-  Projectile_Item.prototype.action = function () {
-    let vanish = Game_Projectile.prototype.action.call(this);
-    if (!vanish) {
-      let direction = this.calcLastPosition(this);
-      let newX = this._x - (direction.x - this._x) * this.distance;
-      let newY = this._y - (direction.y - this._y) * this.distance;
-      Projectile_Item.checkItemBroken(this, newX, newY);
+  Projectile_Item.prototype.afterAction = function() {
+    if (!this.vanish) {
+      Projectile_Item.checkItemBroken(this, this._x, this._y);
     }
   }
 
@@ -5950,6 +5963,7 @@
     let scroll = new Scroll_Teleport();
     let realTarget = BattleUtils.getRealTarget(target);
     if (CharUtils.playerCanSeeChar(target)) {
+      this.trap.isRevealed = true;
       LogUtils.addLog(String.format(Message.display('teleportTrapTriggered'), LogUtils.getCharName(realTarget)));
     }
     scroll.onRead(target);
@@ -7102,45 +7116,6 @@
             }
             $gameSystem.createPopup(0, "", str + anime.value, anime.target);
             break;
-          case 'PROJECTILE':
-            $gameVariables[0].projectileMoving = true;
-            anime.target.distance = anime.value;
-            anime.target.distanceCount = 0;
-            let isRay = (anime.target.projectileData && anime.target.projectileData.isRay);
-            if (isRay) {
-              anime.target.shadows = [];
-            }
-            let f = function(target) {
-              if (isRay) {
-                let evt = new Game_Projectile(target, target._x, target._y);
-                let imageData = target.projectileData.imageData;
-                evt._originalPattern = imageData.pattern;
-                evt.setPattern(imageData.pattern);
-                evt._direction = imageData.direction;
-                evt.setImage(imageData.image, imageData.imageIndex);
-                target.shadows.push(evt);
-              }
-              target.moveFunc(target.param1, target.param2);
-              target.distanceCount++;
-              if (target.distanceCount > target.distance) {
-                $gameVariables[0].projectileMoving = false;
-                if (isRay) {
-                  for (let i = 0; i < target.shadows.length; i++) {
-                    let evt = target.shadows[i];
-                    evt.setPosition(-10, -10);
-                    $gameMap._events[evt._eventId] = null;
-                    $dataMap.events[evt._eventId] = null;
-                  }
-                }
-                target.setPosition(-10, -10);
-                $gameMap._events[target._eventId] = null;
-                $dataMap.events[target._eventId] = null;
-                return;
-              }
-              setTimeout(f, 50, target);
-            }
-            f(anime.target);
-            break;
           case 'SE':
             AudioManager.playSe({name: anime.value, pan: 0, pitch: 100, volume: 100});
             break;
@@ -7370,7 +7345,7 @@
     } else {
       for (let id in $gameMap._events) {
         let evt = $gameMap._events[id];
-        if (evt && (evt.type == 'MOB' || evt.type == 'BOLDER') && evt.mob == realTarget) {
+        if (evt && evt.mob == realTarget) {
           return evt;
         }
       }
@@ -13870,7 +13845,7 @@
       for (let id in $gameMap._events) {
         let evt = $gameMap._events[id];
         if (evt && evt.type == 'MOB' && MapUtils.getDistance(evt._x, evt._y, $gamePlayer._x, $gamePlayer._y) <= 10) {
-          evt.mob.status.afraidEffect.turns = SkillUtils.getDebuffEffectCount(user, 20);
+          evt.mob.status.afraidEffect.turns = SkillUtils.getDebuffEffectCount(user, 10);
           TimeUtils.eventScheduler.addStatusEffect(evt, 'afraidEffect');
           if ($gameVariables[$gameMap._mapId].mapData[evt._x][evt._y].isVisible) {
             LogUtils.addLog(String.format(Message.display('monsterFlee'), evt.mob.name()));
@@ -20059,6 +20034,20 @@
       for (let i = 0; i < materials.length; i++) {
         this.drawItemName(new materials[i].itemClass(), 0, this.lineHeight() * (i + 1), 312, materials[i].amount);
       }
+
+      // draw inventory materials
+      let line = materials.length + 2;
+      this.drawTextEx('現有材料:', 0, this.lineHeight() * line);
+      let inventory = $gameParty.allItems();
+      for (let i = 0; i < materials.length; i++) {
+        let amount = 0;
+        for (let j = 0; j < inventory.length; j++) {
+          if (inventory[j] instanceof materials[i].itemClass) {
+            amount++;
+          }
+        }
+        this.drawItemName(new materials[i].itemClass(), 0, this.lineHeight() * (i + line + 1), 312, amount);
+      }
     }
   };
 
@@ -21143,6 +21132,10 @@
   };
 
   TouchInput._onRightButtonDown = function(event) {
+    if (!$gameVariables[0]) {
+      // game not started yet
+      return;
+    }
     var x = Graphics.pageToCanvasX(event.pageX);
     var y = Graphics.pageToCanvasY(event.pageY);
     if (Graphics.isInsideCanvas(x, y)) {
