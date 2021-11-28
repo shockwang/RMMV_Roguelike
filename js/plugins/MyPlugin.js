@@ -855,23 +855,23 @@
         '適合第一次接觸Roguelike遊戲的玩家, 以體驗遊戲玩法、流程為\n'
       + '主.\n\n'
       + '- 擁有額外的護甲強度&魔法抗性\n'
-      + '- 飢餓速度減緩30%\n'
-      + '- 獲得經驗值提升30%',
+      + '- 飢餓速度減緩40%\n'
+      + '- 獲得經驗值提升40%\n'
+      + '- 魂的掉落率增加50%\n'
+      + '- 敵人不會隨探索地圖數量逐步變強',
       normalMsg:
         '適合對Roguelike遊戲有基礎認識的玩家, 透過慎重的遊玩以及對\n'
       + '角色的培養, 就能夠穩妥的過關.',
       hardMsg:
         '適合熟悉此遊戲的玩家, 更具有挑戰性.\n\n'
-      + '- 護甲強度&魔法抗性降低30%\n'
-      + '- 獲得經驗值降低30%\n'
-      + '- 關卡頭目擁有更高的HP&MP\n'
-      + '- 敵人隨探索地圖數量逐步加強',
+      + '- 護甲強度&魔法抗性降低20%\n'
+      + '- 獲得經驗值降低20%\n'
+      + '- 關卡頭目擁有更高的HP&MP\n',
       extremeMsg:
         '適合追求極限挑戰與刺激的玩家遊玩.\n\n'
-        + '- 護甲強度&魔法抗性降低30%\n'
-        + '- 獲得經驗值降低30%\n'
+        + '- 護甲強度&魔法抗性降低20%\n'
+        + '- 獲得經驗值降低20%\n'
         + '- 關卡頭目擁有更高的HP&MP\n'
-        + '- 敵人隨探索地圖數量逐步加強\n'
         + '- 敵人隨遊戲回合逐步加強\n'
         + '- 敵人數量更多, 素材掉落機率同步降低\n'
     },
@@ -1443,7 +1443,7 @@
     let multiplier = 1;
     // check difficulty effect
     if (isPlayer && $gameVariables[0].difficulty == 'EASY') {
-      multiplier = 0.7;
+      multiplier = 0.6;
     }
 
     realTarget.nutrition -= multiplier;
@@ -1927,9 +1927,6 @@
     }
     // initialize default projectile, identify by item instance
     $gameVariables[0].defaultProjectile = null;
-
-    // show status window
-    SceneManager._scene._myWindow.show();
 
     // for test
     // for (let i = 0; i < 10; i++) {
@@ -6669,9 +6666,6 @@
             break;
           case '.': // wait action
             TimeUtils.afterPlayerMoved();
-            break;
-          case 'v': // for test
-            SceneManager.push(Scene_Difficulty);
             break;
         }
       } else if (moveStatus == 1) {
@@ -13882,10 +13876,10 @@
     // check difficulty effect
     switch ($gameVariables[0].difficulty) {
       case 'EASY':
-        result *= 1.3;
+        result *= 1.4;
         break;
       case 'HARD': case 'EXTREME':
-        result *= 0.7;
+        result *= 0.8;
         break;
     }
     return result;
@@ -17194,7 +17188,12 @@
 
     // drop soul
     if (mobClass.soulData) {
-      if (getRandomInt(100) < mobClass.soulData.percentage) {
+      // check difficulty effect
+      let multiplier = 1;
+      if ($gameVariables[0].difficulty == 'EASY') {
+        multiplier = 1.5;
+      }
+      if (getRandomInt(100) < mobClass.soulData.percentage * multiplier) {
         this.dropSoul(window[mobClass.soulData.soulClassName]);
       }
     }
@@ -17204,7 +17203,7 @@
     // check difficulty effect
     let delta = 0;
     switch ($gameVariables[0].difficulty) {
-      case 'HARD': case 'EXTREME':
+      case 'NORMAL': case 'HARD': case 'EXTREME':
         delta = Math.floor($gameVariables[0].exploredLayerCount / 4);
         break;
     }
@@ -18963,10 +18962,10 @@
       if (this._actorId && xparamId < 2) {
         switch ($gameVariables[0].difficulty) {
           case 'EASY':
-            value += 0.1;
+            value += 0.15;
             break;
           case 'HARD': case 'EXTREME':
-            value *= 0.7;
+            value *= 0.8;
         }
       }
       return value;
@@ -21392,7 +21391,7 @@
     this.addCommand('簡單', 'easy', true);
     this.addCommand('一般', 'normal', true);
     this.addCommand('困難', 'hard', true);
-    this.addCommand('極限', 'extreme', true);
+    // this.addCommand('極限', 'extreme', true);
   }
 
   Window_DifficultyCommand.prototype.windowWidth = function() {
@@ -21450,7 +21449,7 @@
   Scene_Difficulty.prototype.createCommandWindow = function() {
     this._commandWindow = new Window_DifficultyCommand(0, this._titleWindow.height);
     this._commandWindow.setHandler('ok', this.setDifficulty.bind(this));
-    this._commandWindow.setHandler('cancel', this.popScene.bind(this));
+    // this._commandWindow.setHandler('cancel', this.popScene.bind(this));
     this._commandWindow.setHelpWindow(this._helpWindow);
     this.addWindow(this._commandWindow);
   }
