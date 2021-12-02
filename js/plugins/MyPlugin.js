@@ -3,7 +3,8 @@
 (function () {
   var MapData = function(floorId, original, x, y) {
     this.base = floorId;
-    this.bush = 0; // for hollow usage
+    // TODO: implement hollow condition
+    // this.bush = 0; // for hollow usage
     // comment those variables for storage size issue, and also not used yet
     // this.decorate1 = 0;
     // this.decorate2 = 0;
@@ -20,6 +21,80 @@
     // add for path finding
     this.x = x;
     this.y = y;
+  }
+
+  //-----------------------------------------------------------------------------------
+  // MapDataUtils
+  //
+  // MapData related methods, aims to reduce save file size.
+
+  MapDataUtils = function () {
+    throw new Error('This is a static class');
+  };
+
+  MapDataUtils.getTileIndex = function(originalTile) {
+    return tileTypeList.indexOf(originalTile);
+  }
+
+  MapDataUtils.getTileBlock = function(index) {
+    return tileTypeList[index];
+  }
+
+  // data structure: aaaabcdeeff
+  // aaaa: floorId, b: originalTileIndex, c: isExplored, d: isVisible, ee: x-axis, ff: y-axis
+  MapDataUtils.create = function(floorId, original, x, y) {
+    return y + x * 100 + MapDataUtils.getTileIndex(original) * 1000000 + floorId * 10000000;
+  }
+
+  MapDataUtils.setBase = function(mapData, baseId) {
+    return baseId * 10000000 + mapData % 10000000;
+  }
+
+  MapDataUtils.getBase = function(mapData) {
+    return Math.floor(mapData / 10000000);
+  }
+
+  MapDataUtils.setOriginalTile = function(mapData, original) {
+    let prefix = Math.floor(mapData / 10000000);
+    let postfix = Math.floor(mapData % 1000000);
+    let index = MapDataUtils.getTileIndex(original);
+    return prefix * 10000000 + index * 1000000 + postfix;
+  }
+
+  MapDataUtils.getOriginalTile = function(mapData) {
+    return MapDataUtils.getTileBlock(Math.floor(mapData % 10000000 / 1000000));
+  }
+
+  // isExplored: 0 or 1
+  MapDataUtils.setExplored = function(mapData, isExplored) {
+    let prefix = Math.floor(mapData / 1000000);
+    let postfix = Math.floor(mapData % 100000);
+    return prefix * 1000000 + isExplored * 100000 + postfix;
+  }
+
+  MapDataUtils.getExplored = function(mapData) {
+    return Math.floor(mapData % 1000000 / 100000);
+  }
+
+  // isVisible: 0 or 1
+  MapDataUtils.setVisible = function(mapData, isVisible) {
+    let prefix = Math.floor(mapData / 100000);
+    let postfix = Math.floor(mapData % 10000);
+    return prefix * 100000 + isVisible * 10000 + postfix;
+  }
+
+  MapDataUtils.getVisible = function(mapData) {
+    return Math.floor(mapData % 100000 / 10000);
+  }
+
+  // x: range 0~99
+  MapDataUtils.getX = function(mapData) {
+    return Math.floor(mapData % 10000 / 100);
+  }
+
+  // y: range 0~99
+  MapDataUtils.getY = function(mapData) {
+    return mapData % 100;
   }
 
   // data type for stairs
@@ -198,6 +273,9 @@
   var UPSTAIR = '＜';
   var DOWNSTAIR = '＞';
   var PRESS = 'Ｐ';
+
+  // should keep this list length < 10
+  var tileTypeList = [FLOOR, WALL, DOOR, WATER, LAVA, HOLLOW, UPSTAIR, DOWNSTAIR, PRESS];
 
   // ----------map constants----------
   var DungeonTiles = {
@@ -973,7 +1051,7 @@
         if (statusName == 'poisonEffect') {
           let value = 3;
           CharUtils.decreaseHp(target, value);
-          if ($gameVariables[$gameMap._mapId].mapData[event._x][event._y].isVisible) {
+          if (MapDataUtils.getVisible($gameVariables[$gameMap.mapId()].mapData[event._x][event._y])) {
             TimeUtils.animeQueue.push(new AnimeObject(event, 'POP_UP', -1 * value));
             LogUtils.addLog(String.format(Message.display('poisonDamage'), LogUtils.getCharName(target)
               , value));
@@ -983,7 +1061,7 @@
           let value = Math.round(target.mhp / 100);
           value = (value < 1) ? 1 : value;
           CharUtils.decreaseHp(target, value);
-          if ($gameVariables[$gameMap._mapId].mapData[event._x][event._y].isVisible) {
+          if (MapDataUtils.getVisible($gameVariables[$gameMap.mapId()].mapData[event._x][event._y])) {
             TimeUtils.animeQueue.push(new AnimeObject(event, 'POP_UP', -1 * value));
             LogUtils.addLog(String.format(Message.display('bleedingDamage'), LogUtils.getCharName(target)
               , value));
@@ -991,7 +1069,7 @@
           BattleUtils.checkTargetAlive(null, target, event);
         }
         if (target.status[statusName].turns == 0
-          && (event == $gamePlayer || $gameVariables[$gameMap._mapId].mapData[event._x][event._y].isVisible)) {
+          && (event == $gamePlayer || MapDataUtils.getVisible($gameVariables[$gameMap._mapId].mapData[event._x][event._y]))) {
           switch (statusName) {
             case 'afraidEffect':
               LogUtils.addLog(String.format(Message.display('recoverFromAfraid')
@@ -1125,8 +1203,8 @@
       return false;
     }
     let realTarget = BattleUtils.getRealTarget(target);
-    if (($gameVariables[$gameMap.mapId()].mapData[target._x][target._y].originalTile == WATER
-      || $gameVariables[$gameMap.mapId()].mapData[target._x][target._y].originalTile == LAVA)
+    if ((MapDataUtils.getOriginalTile($gameVariables[$gameMap.mapId()].mapData[target._x][target._y]) == WATER
+      || MapDataUtils.getOriginalTile($gameVariables[$gameMap.mapId()].mapData[target._x][target._y]) == LAVA)
       && realTarget.moveType != 2) {
       return true;
     }
@@ -1158,8 +1236,8 @@
       return false;
     }
     let mapData = $gameVariables[$gameMap.mapId()].mapData;
-    if (mapData[event._x][event._y].originalTile == WATER
-      && mapData[$gamePlayer._x][$gamePlayer._y].originalTile != WATER) {
+    if (MapDataUtils.getOriginalTile(mapData[event._x][event._y]) == WATER
+      && MapDataUtils.getOriginalTile(mapData[$gamePlayer._x][$gamePlayer._y]) != WATER) {
       return false;
     }
     return true;
@@ -1168,7 +1246,7 @@
   CharUtils.playerCanSeeChar = function(target) {
     if (target == $gamePlayer) {
       return true;
-    } else if ($gameVariables[$gameMap._mapId].mapData[target._x][target._y].isVisible
+    } else if (MapDataUtils.getVisible($gameVariables[$gameMap.mapId()].mapData[target._x][target._y])
       && CharUtils.canSee($gameActors.actor(1), BattleUtils.getRealTarget(target))) {
       return true;
     }
@@ -1179,7 +1257,8 @@
     if (x < 0 || y < 0) {
       return false;
     }
-    return $gameVariables[$gameMap._mapId].mapData[x][y].isVisible && $gameActors.actor(1).status.blindEffect.turns == 0;
+    return MapDataUtils.getVisible($gameVariables[$gameMap._mapId].mapData[x][y])
+      && $gameActors.actor(1).status.blindEffect.turns == 0;
   }
 
   CharUtils.updateHpMp = function(target) {
@@ -1349,9 +1428,9 @@
         let location, temp;
         for (let i = 0; i < maxTry; i++) {
           temp = locations[getRandomInt(locations.length)];
-          if (!MapUtils.isTileAvailableForMob(mapId, temp.x, temp.y)) {
+          if (!MapUtils.isTileAvailableForMob(mapId, MapDataUtils.getX(temp), MapDataUtils.getY(temp))) {
             continue;
-          } else if (outOfSight && temp.isVisible) {
+          } else if (outOfSight && MapDataUtils.getVisible(temp)) {
             continue;
           } else {
             location = temp;
@@ -1359,7 +1438,7 @@
           }
         }
         if (location) {
-          return new mobClass(location.x, location.y, null);
+          return new mobClass(MapDataUtils.getX(location), MapDataUtils.getY(location), null);
         } else {
           console.log('can not find location out of sight!');
         }
@@ -1371,7 +1450,7 @@
 
   CharUtils.spawnMobXy = function(mapId, x, y) {
     let pool = CharUtils.getMobPools(mapId);
-    let tileType = $gameVariables[mapId].mapData[x][y].originalTile;
+    let tileType = MapDataUtils.getOriginalTile($gameVariables[mapId].mapData[x][y]);
     let candidates = [];
     do {
       for (let id in pool) {
@@ -2189,12 +2268,13 @@
     }
     let mapData = $gameVariables[$gameMap.mapId()].mapData;
     let realSrc = BattleUtils.getRealTarget(src);
-    if ((mapData[oldX][oldY].originalTile != mapData[nowX][nowY].originalTile)
-      && (mapData[oldX][oldY].originalTile == WATER || mapData[nowX][nowY].originalTile == WATER)
+    if ((MapDataUtils.getOriginalTile(mapData[oldX][oldY]) != MapDataUtils.getOriginalTile(mapData[nowX][nowY]))
+      && (MapDataUtils.getOriginalTile(mapData[oldX][oldY]) == WATER
+      || MapDataUtils.getOriginalTile(mapData[nowX][nowY]) == WATER)
       && realSrc.moveType != 2) {
       if (CharUtils.playerCanSeeBlock(nowX, nowY)) {
         AudioManager.playSe({name: 'Water1', pan: 0, pitch: 100, volume: 100});
-        if (mapData[oldX][oldY].originalTile == WATER) {
+        if (MapDataUtils.getOriginalTile(mapData[oldX][oldY]) == WATER) {
           LogUtils.addLog(String.format(Message.display('climbOutOfWater'), LogUtils.getCharName(realSrc)));
         } else {
           LogUtils.addLog(String.format(Message.display('jumpIntoWater'), LogUtils.getCharName(realSrc)));
@@ -2369,7 +2449,7 @@
   MapUtils.isCharacterPassable = function(charEvt, x, y) {
     let realTarget = BattleUtils.getRealTarget(charEvt);
     let mapId = $gameMap.mapId();
-    let tile = $gameVariables[mapId].mapData[x][y].originalTile;
+    let tile = MapDataUtils.getOriginalTile($gameVariables[mapId].mapData[x][y]);
     // check basic (wall/secret door) tile
     let passable = MapUtils.isTilePassable(mapId, x, y, tile);
     if (!passable) {
@@ -2475,7 +2555,7 @@
           // does not count the (x, y) point
           if (!(path[i].x == x && path[i].y == y) && !(path[i].x == src._x && path[i].y == src._y)) {
             if (!MapUtils.isTilePassable($gameMap._mapId, path[i].x, path[i].y
-              , mapData[path[i].x][path[i].y].originalTile)
+              , MapDataUtils.getOriginalTile(mapData[path[i].x][path[i].y]))
               || (!noCheckBolderFlag && MapUtils.isBolderOnTile(path[i].x, path[i].y))) {
               visible = false;
               break;
@@ -2500,7 +2580,7 @@
 
         // start to check if vision blocked
         for (var i = start + 1; i < end; i++) {
-          if (!MapUtils.isTilePassable($gameMap._mapId, x, i, mapData[x][i].originalTile)
+          if (!MapUtils.isTilePassable($gameMap._mapId, x, i, MapDataUtils.getOriginalTile(mapData[x][i]))
           || (!noCheckBolderFlag && MapUtils.isBolderOnTile(x, i))) {
             visible = false;
             break;
@@ -2525,7 +2605,8 @@
 
   // this function should be called twice (src must be a Game_Event)
   function updateVisible(src, distance, x, y, mapData) {
-    mapData[x][y].isVisible = MapUtils.checkVisible(src, distance, x, y, mapData);
+    let visible = (MapUtils.checkVisible(src, distance, x, y, mapData)) ? 1 : 0;
+    mapData[x][y] = MapDataUtils.setVisible(mapData[x][y], visible);
   }
 
   function looksDifferent(mapId, rawData, x, y, tileType) {
@@ -2540,19 +2621,9 @@
   }
 
   function refineMapTile(mapId, rawData, x, y, centerTile, tileType) {
-    if (tileType == WALL || tileType == PRESS) {
+    if (tileType == WALL || tileType == PRESS || ($gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(x, y)]
+      && !$gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(x, y)].isRevealed)) {
       return centerTile;
-    }
-    if (!rawData) {
-      // create rawData
-      let mapData = $gameVariables[mapId].mapData;
-      rawData = new Array(mapData.length);
-      for (let i = 0; i < mapData.length; i++) {
-        rawData[i] = new Array(mapData[0].length);
-        for (let j = 0; j < mapData[0].length; j++) {
-          rawData[i][j] = mapData[i][j].originalTile;
-        }
-      }
     }
     let east = false, west = false, south = false, north = false;
     // check east
@@ -2719,40 +2790,31 @@
     for (var i = 0; i < mapData.length; i++) {
       mapData[i] = new Array(rawData[0].length);
       for (var j = 0; j < rawData[0].length; j++) {
-        let center = refineMapTile(mapId, rawData, i, j, $gameVariables[0].currentDungeonTiles.floorCenter, FLOOR);
-        mapData[i][j] = new MapData(center, rawData[i][j], i, j);
-      }
-    }
-
-    // deal with tile IDs
-    for (var j = 0; j < rawData[0].length; j++) {
-      for (var i = 0; i < rawData.length; i++) {
+        let center = $gameVariables[0].currentDungeonTiles.floorCenter;
+        // deal with tile IDs
         switch (rawData[i][j]) {
-          case FLOOR:
-            // skip the floor tunning
-            continue;
           case WALL:
-            mapData[i][j].base = $gameVariables[0].currentDungeonTiles.ceilingCenter;
+            center = $gameVariables[0].currentDungeonTiles.ceilingCenter;
             break;
           case DOOR:
             if ($gameVariables[mapId].secretBlocks[MapUtils.getTileIndex(i, j)]) {
-              mapData[i][j].base = $gameVariables[0].currentDungeonTiles.ceilingCenter;
+              center = $gameVariables[0].currentDungeonTiles.ceilingCenter;
             } else {
               new Game_Door(i, j);
             }
             break;
           case WATER:
-            mapData[i][j].base = refineMapTile(mapId, rawData, i, j
-              , $gameVariables[0].currentDungeonTiles.waterCenter, rawData[i][j]);
+            center = $gameVariables[0].currentDungeonTiles.waterCenter;
             break;
           case LAVA:
-            mapData[i][j].base = refineMapTile(mapId, rawData, i, j
-              , $gameVariables[0].currentDungeonTiles.lavaCenter, rawData[i][j]);
+            center = $gameVariables[0].currentDungeonTiles.lavaCenter;
             break;
           case PRESS:
-            mapData[i][j].base = pressFloor;
+            center = pressFloor;
             break;
         }
+        let tile = refineMapTile(mapId, rawData, i, j, center, rawData[i][j]);
+        mapData[i][j] = MapDataUtils.create(tile, rawData[i][j], i, j);
       }
     }
 
@@ -2792,17 +2854,17 @@
     var warFogOffset = mapSize * 4;
     for (var j = 0; j < mapData[0].length; j++) {
       for (var i = 0; i < mapData.length; i++) {
-        if (mapData[i][j].isVisible || mapData[i][j].isExplored) {
-          mapArray[index] = mapData[i][j].base;
-          mapData[i][j].isExplored = true;
-          if (mapData[i][j].isVisible) {
+        if (MapDataUtils.getVisible(mapData[i][j]) || MapDataUtils.getExplored(mapData[i][j])) {
+          mapArray[index] = MapDataUtils.getBase(mapData[i][j]);
+          mapData[i][j] = MapDataUtils.setExplored(mapData[i][j], 1);
+          if (MapDataUtils.getVisible(mapData[i][j])) {
             // update item piles
             mapArray[itemOffset + index] = 0;
             // update hollow
-            mapArray[hollowOffset + index] = mapData[i][j].bush;
+            // mapArray[hollowOffset + index] = mapData[i][j].bush;
           }
         }
-        if (!mapData[i][j].isVisible && mapData[i][j].isExplored) {
+        if (!MapDataUtils.getVisible(mapData[i][j]) && MapDataUtils.getExplored(mapData[i][j])) {
           mapArray[warFogOffset + index] = warFogCenter;
         }
         index++;
@@ -2812,9 +2874,9 @@
     // draw doors
     for (var i in $gameMap.events()) {
       var event = $gameMap.events()[i];
-      if (event instanceof Game_Door && mapData[event._x][event._y].isExplored) {
+      if (event instanceof Game_Door && MapDataUtils.getExplored(mapData[event._x][event._y])) {
         var index = stairOffset + event._y * mapData.length + event._x;
-        if (mapData[event._x][event._y].isVisible) {
+        if (MapDataUtils.getVisible(mapData[event._x][event._y])) {
           mapArray[index] = (event.status == 2) ? doorOpenedIcon : doorClosedIcon;
           event.lastStatus = event.status;
         } else {
@@ -2839,7 +2901,7 @@
   }
 
   MapUtils.drawMob = function(mapData, event) {
-    if (mapData[event._x][event._y].isVisible) {
+    if (MapDataUtils.getVisible(mapData[event._x][event._y])) {
       if (event.mob.status.invisibleEffect.turns > 0 || CharUtils.isCharInWater(event)) {
         if (CharUtils.playerCanSeeChar(event)) {
           event.setOpacity(128);
@@ -2863,7 +2925,7 @@
         ItemUtils.updateItemPile(event);
       } else if (event.type == 'TRAP') {
         TrapUtils.drawTrap(event);
-      } else if (event._x > 0 && event._y > 0 && mapData[event._x][event._y].isVisible) {
+      } else if (event._x > 0 && event._y > 0 && MapDataUtils.getVisible(mapData[event._x][event._y])) {
         if (event.type == 'MOB') { // mob
           MapUtils.drawMob(mapData, event);
         } else if (event.type == 'AURA') {
@@ -3008,7 +3070,7 @@
       occupied = true;
     }
     var tileAvailable = false;
-    if (MapUtils.isTilePassable(mapId, x, y, $gameVariables[mapId].mapData[x][y].originalTile)) {
+    if (MapUtils.isTilePassable(mapId, x, y, MapDataUtils.getOriginalTile($gameVariables[mapId].mapData[x][y]))) {
       tileAvailable = true;
     }
     return !occupied && tileAvailable;
@@ -3146,13 +3208,21 @@
   }
 
   MapUtils.updateAdjacentTiles = function(centerX, centerY) {
-    let currentMapData = $gameVariables[$gameMap._mapId].mapData;
+    let currentMapData = $gameVariables[$gameMap.mapId()].mapData;
+    // create raw data
+    let rawData = new Array(currentMapData.length);
+    for (let i = 0; i < currentMapData.length; i++) {
+      rawData[i] = new Array(currentMapData[0].length);
+      for (let j = 0; j < currentMapData[0].length; j++) {
+        rawData[i][j] = MapDataUtils.getOriginalTile(currentMapData[i][j]);
+      }
+    }
     for (let x = centerX - 1; x < centerX + 2; x++) {
       for (let y = centerY - 1; y < centerY + 2; y++) {
         if ((x >= 0 && x < currentMapData.length) && (y >= 0 && y < currentMapData[0].length)
-          && currentMapData[x][y].originalTile != WALL) {
+          && MapDataUtils.getOriginalTile(currentMapData[x][y]) != WALL) {
           let tileCenter, tileType;
-          switch (currentMapData[x][y].originalTile) {
+          switch (MapDataUtils.getOriginalTile(currentMapData[x][y])) {
             case FLOOR:
               tileCenter = $gameVariables[0].currentDungeonTiles.floorCenter;
               tileType = FLOOR;
@@ -3181,8 +3251,8 @@
               tileType = HOLLOW;
               break;
           }
-          currentMapData[x][y].base = refineMapTile($gameMap.mapId(), null
-            , x, y, tileCenter, tileType);
+          currentMapData[x][y] = MapDataUtils.setBase(currentMapData[x][y], refineMapTile($gameMap.mapId(), rawData
+          , x, y, tileCenter, tileType));
         }
       }
     }
@@ -3826,11 +3896,13 @@
           break;
         }
         let node = toExpend[id];
+        let nodeX = MapDataUtils.getX(node.mapBlock), nodeY = MapDataUtils.getY(node.mapBlock);
         for (let i = 0; i < 8; i++) {
-          let coordinate = MapUtils.getNearbyCoordinate(node.mapBlock.x, node.mapBlock.y, i);
+          let coordinate = MapUtils.getNearbyCoordinate(nodeX, nodeY, i);
           // check if node already exists
           let exists = explored.filter(function(routeData) {
-            return routeData.mapBlock.x == coordinate.x && routeData.mapBlock.y == coordinate.y;
+            return MapDataUtils.getX(routeData.mapBlock) == coordinate.x
+              && MapDataUtils.getY(routeData.mapBlock) == coordinate.y;
           })
           if (exists[0]) { // block already explored, check & update weight
             exists[0].weight = (steps < exists[0].weight) ? steps : exists[0].weight;
@@ -3867,8 +3939,10 @@
           let node = nodes[id];
           for (let id2 in nodesBefore) {
             let nodeBefore = nodesBefore[id2];
-            if (MapUtils.isNearBy(node.mapBlock.x, node.mapBlock.y, nodeAfter.mapBlock.x, nodeAfter.mapBlock.y) &&
-              MapUtils.isNearBy(node.mapBlock.x, node.mapBlock.y, nodeBefore.mapBlock.x, nodeBefore.mapBlock.y)) {
+            if (MapUtils.isNearBy(MapDataUtils.getX(node.mapBlock), MapDataUtils.getY(node.mapBlock),
+              MapDataUtils.getX(nodeAfter.mapBlock), MapDataUtils.getY(nodeAfter.mapBlock)) &&
+              MapUtils.isNearBy(MapDataUtils.getX(node.mapBlock), MapDataUtils.getY(node.mapBlock),
+              MapDataUtils.getX(nodeBefore.mapBlock), MapDataUtils.getY(nodeBefore.mapBlock))) {
               candidates.push(node);
             }
           }
@@ -3959,7 +4033,7 @@
         while (true) {
           let floor = floors[getRandomInt(floors.length)];
           // do not place item on trap that can cause position movement
-          let evts = $gameMap.eventsXy(floor.x, floor.y);
+          let evts = $gameMap.eventsXy(MapDataUtils.getX(floor), MapDataUtils.getY(floor));
           let trap;
           for (let id in evts) {
             if (evts[id].type == 'TRAP') {
@@ -3970,7 +4044,7 @@
           if (trap && trap instanceof Trap_Teleport) {
             // can not place item, do nothing
           } else {
-            ItemUtils.addItemToItemPile(floor.x, floor.y, ItemUtils.spawnItem(mapId));
+            ItemUtils.addItemToItemPile(MapDataUtils.getX(floor), MapDataUtils.getY(floor), ItemUtils.spawnItem(mapId));
             break;
           }
         }
@@ -3982,7 +4056,7 @@
     var floor = [], water = [], hollow = [];
     for (var j = 0; j < mapData[0].length; j++) {
       for (var i = 0; i < mapData.length; i++) {
-        switch (mapData[i][j].originalTile) {
+        switch (MapDataUtils.getOriginalTile(mapData[i][j])) {
           case FLOOR:
             floor.push(mapData[i][j]);
             break;
@@ -4065,7 +4139,8 @@
                 candidate = new Coordinate(stairUpData.x, stairUpData.y);
               } else {
                 let randId = getRandomInt(floors.length);
-                candidate = floors[randId];
+                let floor = floors[randId];
+                candidate = new Coordinate(MapDataUtils.getX(floor), MapDataUtils.getY(floor));
                 floors.splice(randId, 1); // remove it from candidate list
               }
               let newStair = new StairData();
@@ -4105,7 +4180,8 @@
                 candidate = new Coordinate(stairDownData.x, stairDownData.y);
               } else {
                 let randId = getRandomInt(floors.length);
-                candidate = floors[randId];
+                let floor = floors[randId];
+                candidate = new Coordinate(MapDataUtils.getX(floor), MapDataUtils.getY(floor));
                 floors.splice(randId, 1); // remove it from candidate list
               }
               let newStair = new StairData();
@@ -4240,10 +4316,11 @@
       moved = true;
     } else if (actor.status.blindEffect.turns > 0) {
       let coordinate = Input.getNextCoordinate($gamePlayer, d.toString());
-      if (!$gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].isExplored) {
-        $gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].isExplored = true;
+      if (!MapDataUtils.getExplored($gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y])) {
+        $gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y]
+          = MapDataUtils.setExplored($gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y], 1);
         let format;
-        if ($gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].originalTile == DOOR) {
+        if (MapDataUtils.getOriginalTile($gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y]) == DOOR) {
           MapUtils.drawDoorWhenBlind(coordinate.x, coordinate.y);
           format = Message.display('bumpDoor');
         } else {
@@ -4311,9 +4388,10 @@
         }
       }
       let coordinate = Input.getNextCoordinate($gamePlayer, d.toString());
-      if (!$gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].isExplored) {
-        $gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].isExplored = true;
-        if ($gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].originalTile == DOOR) {
+      if (!MapDataUtils.getExplored($gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y])) {
+        $gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y]
+          = MapDataUtils.setExplored($gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y], 1);
+        if (MapDataUtils.getOriginalTile($gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y]) == DOOR) {
           MapUtils.drawDoorWhenBlind(coordinate.x, coordinate.y);
           format = Message.display('bumpDoor');
         } else {
@@ -4356,12 +4434,12 @@
       // check mob moveType
       switch (this.mob.moveType) {
         case 0:
-          if ($gameVariables[$gameMap.mapId()].mapData[x2][y2].originalTile == HOLLOW) {
+          if (MapDataUtils.getOriginalTile($gameVariables[$gameMap.mapId()].mapData[x2][y2]) == HOLLOW) {
             return false;
           }
           break;
         case 1:
-          if ($gameVariables[$gameMap.mapId()].mapData[x2][y2].originalTile != WATER) {
+          if (MapDataUtils.getOriginalTile($gameVariables[$gameMap.mapId()].mapData[x2][y2]) != WATER) {
             return false;
           }
           break;
@@ -4452,7 +4530,7 @@
     var y2 = $gameMap.roundYWithDirection(y, vert);
     if ($gameVariables[$gameMap.mapId()].mapData) { // map generated
       var mapData = $gameVariables[$gameMap.mapId()].mapData;
-      if (MapUtils.isTilePassable($gameMap.mapId(), x2, y2, mapData[x2][y2].originalTile)) {
+      if (MapUtils.isTilePassable($gameMap.mapId(), x2, y2, MapDataUtils.getOriginalTile(mapData[x2][y2]))) {
         // check if there's event on target tile which priority is as same as player
         var canPass = true;
         for (var i = 0; i < $gameMap.events().length; i++) {
@@ -4470,12 +4548,12 @@
           // check mob moveType
           switch (this.mob.moveType) {
             case 0:
-              if ($gameVariables[$gameMap.mapId()].mapData[x2][y2].originalTile == HOLLOW) {
+              if (MapDataUtils.getOriginalTile($gameVariables[$gameMap.mapId()].mapData[x2][y2]) == HOLLOW) {
                 return false;
               }
               break;
             case 1:
-              if ($gameVariables[$gameMap.mapId()].mapData[x2][y2].originalTile != WATER) {
+              if (MapDataUtils.getOriginalTile($gameVariables[$gameMap.mapId()].mapData[x2][y2]) != WATER) {
                 return false;
               }
               break;
@@ -4535,7 +4613,7 @@
           break;
       }
       if (MapUtils.isTilePassable($gameMap.mapId(), x, y
-        , $gameVariables[$gameMap.mapId()].mapData[x][y].originalTile)) {
+        , MapDataUtils.getOriginalTile($gameVariables[$gameMap.mapId()].mapData[x][y]))) {
         return true;
       }
       return false;
@@ -4699,7 +4777,7 @@
       return;
     }
     // check if hit specific tile
-    switch (mapData[this._x][this._y].originalTile) {
+    switch (MapDataUtils.getOriginalTile(mapData[this._x][this._y])) {
       case WATER:
         this.hitWater();
         break;
@@ -4727,7 +4805,7 @@
   Bolder.prototype.hitWater = function() {
     let mapData = $gameVariables[$gameMap.mapId()].mapData;
     // change tile to floor
-    mapData[this._x][this._y].originalTile = FLOOR;
+    MapDataUtils.setOriginalTile(mapData[this._x][this._y], FLOOR);
     MapUtils.updateAdjacentTiles(this._x, this._y);
     // remove bolder
     this.setPosition(-10, -10);
@@ -4815,7 +4893,7 @@
     // cool lava down to foor
     let mapData = $gameVariables[$gameMap.mapId()].mapData;
     // change tile to floor
-    mapData[this._x][this._y].originalTile = FLOOR;
+    MapDataUtils.setOriginalTile(mapData[this._x][this._y], FLOOR);
     MapUtils.updateAdjacentTiles(this._x, this._y);
     // remove bolder
     this.setPosition(-10, -10);
@@ -4832,7 +4910,7 @@
     // melt and fill pit to water hole
     // change tile to floor
     let mapData = $gameVariables[$gameMap.mapId()].mapData;
-    mapData[this._x][this._y].originalTile = WATER;
+    MapDataUtils.setOriginalTile(mapData[this._x][this._y], WATER);
     MapUtils.updateAdjacentTiles(this._x, this._y);
     // remove ground hole trap
     trap.setPosition(-10, -10);
@@ -5299,7 +5377,7 @@
           }
         }
         // hit wall
-        if (!vm.vanish && $gameVariables[$gameMap._mapId].mapData[vm._x][vm._y].originalTile == WALL) {
+        if (!vm.vanish && MapDataUtils.getOriginalTile($gameVariables[$gameMap._mapId].mapData[vm._x][vm._y]) == WALL) {
           vm.vanish = vm.hitWall(vm);
         }
         if (vm.vanish) {
@@ -5382,7 +5460,7 @@
   Projectile_Potion.prototype.createProjectile = function(src, x, y) {
     let projectile = new Projectile_Potion(src, x, y);
     projectile.mob._name = ItemUtils.getItemDisplayName($gameVariables[0].fireProjectileInfo.item);
-    if ($gameVariables[$gameMap._mapId].mapData[src._x][src._y].isVisible) {
+    if (MapDataUtils.getVisible($gameVariables[$gameMap._mapId].mapData[src._x][src._y])) {
       let realSrc = BattleUtils.getRealTarget(src);
       LogUtils.addLog(String.format(Message.display('throwItem'), LogUtils.getCharName(realSrc)
         , ItemUtils.getItemDisplayName($gameVariables[0].fireProjectileInfo.item)));
@@ -5400,7 +5478,7 @@
 
   Projectile_Potion.prototype.hitCharacter = function(vm, evt) {
     TimeUtils.animeQueue.push(new AnimeObject(null, 'SE', "Crash"));
-    if ($gameVariables[$gameMap._mapId].mapData[vm._x][vm._y].isVisible) {
+    if (MapDataUtils.getVisible($gameVariables[$gameMap._mapId].mapData[vm._x][vm._y])) {
       let realTarget = BattleUtils.getRealTarget(evt);
       LogUtils.addLog(String.format(Message.display('throwPotionHit')
         , ItemUtils.getItemDisplayName($gameVariables[0].fireProjectileInfo.item)
@@ -5412,7 +5490,7 @@
 
   Projectile_Potion.prototype.hitDoor = function(vm) {
     TimeUtils.animeQueue.push(new AnimeObject(null, 'SE', "Crash"));
-    if ($gameVariables[$gameMap._mapId].mapData[vm._x][vm._y].isVisible) {
+    if (MapDataUtils.getVisible($gameVariables[$gameMap._mapId].mapData[vm._x][vm._y])) {
       LogUtils.addLog(String.format(Message.display('throwPotionCrash')
         , ItemUtils.getItemDisplayName($gameVariables[0].fireProjectileInfo.item)));
     }
@@ -5512,7 +5590,7 @@
   Projectile_Item.checkItemBroken = function(evt, x, y) {
     if (getRandomInt(100) < 90) {
       // check if hit lava
-      if ($gameVariables[$gameMap.mapId()].mapData[x][y].originalTile == LAVA) {
+      if (MapDataUtils.getOriginalTile($gameVariables[$gameMap.mapId()].mapData[x][y]) == LAVA) {
         AudioManager.playSe({name: 'Fire2', pan: 0, pitch: 100, volume: 100});
         LogUtils.addLog(String.format(Message.display('throwItemHitLava')
           , ItemUtils.getItemDisplayName($gameVariables[0].fireProjectileInfo.item)));
@@ -5547,7 +5625,7 @@
   Projectile_Item.prototype.createProjectile = function(src, x, y) {
     let projectile = new Projectile_Item(src, x, y);
     projectile.mob._name = ItemUtils.getItemDisplayName($gameVariables[0].fireProjectileInfo.item);
-    if ($gameVariables[$gameMap._mapId].mapData[src._x][src._y].isVisible) {
+    if (MapDataUtils.getVisible($gameVariables[$gameMap._mapId].mapData[src._x][src._y])) {
       let realSrc = BattleUtils.getRealTarget(src);
       LogUtils.addLog(String.format(Message.display('throwItem'), LogUtils.getCharName(realSrc)
         , ItemUtils.getItemDisplayName($gameVariables[0].fireProjectileInfo.item)));
@@ -5572,11 +5650,10 @@
 
   Projectile_Item.prototype.hitDoor = function(vm) {
     TimeUtils.animeQueue.push(new AnimeObject(null, 'SE', "Sword1"));
-    if ($gameVariables[$gameMap._mapId].mapData[vm._x][vm._y].isVisible) {
+    if (MapDataUtils.getVisible($gameVariables[$gameMap._mapId].mapData[vm._x][vm._y])) {
       LogUtils.addLog(String.format(Message.display('throwItemHitObstacle')
         , ItemUtils.getItemDisplayName($gameVariables[0].fireProjectileInfo.item)));
     }
-    // Projectile_Item.checkItemBroken(vm, lastPos.x, lastPos.y);
     Projectile_Item.checkItemBroken(vm, this._x - this.directionX, this._y - this.directionY);
     return true;
   }
@@ -5676,10 +5753,11 @@
       for (let i = 0; i < trapCounts; i++) {
         while (true) {
           let floor = floors[Math.randomInt(floors.length)];
-          if (MapUtils.isTileAvailableForMob(mapId, floor.x, floor.y)
-            && TrapUtils.canPlaceTrap(mapId, floor.x, floor.y)) {
+          let floorX = MapDataUtils.getX(floor), floorY = MapDataUtils.getY(floor);
+          if (MapUtils.isTileAvailableForMob(mapId, floorX, floorY)
+            && TrapUtils.canPlaceTrap(mapId, floorX, floorY)) {
             let trapType = TrapUtils.trapTemplates[Math.randomInt(TrapUtils.trapTemplates.length)];
-            new trapType(floor.x, floor.y);
+            new trapType(floorX, floorY);
             break;
           }
         }
@@ -5715,7 +5793,7 @@
     // check if target in the water
     let realTarget = BattleUtils.getRealTarget(target);
     if (CharUtils.isCharInWater(target)
-      && $gameVariables[$gameMap.mapId()].mapData[target._x][target._y].originalTile == WATER) {
+      && MapDataUtils.getOriginalTile($gameVariables[$gameMap.mapId()].mapData[target._x][target._y]) == WATER) {
       realTarget.status.wetEffect.turns = 10;
       TimeUtils.eventScheduler.addStatusEffect(target, 'wetEffect');
       // check if target adapts water
@@ -5727,7 +5805,7 @@
       }
     }
     // check if target in the lava
-    if ($gameVariables[$gameMap.mapId()].mapData[target._x][target._y].originalTile == LAVA
+    if (MapDataUtils.getOriginalTile($gameVariables[$gameMap.mapId()].mapData[target._x][target._y]) == LAVA
       && realTarget.moveType != 2) {
       let baseDamage = 40;
       if (realTarget.status.wetEffect.turns > 0) {
@@ -5798,10 +5876,10 @@
   }
 
   TrapUtils.drawTrap = function(event) {
-    if (event.trap.isRevealed && $gameVariables[$gameMap._mapId].mapData[event._x][event._y].isExplored) {
+    if (event.trap.isRevealed && MapDataUtils.getExplored($gameVariables[$gameMap._mapId].mapData[event._x][event._y])) {
       let imageData = event.trap.imageData;
       let opacity;
-      if ($gameVariables[$gameMap._mapId].mapData[event._x][event._y].isVisible) {
+      if (MapDataUtils.getVisible($gameVariables[$gameMap._mapId].mapData[event._x][event._y])) {
         opacity = 255;
       } else {
         opacity = 128;
@@ -5812,10 +5890,10 @@
   }
 
   TrapUtils.canPlaceTrap = function(mapId, x, y) {
-    if ((!MapUtils.isTilePassable(mapId, x - 1, y, $gameVariables[mapId].mapData[x - 1][y].originalTile)
-      && !MapUtils.isTilePassable(mapId, x + 1, y, $gameVariables[mapId].mapData[x + 1][y].originalTile))
-      || (!MapUtils.isTilePassable(mapId, x, y - 1, $gameVariables[mapId].mapData[x][y - 1].originalTile)
-      && !MapUtils.isTilePassable(mapId, x, y + 1, $gameVariables[mapId].mapData[x][y + 1].originalTile))) {
+    if ((!MapUtils.isTilePassable(mapId, x - 1, y, MapDataUtils.getOriginalTile($gameVariables[mapId].mapData[x - 1][y]))
+      && !MapUtils.isTilePassable(mapId, x + 1, y, MapDataUtils.getOriginalTile($gameVariables[mapId].mapData[x + 1][y])))
+      || (!MapUtils.isTilePassable(mapId, x, y - 1, MapDataUtils.getOriginalTile($gameVariables[mapId].mapData[x][y - 1]))
+      && !MapUtils.isTilePassable(mapId, x, y + 1, MapDataUtils.getOriginalTile($gameVariables[mapId].mapData[x][y + 1])))) {
       return false;
     }
     return true;
@@ -6495,7 +6573,7 @@
               let realSrc = BattleUtils.getRealTarget(character);
               CharUtils.decreaseTp(realSrc, attackTpCost);
               realSrc.attacked = true;
-              let originalTile = $gameVariables[$gameMap.mapId()].mapData[x][y].originalTile;
+              let originalTile = MapDataUtils.getOriginalTile($gameVariables[$gameMap.mapId()].mapData[x][y]);
               if (originalTile == WALL) {
                 let damage = dice(1, 4);
                 CharUtils.decreaseHp(realSrc, damage);
@@ -6627,7 +6705,7 @@
                 // TODO: implement search success probability
                 if (Math.random() < 0.2) {
                   $gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(coordinate.x, coordinate.y)].isRevealed = true;
-                  if ($gameVariables[$gameMap._mapId].mapData[coordinate.x][coordinate.y].originalTile == DOOR) {
+                  if (MapDataUtils.getOriginalTile($gameVariables[$gameMap._mapId].mapData[coordinate.x][coordinate.y]) == DOOR) {
                     MapUtils.updateAdjacentTiles(coordinate.x, coordinate.y);
                     new Game_Door(coordinate.x, coordinate.y);
                     LogUtils.addLog(Message.display('secretDoorDiscovered'));
@@ -7208,7 +7286,7 @@
           // check door/secretDoor tutorial
           for (let i = 0; i < 8; i++) {
             let coordinate = MapUtils.getNearbyCoordinate($gamePlayer._x, $gamePlayer._y, i);
-            if ($gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].originalTile == DOOR) {
+            if (MapDataUtils.getOriginalTile($gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y]) == DOOR) {
               if ($gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(coordinate.x, coordinate.y)]
                 && !$gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(coordinate.x, coordinate.y)].isRevealed) {
                 TimeUtils.tutorialHandler.queue.push('secretDoor');
@@ -7788,7 +7866,7 @@
 
   ItemUtils.addItemToItemPile = function (x, y, item) {
     // check if hit lava
-    if ($gameVariables[$gameMap.mapId()].mapData[x][y].originalTile == LAVA) {
+    if (MapDataUtils.getOriginalTile($gameVariables[$gameMap.mapId()].mapData[x][y]) == LAVA) {
       AudioManager.playSe({name: 'Fire2', pan: 0, pitch: 100, volume: 100});
       LogUtils.addLog(String.format(Message.display('throwItemHitLava')
         , ItemUtils.getItemDisplayName(item)));
@@ -8117,7 +8195,7 @@
 
   ItemUtils.updateItemPile = function(event) {
     let erased = false;
-    if ($gameVariables[$gameMap._mapId].mapData[event._x][event._y].isVisible
+    if (MapDataUtils.getVisible($gameVariables[$gameMap._mapId].mapData[event._x][event._y])
       && CharUtils.playerCanSeeItemPile(event)) {
       if (event.itemPile.objectStack.length == 0) {
         $gameMap._events[event._eventId] = null;
@@ -13672,7 +13750,8 @@
     let floor = null;
     while (true) {
       floor = positions[Math.randomInt(positions.length)];
-      if (MapUtils.isTileAvailableForMob($gameMap._mapId, floor.x, floor.y) && (floor.x != user._x && floor.y != user._y)) {
+      if (MapUtils.isTileAvailableForMob($gameMap._mapId, MapDataUtils.getX(floor), MapDataUtils.getY(floor))
+        && (MapDataUtils.getX(floor) != user._x && MapDataUtils.getY(floor) != user._y)) {
         break;
       }
     }
@@ -13681,14 +13760,14 @@
     if (user != $gamePlayer && CharUtils.playerCanSeeChar(user)) {
       LogUtils.addLog(String.format(Message.display('seeTeleportAway'), LogUtils.getCharName(realUser)));
     }
-    if ($gameVariables[$gameMap._mapId].mapData[user._x][user._y].isVisible) {
+    if (MapDataUtils.getVisible($gameVariables[$gameMap._mapId].mapData[user._x][user._y])) {
       AudioManager.playSe({name: "Run", pan: 0, pitch: 100, volume: 100});
     }
 
-    user.setPosition(floor.x, floor.y);
+    user.setPosition(MapDataUtils.getX(floor), MapDataUtils.getY(floor));
     realUser.status.groundHoleTrapped = false;
     if (user == $gamePlayer) {
-      $gamePlayer.center(floor.x, floor.y);
+      $gamePlayer.center(MapDataUtils.getX(floor), MapDataUtils.getY(floor));
       LogUtils.addLog(Message.display('scrollTeleportRead'));
     }
     MapUtils.refreshMap();
@@ -13779,7 +13858,7 @@
       while (blocks.length > 0) {
         let id = getRandomInt(blocks.length);
         let floor = blocks[id];
-        if (MapUtils.isTileAvailableForMob($gameMap.mapId(), floor.x, floor.y)) {
+        if (MapUtils.isTileAvailableForMob($gameMap.mapId(), MapDataUtils.getX(floor), MapDataUtils.getY(floor))) {
           targetFloor = floor;
           break;
         } else {
@@ -13787,7 +13866,7 @@
         }
       }
       if (targetFloor) {
-        CharUtils.spawnMobXy($gameMap.mapId(), targetFloor.x, targetFloor.y);
+        CharUtils.spawnMobXy($gameMap.mapId(), MapDataUtils.getX(targetFloor), MapDataUtils.getY(targetFloor));
         MapUtils.refreshMap();
         msg = Message.display('scrollCreateMonsterRead');
         if (identifyObject) {
@@ -13830,7 +13909,7 @@
         if (evt && evt.type == 'MOB' && MapUtils.getDistance(evt._x, evt._y, $gamePlayer._x, $gamePlayer._y) <= 10) {
           evt.mob.status.afraidEffect.turns = SkillUtils.getDebuffEffectCount(user, 10);
           TimeUtils.eventScheduler.addStatusEffect(evt, 'afraidEffect');
-          if ($gameVariables[$gameMap._mapId].mapData[evt._x][evt._y].isVisible) {
+          if (MapDataUtils.getVisible($gameVariables[$gameMap._mapId].mapData[evt._x][evt._y])) {
             LogUtils.addLog(String.format(Message.display('monsterFlee'), evt.mob.name()));
             seeMonsterScared = true;
           }
@@ -15018,8 +15097,7 @@
           }
         } else {
           // check if bump into wall
-          if ($gameVariables[$gameMap._mapId]
-            .mapData[checkX][checkY].originalTile == WALL) {
+          if (MapDataUtils.getOriginalTile($gameVariables[$gameMap._mapId].mapData[checkX][checkY]) == WALL) {
             let value = dice(1, 10);
             TimeUtils.animeQueue.push(new AnimeObject(src, 'ANIME', 2));
             TimeUtils.animeQueue.push(new AnimeObject(src, 'POP_UP', value * -1));
@@ -15063,7 +15141,7 @@
             // check if bump into a secret door
             if ($gameVariables[$gameMap.mapId()].secretBlocks[MapUtils.getTileIndex(checkX, checkY)]
             && !$gameVariables[$gameMap.mapId()].secretBlocks[MapUtils.getTileIndex(checkX, checkY)].isRevealed
-            && $gameVariables[$gameMap.mapId()].mapData[checkX][checkY].originalTile == DOOR) {
+            && MapDataUtils.getOriginalTile($gameVariables[$gameMap.mapId()].mapData[checkX][checkY]) == DOOR) {
               // secret door discovered
               $gameVariables[$gameMap.mapId()].secretBlocks[MapUtils.getTileIndex(checkX, checkY)].isRevealed = true;
               MapUtils.updateAdjacentTiles(checkX, checkY);
@@ -16189,7 +16267,7 @@
       return evt.type == 'DOOR';
     })[0];
     let mapId = $gameMap.mapId();
-    if (!MapUtils.isTilePassable(mapId, x, y, $gameVariables[mapId].mapData[x][y].originalTile)
+    if (!MapUtils.isTilePassable(mapId, x, y, MapDataUtils.getOriginalTile($gameVariables[mapId].mapData[x][y]))
       || (doorEvt && doorEvt.status == 1)) {
       MapUtils.addBothLog(Message.display('scrollReadNoEffect'));
       return true;
@@ -16264,7 +16342,7 @@
           if (i < 0 || i >= $gameMap.width() || j < 0 || j >= $gameMap.height()) {
             continue;
           }
-          let tile = $gameVariables[$gameMap.mapId()].mapData[i][j].originalTile;
+          let tile = MapDataUtils.getOriginalTile($gameVariables[$gameMap.mapId()].mapData[i][j]);
           if (tile == FLOOR && MapUtils.isTilePassable($gameMap.mapId(), i, j, tile)) {
             Terrain_DarkFire.generate(i, j);
           }
@@ -16348,7 +16426,7 @@
           }
           BattleUtils.checkTargetAlive(realSrc, realTarget, target);
         }
-        let tile = $gameVariables[$gameMap.mapId()].mapData[i][j].originalTile;
+        let tile = MapDataUtils.getOriginalTile($gameVariables[$gameMap.mapId()].mapData[i][j]);
         if (tile == FLOOR && MapUtils.isTilePassable($gameMap.mapId(), i, j, tile)) {
           Terrain_DarkFire.generate(i, j);
         }
@@ -16717,7 +16795,7 @@
       MapUtils.refreshMap();
     }
     // fire can not burn under water
-    if ($gameVariables[$gameMap.mapId()].mapData[src._x][src._y].originalTile == WATER) {
+    if (MapDataUtils.getOriginalTile($gameVariables[$gameMap.mapId()].mapData[src._x][src._y]) == WATER) {
       return;
     }
     let terrainEvt = new Terrain_Fire(src._x, src._y);
@@ -16922,9 +17000,9 @@
                 if (path) {
                   // add this to prevent corner hit-and-wait
                   let keepDistance = window[this.constructor.name].keepDistance;
-                  if (!keepDistance || MapUtils.getDistance(path[0].mapBlock.x, path[0].mapBlock.y
-                    , $gamePlayer._x, $gamePlayer._y) > keepDistance) {
-                    this.moveTowardPosition(path[0].mapBlock.x, path[0].mapBlock.y);
+                  if (!keepDistance || MapUtils.getDistance(MapDataUtils.getX(path[0].mapBlock)
+                    , MapDataUtils.getY(path[0].mapBlock), $gamePlayer._x, $gamePlayer._y) > keepDistance) {
+                    this.moveTowardPosition(MapDataUtils.getX(path[0].mapBlock), MapDataUtils.getY(path[0].mapBlock));
                   }
                 } else {
                   this.moveTowardCharacter($gamePlayer);
@@ -17007,9 +17085,9 @@
     for (var i = 0; i < 8; i++) {
       var coordinate = MapUtils.getNearbyCoordinate(this._x, this._y, i);
       if (!MapUtils.isTilePassable($gameMap.mapId(), coordinate.x, coordinate.y
-        , mapData[coordinate.x][coordinate.y].originalTile)
-        || (mapData[coordinate.x][coordinate.y].originalTile == LAVA && this.mob.moveType != 2)
-        || (mapData[coordinate.x][coordinate.y].originalTile == HOLLOW && this.mob.moveType != 2)) {
+        , MapDataUtils.getOriginalTile(mapData[coordinate.x][coordinate.y]))
+        || (MapDataUtils.getOriginalTile(mapData[coordinate.x][coordinate.y]) == LAVA && this.mob.moveType != 2)
+        || (MapDataUtils.getOriginalTile(mapData[coordinate.x][coordinate.y]) == HOLLOW && this.mob.moveType != 2)) {
         continue;
       }
       var distance = MapUtils.getDistance(coordinate.x, coordinate.y, character._x, character._y);
@@ -17059,11 +17137,13 @@
       // explore from point & update weight
       for (let id in toExpend) {
         let node = toExpend[id];
+        let nodeX = MapDataUtils.getX(node.mapBlock), nodeY = MapDataUtils.getY(node.mapBlock);
         for (let i = 0; i < 8; i++) {
-          let coordinate = MapUtils.getNearbyCoordinate(node.mapBlock.x, node.mapBlock.y, i);
+          let coordinate = MapUtils.getNearbyCoordinate(nodeX, nodeY, i);
           // check if node already exists
           let exists = explored.filter(function(routeData) {
-            return routeData.mapBlock.x == coordinate.x && routeData.mapBlock.y == coordinate.y;
+            return MapDataUtils.getX(routeData.mapBlock) == coordinate.x
+              && MapDataUtils.getY(routeData.mapBlock) == coordinate.y;
           })
           if (exists[0]) { // block already explored, check & update weight
             exists[0].weight = (steps < exists[0].weight) ? steps : exists[0].weight;
@@ -17102,8 +17182,10 @@
           let node = nodes[id];
           for (let id2 in nodesBefore) {
             let nodeBefore = nodesBefore[id2];
-            if (MapUtils.isNearBy(node.mapBlock.x, node.mapBlock.y, nodeAfter.mapBlock.x, nodeAfter.mapBlock.y) &&
-              MapUtils.isNearBy(node.mapBlock.x, node.mapBlock.y, nodeBefore.mapBlock.x, nodeBefore.mapBlock.y)) {
+            if (MapUtils.isNearBy(MapDataUtils.getX(node.mapBlock), MapDataUtils.getY(node.mapBlock)
+              , MapDataUtils.getX(nodeAfter.mapBlock), MapDataUtils.getY(nodeAfter.mapBlock)) &&
+              MapUtils.isNearBy(MapDataUtils.getX(node.mapBlock), MapDataUtils.getY(node.mapBlock)
+              , MapDataUtils.getX(nodeBefore.mapBlock), MapDataUtils.getY(nodeBefore.mapBlock))) {
               candidates.push(node);
             }
           }
@@ -17111,7 +17193,7 @@
         path.push(candidates[getRandomInt(candidates.length)]);
       }
       path.reverse();
-      this.moveTowardPosition(path[0].mapBlock.x, path[0].mapBlock.y);
+      this.moveTowardPosition(MapDataUtils.getX(path[0].mapBlock), MapDataUtils.getY(path[0].mapBlock));
       return true;
     }
     return false;
@@ -17129,7 +17211,7 @@
     for (let i = 0; i < 8; i++) {
       let coordinate = MapUtils.getNearbyCoordinate(this._x, this._y, i);
       if (MapUtils.isTilePassable($gameMap.mapId(), coordinate.x, coordinate.y
-        , $gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y].originalTile)
+        , MapDataUtils.getOriginalTile($gameVariables[$gameMap.mapId()].mapData[coordinate.x][coordinate.y]))
         && !MapUtils.getCharXy(coordinate.x, coordinate.y)
         && CharUtils.checkTargetReachable(character, {_x: coordinate.x, _y: coordinate.y})) {
         let distance = MapUtils.getDistance(coordinate.x, coordinate.y, character._x, character._y);
