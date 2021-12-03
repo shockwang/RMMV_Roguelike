@@ -4667,6 +4667,15 @@
     return false;
   };
 
+  // modify this to prevent null exception when loading $dataMap
+  Game_Map.prototype.width = function() {
+    return ($dataMap) ? $dataMap.width : $gameVariables[$gameMap.mapId()].rmDataMap.width;
+  };
+
+  Game_Map.prototype.height = function() {
+    return ($dataMap) ? $dataMap.height : $gameVariables[$gameMap.mapId()].rmDataMap.height;
+  };
+
   function cloneObject(obj) {
     return JSON.parse(JSON.stringify(obj));
   }
@@ -4805,7 +4814,7 @@
   Bolder.prototype.hitWater = function() {
     let mapData = $gameVariables[$gameMap.mapId()].mapData;
     // change tile to floor
-    MapDataUtils.setOriginalTile(mapData[this._x][this._y], FLOOR);
+    mapData[this._x][this._y] = MapDataUtils.setOriginalTile(mapData[this._x][this._y], FLOOR);
     MapUtils.updateAdjacentTiles(this._x, this._y);
     // remove bolder
     this.setPosition(-10, -10);
@@ -4893,7 +4902,7 @@
     // cool lava down to foor
     let mapData = $gameVariables[$gameMap.mapId()].mapData;
     // change tile to floor
-    MapDataUtils.setOriginalTile(mapData[this._x][this._y], FLOOR);
+    mapData[this._x][this._y] = MapDataUtils.setOriginalTile(mapData[this._x][this._y], FLOOR);
     MapUtils.updateAdjacentTiles(this._x, this._y);
     // remove bolder
     this.setPosition(-10, -10);
@@ -4910,7 +4919,7 @@
     // melt and fill pit to water hole
     // change tile to floor
     let mapData = $gameVariables[$gameMap.mapId()].mapData;
-    MapDataUtils.setOriginalTile(mapData[this._x][this._y], WATER);
+    mapData[this._x][this._y] = MapDataUtils.setOriginalTile(mapData[this._x][this._y], WATER);
     MapUtils.updateAdjacentTiles(this._x, this._y);
     // remove ground hole trap
     trap.setPosition(-10, -10);
@@ -13858,7 +13867,7 @@
       while (blocks.length > 0) {
         let id = getRandomInt(blocks.length);
         let floor = blocks[id];
-        if (MapUtils.isTileAvailableForMob($gameMap.mapId(), MapDataUtils.getX(floor), MapDataUtils.getY(floor))) {
+        if (MapUtils.isTileAvailableForMob($gameMap.mapId(), floor.x, floor.y)) {
           targetFloor = floor;
           break;
         } else {
@@ -13866,7 +13875,7 @@
         }
       }
       if (targetFloor) {
-        CharUtils.spawnMobXy($gameMap.mapId(), MapDataUtils.getX(targetFloor), MapDataUtils.getY(targetFloor));
+        CharUtils.spawnMobXy($gameMap.mapId(), targetFloor.x, targetFloor.y);
         MapUtils.refreshMap();
         msg = Message.display('scrollCreateMonsterRead');
         if (identifyObject) {
@@ -20140,25 +20149,11 @@
   Window_CraftStatus.prototype.refresh = function() {
     this.contents.clear();
     if (this._item) {
-      let msg = '需要材料:';
+      let msg = '需要材料/現有材料:';
       this.drawTextEx(msg, 0, 0);
       let materials = window[this._item.constructor.name].material;
       for (let i = 0; i < materials.length; i++) {
         this.drawItemName(new materials[i].itemClass(), 0, this.lineHeight() * (i + 1), 312, materials[i].amount);
-      }
-
-      // draw inventory materials
-      let line = materials.length + 2;
-      this.drawTextEx('現有材料:', 0, this.lineHeight() * line);
-      let inventory = $gameParty.allItems();
-      for (let i = 0; i < materials.length; i++) {
-        let amount = 0;
-        for (let j = 0; j < inventory.length; j++) {
-          if (inventory[j] instanceof materials[i].itemClass) {
-            amount++;
-          }
-        }
-        this.drawItemName(new materials[i].itemClass(), 0, this.lineHeight() * (i + line + 1), 312, amount);
       }
     }
   };
@@ -20171,10 +20166,19 @@
   Window_CraftStatus.prototype.drawItemName = function(item, x, y, width, amount) {
     width = width || 312;
     if (item) {
-        var iconBoxWidth = Window_Base._iconWidth + 4;
-        this.resetTextColor();
-        this.drawIcon(item.iconIndex, x + 2, y + 2);
-        this.drawText(ItemUtils.getItemDisplayName(item) + ' x ' + amount, x + iconBoxWidth, y, width - iconBoxWidth);
+      // calculate player inventory material count
+      let inventory = $gameParty.allItems();
+      let hasAmount = 0;
+      for (let i = 0; i < inventory.length; i++) {
+        if (inventory[i].constructor.name == item.constructor.name) {
+          hasAmount++;
+        }
+      }
+      var iconBoxWidth = Window_Base._iconWidth + 4;
+      this.resetTextColor();
+      this.drawIcon(item.iconIndex, x + 2, y + 2);
+      this.drawText(ItemUtils.getItemDisplayName(item) + ' x ' + amount + '/' + hasAmount
+        , x + iconBoxWidth, y, width - iconBoxWidth);
     }
   };
 

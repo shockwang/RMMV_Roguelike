@@ -13,7 +13,7 @@ Turtle,烏龜,10,30,30,30,5,10,6,6,0,6,0,Skill_Shield.1,Turtle_Shell.25,Soul_Shi
 Bear,熊,14,20,10,10,10,5,0,0,2d3+2,6,0,Skill_Bash.1,Bear_Skin.25;Bear_Claw.25;Bear_Bone.25,Soul_Bash.10
 Lion,獅子,16,20,10,10,18,5,0,0,1d7,8,0,Skill_Roar.1,Lion_Skin.25;Lion_Tooth.25;Lion_Claw.25,Soul_Roar.10
 Buffalo,水牛,15,25,10,10,15,5,0,0,1d6,7,0,Skill_Tough.1,Buffalo_Horn.25;Buffalo_Bone.25,Soul_Tough.10
-Earth_Dragon,岩龍,18,18,18,18,10,5,16,8,1d9,10,2,Skill_Shield.3;Skill_Bash.3;Skill_RockMissile.3;Skill_RockPierce.3,EarthDragon_Tooth.25;EarthDragon_Claw.25;EarthDragon_Skin.25;EarthDragon_Bone.25,Skill_RockPierce.10
+Earth_Dragon,岩龍,18,18,18,18,10,5,16,8,1d9,10,2,Skill_Shield.3;Skill_Bash.3;Skill_RockMissile.3;Skill_RockPierce.3,EarthDragon_Tooth.25;EarthDragon_Claw.25;EarthDragon_Skin.25;EarthDragon_Bone.25,Soul_RockPierce.10
 SealKing,封印之主,35,35,35,50,35,5,20,20,2d5,15,0,Skill_DarkFireBall.3;Skill_DarkFireBlast.3;Skill_Charge.3;Skill_Bash.3;Skill_Judgement.1,,Soul_OldMemory.100
 // ice
 Slime,史萊姆,10,10,15,15,10,5,5,0,0,5,0,Skill_Acid.1;Skill_AdaptWater.3,Mucus.25;Blue_Crystal.25,Soul_Acid.10
