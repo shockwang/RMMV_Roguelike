@@ -130,6 +130,7 @@
     this.spawnMobs = true; // spawn random mobs
     this.spawnItems = true; // spawn random items
     this.bgm = null; // setup map bgm
+    this.tempBgm = null; // setup temp bgm (i.e. boss fight)
     this.dungeonLevel = 1; // determine the level difficulty
     this.stairDownNum = 1;
     this.stairUpNum = 1;
@@ -2951,6 +2952,8 @@
   }
 
   MapUtils.transferCharacter = function (character) {
+    // clear temp bgm
+    $gameVariables[$gameMap.mapId()].tempBgm = null;
     // check if this stair already exists
     var stair = null;
     var mapVariable = $gameVariables[$gameMap.mapId()];
@@ -4109,8 +4112,8 @@
         var targetMapId = ($gameVariables[0].transferInfo) ? $gameVariables[0].transferInfo.toMapId : $gameMap.mapId();
         if ($gameVariables[targetMapId].generateRandom) {
           // play background music
-          let bgm = {name: $gameVariables[targetMapId].bgm, pan: 0, pitch: 100, volume: 100};
-          AudioManager.playBgm(bgm);
+          let bgmName = ($gameVariables[targetMapId].tempBgm) ? $gameVariables[targetMapId].tempBgm : $gameVariables[targetMapId].bgm;
+          AudioManager.playBgm({name: bgmName, pan: 0, pitch: 100, volume: 100});
           if (!$gameVariables[targetMapId].mapData) {
             var nowMapId = $gameMap.mapId();
             // first time assign data
@@ -17914,6 +17917,7 @@
       $gameVariables[0].eventState.sealKingEncountered = true;
       MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.sealKingEncountered);
     } else if (AudioManager._currentBgm.name != 'Battle3') {
+      $gameVariables[$gameMap.mapId()].tempBgm = 'Battle3';
       AudioManager.playBgm({name: 'Battle3', pan: 0, pitch: 100, volume: 100});
     }
 
@@ -17986,6 +17990,8 @@
     // TODO: implements looting
     Game_Mob.prototype.looting.call(this, lootings);
     setTimeout(() => {
+      $gameVariables[$gameMap.mapId()].tempBgm = null;
+      AudioManager.playBgm({name: $gameVariables[$gameMap.mapId()].bgm, pan: 0, pitch: 100, volume: 100});
       MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.sealKingDefeated);
     }, 200);
   }
@@ -18224,6 +18230,7 @@
       $gameVariables[0].eventState.selinaEncountered = true;
       MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.selinaEncountered);
     } else if (AudioManager._currentBgm.name != 'Battle2') {
+      $gameVariables[$gameMap.mapId()].tempBgm = 'Battle2';
       AudioManager.playBgm({name: 'Battle2', pan: 0, pitch: 100, volume: 100});
     }
     if (getRandomInt(100) < 60) { // Skill_Barrier
@@ -18275,6 +18282,8 @@
     // TODO: implements looting
     Game_Mob.prototype.looting.call(this, lootings);
     setTimeout(() => {
+      $gameVariables[$gameMap.mapId()].tempBgm = null;
+      AudioManager.playBgm({name: $gameVariables[$gameMap.mapId()].bgm, pan: 0, pitch: 100, volume: 100});
       MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.selinaDefeated);
     }, 200);
   }
@@ -18591,6 +18600,7 @@
       $gameVariables[0].eventState.fireKingEncountered = true;
       MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.fireKingEncountered);
     } else if (AudioManager._currentBgm.name != 'Battle2') {
+      $gameVariables[$gameMap.mapId()].tempBgm = 'Battle2';
       AudioManager.playBgm({name: 'Battle2', pan: 0, pitch: 100, volume: 100});
     }
     if (this.performBuffIfNotPresent(this.mob._skills[3])) { // Skill_AuraFire
@@ -18636,6 +18646,8 @@
     // TODO: implements looting
     Game_Mob.prototype.looting.call(this, lootings);
     setTimeout(() => {
+      $gameVariables[$gameMap.mapId()].tempBgm = null;
+      AudioManager.playBgm({name: $gameVariables[$gameMap.mapId()].bgm, pan: 0, pitch: 100, volume: 100});
       MapUtils.playEventFromTemplate($gameVariables[0].templateEvents.fireKingDefeated);
     }, 200);
   }
@@ -19238,6 +19250,23 @@
   // Game_Party
   //
   // override this to implement item instances
+  Game_Party.sortArray = function(array) {
+    for (let i = 0; i < array.length; i++) {
+      let item = array[i];
+      for (let j = i + 1; j < array.length; j++) {
+        let toCheck = array[j];
+        if (ItemUtils.getItemFullName(item) == ItemUtils.getItemFullName(toCheck)) {
+          if (j != i + 1) {
+            // perform swap
+            let temp = array.splice(j, 1)[0];
+            array.splice(i + 1, 0, temp);
+          }
+          i++;
+        }
+      }
+    }
+  }
+
   Game_Party.prototype.initAllItems = function () {
     this._items = [];
     this._weapons = [];
@@ -19245,14 +19274,17 @@
   };
 
   Game_Party.prototype.items = function () {
+    Game_Party.sortArray(this._items);
     return this._items;
   };
 
   Game_Party.prototype.weapons = function () {
+    Game_Party.sortArray(this._weapons);
     return this._weapons;
   };
 
   Game_Party.prototype.armors = function () {
+    Game_Party.sortArray(this._armors);
     return this._armors;
   };
 
