@@ -110,6 +110,7 @@
 
   // data type for Game_ItemPile
   var ItemPile = function (x, y) {
+    this.type = 'ITEM_PILE';
     this.x = x;
     this.y = y;
     this.items = [];
@@ -117,7 +118,6 @@
     this.armors = [];
     this.objectStack = [];
     this.lastImage = {};
-    this.type = 'ITEM_PILE';
   }
 
   // data type for Game_Door
@@ -222,11 +222,16 @@
     this.lv = lv;
   }
 
-  var TrapData = function(trapClassName, x, y, relatedEventClassName) {
-    this.trapClassName = trapClassName;
+  var TrapData = function(trapClass, x, y, relatedEventClassName) {
+    this.type = 'TRAP';
+    this.trapClass = trapClass;
+    this.name = null;
+    this.imageData = null;
     this.x = x;
     this.y = y;
     this.relatedEventClassName = relatedEventClassName;
+    this.lastTriggered = null;
+    this.isRevealed = false;
   }
 
   // can not serialize
@@ -1929,8 +1934,8 @@
       monster: 3,
       door: $dataMap.events[4],
       projectile: 5,
-      itemPile: 6,
-      trap: 7,
+      itemPile: $dataMap.events[6],
+      trap: $dataMap.events[7],
       goHome: 1,
       bolder: 8,
       aura: 32,
@@ -4652,7 +4657,7 @@
           this._events[i] = new Game_ItemPile($dataMap.events[i].x, $dataMap.events[i].y, $dataMap.events[i]);
           ItemUtils.updateItemPile(this._events[i]);
         } else if ($dataMap.events[i].type == 'TRAP') {
-          this._events[i] = new window[$dataMap.events[i].trap.trapClass]($dataMap.events[i].x
+          this._events[i] = new window[$dataMap.events[i].trapClass]($dataMap.events[i].x
             , $dataMap.events[i].y, $dataMap.events[i]);
           TrapUtils.drawTrap(this._events[i]);
         } else if ($dataMap.events[i].type == 'TERRAIN') {
@@ -4688,6 +4693,10 @@
 
   Game_Map.prototype.height = function() {
     return ($dataMap) ? $dataMap.height : $gameVariables[$gameMap.mapId()].rmDataMap.height;
+  };
+
+  Game_Map.prototype.data = function() {
+    return ($dataMap) ? $dataMap.data : $gameVariables[$gameMap.mapId()].rmDataMap.data;
   };
 
   function cloneObject(obj) {
@@ -5187,7 +5196,7 @@
       }
     } else {
       // add new event at the bottom of list
-      eventId = $dataMap.events.length;
+      eventId = MapUtils.findEmptyFromList($dataMap.events);
     }
     this.initStatus(x, y);
     // store new events back to map variable
@@ -5198,6 +5207,7 @@
     this.updateDataMap();
   };
 
+  // modify this to provide general page access
   Game_Door.prototype.page = function() {
     return $gameVariables[0].templateEvents.door.pages[this._pageIndex];
   };
@@ -5758,7 +5768,7 @@
       }
     } else {
       // add new event at the bottom of list
-      eventId = $dataMap.events.length;
+      eventId = MapUtils.findEmptyFromList($dataMap.events);
     }
     this.initStatus();
     // store new events back to map variable
@@ -5767,6 +5777,11 @@
     $dataMap.events[eventId] = newDataMapEvent($gameVariables[0].templateEvents.itemPile, eventId, x, y);
     Game_Event.prototype.initialize.call(this, $gameVariables[0].transferInfo.toMapId, eventId);
     $gameMap._events[eventId] = this;
+  };
+
+  // modify this to provide general page access
+  Game_ItemPile.prototype.page = function() {
+    return $gameVariables[0].templateEvents.itemPile.pages[this._pageIndex];
   };
 
   //-----------------------------------------------------------------------------------
@@ -5784,7 +5799,7 @@
     // generate pre-defined traps
     for (let id in $gameVariables[mapId].preDefinedTraps) {
       let trapData = $gameVariables[mapId].preDefinedTraps[id];
-      let trapClass = window[trapData.trapClassName];
+      let trapClass = window[trapData.trapClass];
       let trap = new trapClass(trapData.x, trapData.y);
       if (trap instanceof Trap_PressFloor) {
         trap.trap.relatedEventClassName = trapData.relatedEventClassName;
@@ -5968,22 +5983,15 @@
   Game_Trap.prototype = Object.create(Game_Event.prototype);
   Game_Trap.prototype.constructor = Game_Trap;
 
-  Game_Trap.prototype.fromEvent = function (src, target) {
-    target.type = src.type;
-    target.x = src.x;
-    target.y = src.y;
-    target.trap = src.trap;
-  }
-
-  Game_Trap.prototype.initStatus = function (event) {
-    event.type = 'TRAP';
-    event.trap = {};
-    event.trap.lastTriggered = null;
-    event.trap.isRevealed = false;
+  Game_Trap.prototype.initStatus = function (x, y) {
+    this.type = 'TRAP';
+    if (!this.trap) {
+      this.trap = new TrapData(null, x, y, null);
+    }
   }
 
   Game_Trap.prototype.updateDataMap = function () {
-    Game_Trap.prototype.fromEvent(this, $dataMap.events[this._eventId]);
+    $dataMap.events[this._eventId] = this.trap;
   }
 
   Game_Trap.prototype.initialize = function (x, y, fromData) {
@@ -5992,26 +6000,31 @@
       for (var i = 1; i < $dataMap.events.length; i++) {
         if ($dataMap.events[i] && $dataMap.events[i] == fromData) {
           eventId = i;
-          Game_Trap.prototype.fromEvent($dataMap.events[i], this);
+          this.trap = $dataMap.events[i];
           break;
         }
       }
     } else {
       // add new event at the bottom of list
-      eventId = $dataMap.events.length;
-      $dataMap.events.push(newDataMapEvent($gameVariables[0].templateEvents.trap, eventId, x, y));
-      Game_Trap.prototype.initStatus($dataMap.events[$dataMap.events.length - 1]);
-      this.initStatus(this);
+      eventId = MapUtils.findEmptyFromList($dataMap.events);
     }
+    this.initStatus(x, y);
     // store new events back to map variable
     $gameVariables[$gameVariables[0].transferInfo.toMapId].rmDataMap = $dataMap;
+    $dataMap.events[eventId] = newDataMapEvent($gameVariables[0].templateEvents.trap, eventId, x, y);
     Game_Event.prototype.initialize.call(this, $gameVariables[0].transferInfo.toMapId, eventId);
     $gameMap._events[eventId] = this;
+    this.updateDataMap();
   };
 
   Game_Trap.prototype.triggered = function(target) {
     // implement by each traps
   }
+
+  // modify this to provide general page access
+  Game_Trap.prototype.page = function() {
+    return $gameVariables[0].templateEvents.trap.pages[this._pageIndex];
+  };
 
   //-----------------------------------------------------------------------------------
   // Trap_Spike
@@ -6025,8 +6038,8 @@
   Trap_Spike.prototype = Object.create(Game_Trap.prototype);
   Trap_Spike.prototype.constructor = Trap_Spike;
 
-  Trap_Spike.prototype.initStatus = function (event) {
-    Game_Trap.prototype.initStatus.call(this, event);
+  Trap_Spike.prototype.initStatus = function (x, y) {
+    Game_Trap.prototype.initStatus.call(this, x, y);
     this.trap.trapClass = 'Trap_Spike';
     this.trap.imageData = new ImageData('!Other1', 4, 1, 8);
     this.trap.name = '尖刺陷阱';
@@ -6064,8 +6077,8 @@
   Trap_Teleport.prototype = Object.create(Game_Trap.prototype);
   Trap_Teleport.prototype.constructor = Trap_Teleport;
 
-  Trap_Teleport.prototype.initStatus = function (event) {
-    Game_Trap.prototype.initStatus.call(this, event);
+  Trap_Teleport.prototype.initStatus = function (x, y) {
+    Game_Trap.prototype.initStatus.call(this, x, y);
     this.trap.trapClass = 'Trap_Teleport';
     this.trap.imageData = new ImageData('Collections3', 5, 2, 8);
     this.trap.name = '傳送陷阱';
@@ -6094,8 +6107,8 @@
   Trap_GroundHole.prototype = Object.create(Game_Trap.prototype);
   Trap_GroundHole.prototype.constructor = Trap_GroundHole;
 
-  Trap_GroundHole.prototype.initStatus = function (event) {
-    Game_Trap.prototype.initStatus.call(this, event);
+  Trap_GroundHole.prototype.initStatus = function (x, y) {
+    Game_Trap.prototype.initStatus.call(this, x, y);
     this.trap.trapClass = 'Trap_GroundHole';
     this.trap.imageData = new ImageData('Outside_B1', 4, 1, 4);
     this.trap.name = '地洞陷阱';
@@ -6131,8 +6144,8 @@
   Trap_MagicEffect.prototype = Object.create(Game_Trap.prototype);
   Trap_MagicEffect.prototype.constructor = Trap_MagicEffect;
 
-  Trap_MagicEffect.prototype.initStatus = function (event) {
-    Game_Trap.prototype.initStatus.call(this, event);
+  Trap_MagicEffect.prototype.initStatus = function (x, y) {
+    Game_Trap.prototype.initStatus.call(this, x, y);
     this.trap.trapClass = 'Trap_MagicEffect';
     this.trap.imageData = new ImageData('!Door2', 4, 0, 6);
     this.trap.name = '魔法陷阱';
@@ -6166,8 +6179,8 @@
   UpStair.prototype = Object.create(Game_Trap.prototype);
   UpStair.prototype.constructor = UpStair;
 
-  UpStair.prototype.initStatus = function (event) {
-    Game_Trap.prototype.initStatus.call(this, event);
+  UpStair.prototype.initStatus = function (x, y) {
+    Game_Trap.prototype.initStatus.call(this, x, y);
     this.trap.trapClass = 'UpStair';
     this.trap.imageData = new ImageData('Stair', 3, 2, 6);
     this.trap.name = '往上的樓梯';
@@ -6190,8 +6203,8 @@
   DownStair.prototype = Object.create(Game_Trap.prototype);
   DownStair.prototype.constructor = DownStair;
 
-  DownStair.prototype.initStatus = function (event) {
-    Game_Trap.prototype.initStatus.call(this, event);
+  DownStair.prototype.initStatus = function (x, y) {
+    Game_Trap.prototype.initStatus.call(this, x, y);
     this.trap.trapClass = 'DownStair';
     this.trap.imageData = new ImageData('Stair', 3, 2, 8);
     this.trap.name = '往下的樓梯';
@@ -6214,8 +6227,8 @@
   Trap_GoHome.prototype = Object.create(Game_Trap.prototype);
   Trap_GoHome.prototype.constructor = Trap_GoHome;
 
-  Trap_GoHome.prototype.initStatus = function (event) {
-    Game_Trap.prototype.initStatus.call(this, event);
+  Trap_GoHome.prototype.initStatus = function (x, y) {
+    Game_Trap.prototype.initStatus.call(this, x, y);
     this.trap.trapClass = 'Trap_GoHome';
     this.trap.imagePool = {
       disabled: new ImageData('!Door1', 0, 0, 8),
@@ -6255,8 +6268,8 @@
   Trap_PressFloor.prototype = Object.create(Game_Trap.prototype);
   Trap_PressFloor.prototype.constructor = Trap_PressFloor;
 
-  Trap_PressFloor.prototype.initStatus = function (event) {
-    Game_Trap.prototype.initStatus.call(this, event);
+  Trap_PressFloor.prototype.initStatus = function (x, y) {
+    Game_Trap.prototype.initStatus.call(this, x, y);
     this.trap.trapClass = 'Trap_PressFloor';
     this.trap.imageData = new ImageData('!Door1', 0, 0, 8);
     this.trap.relatedEventClassName = null;
