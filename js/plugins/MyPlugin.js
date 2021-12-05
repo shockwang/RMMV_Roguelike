@@ -108,7 +108,7 @@
     this.toY = -1;
   }
 
-  // data type for item piles
+  // data type for Game_ItemPile
   var ItemPile = function (x, y) {
     this.x = x;
     this.y = y;
@@ -117,6 +117,16 @@
     this.armors = [];
     this.objectStack = [];
     this.lastImage = {};
+    this.type = 'ITEM_PILE';
+  }
+
+  // data type for Game_Door
+  var Door = function(x, y, status, lastStatus) {
+    this.type = 'DOOR';
+    this.x = x;
+    this.y = y;
+    this.status = status;
+    this.lastStatus = lastStatus;
   }
 
   var MapVariable = function (mapData, rmDataMap, mapType) {
@@ -1917,7 +1927,7 @@
     // initialize template events
     $gameVariables[0].templateEvents = {
       monster: 3,
-      door: 4,
+      door: $dataMap.events[4],
       projectile: 5,
       itemPile: 6,
       trap: 7,
@@ -2459,7 +2469,7 @@
     // check if door & door opened
     if (tile == DOOR) {
       let openedDoor = $gameMap.eventsXy(x, y).filter(function(evt) {
-        return evt.type == 'DOOR' && evt.status == 2;
+        return evt.type == 'DOOR' && evt.getStatus() == 2;
       });
       if (!openedDoor[0]) {
         return false;
@@ -2564,7 +2574,7 @@
               // check if there's closed door
               var events = $gameMap.eventsXy(path[i].x, path[i].y);
               for (var id in events) {
-                if (events[id] instanceof Game_Door && events[id].status != 2) {
+                if (events[id] instanceof Game_Door && events[id].getStatus() != 2) {
                   visible = false;
                   break;
                 } else if (checkMobFlag && events[id].mob) {
@@ -2589,7 +2599,7 @@
             // check if there's closed door
             var events = $gameMap.eventsXy(x, i);
             for (var id in events) {
-              if (events[id] instanceof Game_Door && events[id].status != 2) {
+              if (events[id] instanceof Game_Door && events[id].getStatus() != 2) {
                 visible = false;
                 break;
               } else if (checkMobFlag && events[id].mob) {
@@ -2873,16 +2883,17 @@
     }
 
     // draw doors
-    for (var i in $gameMap.events()) {
-      var event = $gameMap.events()[i];
+    let events = $gameMap.events();
+    for (var i in events) {
+      var event = events[i];
       if (event instanceof Game_Door && MapDataUtils.getExplored(mapData[event._x][event._y])) {
         var index = stairOffset + event._y * mapData.length + event._x;
         if (MapDataUtils.getVisible(mapData[event._x][event._y])) {
-          mapArray[index] = (event.status == 2) ? doorOpenedIcon : doorClosedIcon;
-          event.lastStatus = event.status;
+          mapArray[index] = (event.getStatus() == 2) ? doorOpenedIcon : doorClosedIcon;
+          event.setLastStatus(event.getStatus());
         } else {
           // show last status
-          mapArray[index] = (event.lastStatus == 2) ? doorOpenedIcon : doorClosedIcon;
+          mapArray[index] = (event.getLastStatus() == 2) ? doorOpenedIcon : doorClosedIcon;
         }
       }
     }
@@ -2895,7 +2906,7 @@
     let events = $gameMap.eventsXy(x, y);
     for (let id in events) {
       if (events[id] instanceof Game_Door) {
-        $dataMap.data[index] = (events[id].status == 2) ? doorOpenedIcon : doorClosedIcon;
+        $dataMap.data[index] = (events[id].getStatus() == 2) ? doorOpenedIcon : doorClosedIcon;
         break;
       }
     }
@@ -3063,7 +3074,7 @@
     var occupied = false;
     var exists = MapUtils.findEventsXyFromDataMap($gameVariables[mapId].rmDataMap, x, y);
     for (var i in exists) {
-      if (exists[i].type == 'MOB' || (exists[i].type == 'DOOR' && exists[i].status != 2)
+      if (exists[i].type == 'MOB' || (exists[i].type == 'DOOR' && exists[i].getStatus() != 2)
         || exists[i].type == 'TRAP') {
         occupied = true;
       }
@@ -4538,7 +4549,7 @@
         var canPass = true;
         for (var i = 0; i < $gameMap.events().length; i++) {
           var toCheck = $gameMap.events()[i];
-          if (!toCheck._erased && toCheck._x == x2 && toCheck._y == y2 && toCheck._priorityType == 1) {
+          if (!toCheck._erased && toCheck._x == x2 && toCheck._y == y2 && toCheck.isNormalPriority()) {
             canPass = false;
             break;
           }
@@ -4684,7 +4695,8 @@
   }
 
   function newDataMapEvent(evtId, id, x, y) {
-    var newObj = cloneObject(MapUtils.loadMapEvent(evtId));
+    let evtTemplate = isNaN(evtId) ? evtId : MapUtils.loadMapEvent(evtId);
+    var newObj = cloneObject(evtTemplate);
     newObj.id = id;
     newObj.x = x;
     newObj.y = y;
@@ -5151,23 +5163,16 @@
   Game_Door.prototype = Object.create(Game_Event.prototype);
   Game_Door.prototype.constructor = Game_Door;
 
-  Game_Door.prototype.fromEvent = function (src, target) {
-    target.type = src.type;
-    target.x = src.x;
-    target.y = src.y;
-    target.status = src.status;
-    target.lastStatus = src.lastStatus;
-  }
-
-  Game_Door.prototype.initStatus = function (event) {
-    event.type = 'DOOR';
+  Game_Door.prototype.initStatus = function (x, y) {
+    this.type = 'DOOR';
     // 0: locked, 1: closed, 2: opened
-    event.status = 1;
-    event.lastStatus = 1; // for player's information
+    if (!this.door) {
+      this.door = new Door(x, y, 1, 1);
+    }
   }
 
   Game_Door.prototype.updateDataMap = function () {
-    Game_Door.prototype.fromEvent(this, $dataMap.events[this._eventId]);
+    $dataMap.events[this._eventId] = this.door;
   }
 
   Game_Door.prototype.initialize = function (x, y, fromData) {
@@ -5176,54 +5181,74 @@
       for (var i = 1; i < $dataMap.events.length; i++) {
         if ($dataMap.events[i] && $dataMap.events[i] == fromData) {
           eventId = i;
-          Game_Door.prototype.fromEvent($dataMap.events[i], this);
+          this.door = $dataMap.events[i];
           break;
         }
       }
     } else {
       // add new event at the bottom of list
       eventId = $dataMap.events.length;
-      $dataMap.events.push(newDataMapEvent($gameVariables[0].templateEvents.door, eventId, x, y));
-      Game_Door.prototype.initStatus($dataMap.events[$dataMap.events.length - 1]);
-      this.initStatus(this);
     }
+    this.initStatus(x, y);
     // store new events back to map variable
     $gameVariables[$gameVariables[0].transferInfo.toMapId].rmDataMap = $dataMap;
+    $dataMap.events[eventId] = newDataMapEvent($gameVariables[0].templateEvents.door, eventId, x, y);
     Game_Event.prototype.initialize.call(this, $gameVariables[0].transferInfo.toMapId, eventId);
     $gameMap._events[eventId] = this;
+    this.updateDataMap();
   };
+
+  Game_Door.prototype.page = function() {
+    return $gameVariables[0].templateEvents.door.pages[this._pageIndex];
+  };
+
+  Game_Door.prototype.isNormalPriority = function() {
+    return (this.getStatus() == 2) ? false : true;
+  }
+
+  Game_Door.prototype.setStatus = function(status) {
+    this.door.status = status;
+  }
+
+  Game_Door.prototype.getStatus = function() {
+    return this.door.status;
+  }
+
+  Game_Door.prototype.setLastStatus = function(lastStatus) {
+    this.door.lastStatus = lastStatus;
+  }
+
+  Game_Door.prototype.getLastStatus = function() {
+    return this.door.lastStatus;
+  }
 
   // try to open a door
   Game_Door.prototype.openDoor = function (character, x, y) {
-    var events = $gameMap.eventsXy(x, y);
-    var door = null;
-    for (var i in events) {
-      if (events[i] instanceof Game_Door) {
-        door = events[i];
-        break;
-      }
-    }
+    var door = $gameMap.eventsXy(x, y).filter(function(evt) {
+      return evt instanceof Game_Door;
+    })[0];
+
     if (!door) {
       if (character == $gamePlayer) {
         MapUtils.updateMessage(Message.display('noDoor'));
       }
       return false;
     }
-    if (door.status == 2) {
+    if (door.getStatus() == 2) {
       if (character == $gamePlayer) {
         MapUtils.updateMessage(Message.display('doorOpened'));
       }
       return false;
-    } else if (door.status == 0) {
+    } else if (door.getStatus() == 0) {
       if (character == $gamePlayer) {
         MapUtils.updateMessage(Message.display('doorLocked'));
       }
       return false;
     }
     // open the door successfully
-    door.status = 2;
+    door.setStatus(2);
     if (character == $gamePlayer || CharUtils.playerCanSeeBlock(x, y)) {
-      door.lastStatus = 2;
+      door.setLastStatus(2);
     }
     if (character == $gamePlayer && $gameActors.actor(1).status.blindEffect.turns > 0) {
       MapUtils.drawDoorWhenBlind(x, y);
@@ -5262,7 +5287,7 @@
       }
       return false;
     }
-    if (door.status != 2) {
+    if (door.getStatus() != 2) {
       if (character == $gamePlayer) {
         MapUtils.updateMessage(Message.display('doorClosed'));
       }
@@ -5276,9 +5301,9 @@
       return false;
     }
     // close the door successfully
-    door.status = 1;
+    door.setStatus(1);
     if (character == $gamePlayer || CharUtils.playerCanSeeBlock(x, y)) {
-      door.lastStatus = 1;
+      door.setLastStatus(1);
     }
     if (character == $gamePlayer && $gameActors.actor(1).status.blindEffect.turns > 0) {
       MapUtils.drawDoorWhenBlind(x, y);
@@ -5375,7 +5400,7 @@
           let events = $gameMap.eventsXy(vm._x, vm._y);
           for (let id in events) {
             let evt = events[id];
-            if (evt.type == 'DOOR' && evt.status != 2) { // hit closed door
+            if (evt.type == 'DOOR' && evt.getStatus() != 2) { // hit closed door
               vm.vanish = vm.hitDoor(vm);
             } else if ($gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(vm._x, vm._y)]
               && !$gameVariables[$gameMap._mapId].secretBlocks[MapUtils.getTileIndex(vm._x, vm._y)].isRevealed) {
@@ -5680,6 +5705,28 @@
     }
   }
 
+  //-----------------------------------------------------------------------------
+  // Game_Event
+  //
+  // The game object class for an event. It contains functionality for event page
+  // switching and running parallel process events.
+
+  // modify this to prevent page error when using customized data structure
+  Game_Event.prototype.findProperPageIndex = function() {
+    var pages = this.event().pages;
+    if (pages) {
+      for (var i = pages.length - 1; i >= 0; i--) {
+        var page = pages[i];
+        if (this.meetsConditions(page)) {
+          return i;
+        }
+      }
+      return -1;
+    } else {
+      return 0;
+    }
+  };
+
   //-----------------------------------------------------------------------------------
   // Game_ItemPile
   //
@@ -5691,19 +5738,12 @@
   Game_ItemPile.prototype = Object.create(Game_Event.prototype);
   Game_ItemPile.prototype.constructor = Game_ItemPile;
 
-  Game_ItemPile.prototype.fromEvent = function (src, target) {
-    target.type = src.type;
-    target.x = src.x;
-    target.y = src.y;
-    target.itemPile = src.itemPile;
-  }
-
-  Game_ItemPile.prototype.initStatus = function (event) {
-    event.type = 'ITEM_PILE';
+  Game_ItemPile.prototype.initStatus = function () {
+    this.type = 'ITEM_PILE';
   }
 
   Game_ItemPile.prototype.updateDataMap = function () {
-    Game_ItemPile.prototype.fromEvent(this, $dataMap.events[this._eventId]);
+    $dataMap.events[this._eventId] = this.itemPile;
   }
 
   Game_ItemPile.prototype.initialize = function (x, y, fromData) {
@@ -5712,19 +5752,19 @@
       for (var i = 1; i < $dataMap.events.length; i++) {
         if ($dataMap.events[i] && $dataMap.events[i] == fromData) {
           eventId = i;
-          Game_ItemPile.prototype.fromEvent($dataMap.events[i], this);
+          this.itemPile = $dataMap.events[i];
           break;
         }
       }
     } else {
       // add new event at the bottom of list
       eventId = $dataMap.events.length;
-      $dataMap.events.push(newDataMapEvent($gameVariables[0].templateEvents.itemPile, eventId, x, y));
-      Game_ItemPile.prototype.initStatus($dataMap.events[$dataMap.events.length - 1]);
-      this.initStatus(this);
     }
+    this.initStatus();
     // store new events back to map variable
     $gameVariables[$gameVariables[0].transferInfo.toMapId].rmDataMap = $dataMap;
+    // $dataMap should contain correct format to generate Game_Event
+    $dataMap.events[eventId] = newDataMapEvent($gameVariables[0].templateEvents.itemPile, eventId, x, y);
     Game_Event.prototype.initialize.call(this, $gameVariables[0].transferInfo.toMapId, eventId);
     $gameMap._events[eventId] = this;
   };
@@ -6605,10 +6645,10 @@
                 })[0];
                 // visible door
                 if (doorEvt) {
-                  if (doorEvt.status == 1) {
+                  if (doorEvt.getStatus() == 1) {
                     TimeUtils.animeQueue.push(new AnimeObject(doorEvt, 'ANIME', 11));
-                    doorEvt.status = 2;
-                    doorEvt.lastStatus = 2;
+                    doorEvt.setStatus(2);
+                    doorEvt.setLastStatus(2);
                     $gameSelfSwitches.setValue([$gameMap.mapId(), doorEvt._eventId, 'A'], true);
                     doorEvt.updateDataMap();
                     LogUtils.addLog(Message.display('kickVisibleDoor'));
@@ -6620,8 +6660,8 @@
                     .secretBlocks[MapUtils.getTileIndex(x, y)].isRevealed = true;
                   MapUtils.updateAdjacentTiles(x, y);
                   doorEvt = new Game_Door(x, y);
-                  doorEvt.status = 2;
-                  doorEvt.lastStatus = 2;
+                  doorEvt.setStatus(2);
+                  doorEvt.setLastStatus(2);
                   $gameSelfSwitches.setValue([$gameMap.mapId(), doorEvt._eventId, 'A'], true);
                   doorEvt.updateDataMap();
                   LogUtils.addLog(Message.display('kickInvisibleDoor'));
@@ -15141,12 +15181,12 @@
             let evts = $gameMap.eventsXy(checkX, checkY);
             for (let id in evts) {
               let target = evts[id];
-              if (target.type == 'DOOR' && target.status == 1) {
+              if (target.type == 'DOOR' && target.getStatus() == 1) {
                 // bump into a closed door
                 TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 2));
                 $gameSelfSwitches.setValue([$gameMap.mapId(), target._eventId, 'A'], true);
                 LogUtils.addLog(String.format(Message.display('bumpIntoDoor'), LogUtils.getCharName(realSrc)));
-                target.status = 2;
+                target.setStatus(2);
                 data.nowDistance++;
               }
             }
@@ -15163,7 +15203,7 @@
               TimeUtils.animeQueue.push(new AnimeObject(target, 'ANIME', 2));
               $gameSelfSwitches.setValue([$gameMap.mapId(), target._eventId, 'A'], true);
               LogUtils.addLog(String.format(Message.display('bumpIntoDoor'), LogUtils.getCharName(realSrc)));
-              target.status = 2;
+              target.setStatus(2);
               data.nowDistance++;
             }
           }
@@ -16280,7 +16320,7 @@
     })[0];
     let mapId = $gameMap.mapId();
     if (!MapUtils.isTilePassable(mapId, x, y, MapDataUtils.getOriginalTile($gameVariables[mapId].mapData[x][y]))
-      || (doorEvt && doorEvt.status == 1)) {
+      || (doorEvt && doorEvt.getStatus() == 1)) {
       MapUtils.addBothLog(Message.display('scrollReadNoEffect'));
       return true;
     }
