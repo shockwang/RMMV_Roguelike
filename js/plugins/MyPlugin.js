@@ -5211,7 +5211,8 @@
 
   // modify this to provide general page access
   Game_Door.prototype.page = function() {
-    return $gameVariables[0].templateEvents.door.pages[this._pageIndex];
+    let pageIndex = (this.getStatus() == 2) ? 1 : 0;
+    return $gameVariables[0].templateEvents.door.pages[pageIndex];
   };
 
   Game_Door.prototype.isNormalPriority = function() {
@@ -16882,12 +16883,31 @@
   // The game object class for an enemy.
   // Modify this class for mob instance, isolate them from the template
 
-  Game_Enemy.prototype.initialize = function(enemyId, x, y, params, xparams) {
+  Game_Enemy.prototype.initialize = function(enemyId, x, y, mobInitData, mobClass) {
     this.type = 'MOB';
     Game_Battler.prototype.initialize.call(this);
-    this._params = params;
-    this._xparams = xparams;
+    this._params = mobInitData.params;
+    this._xparams = mobInitData.xparams;
     this.setup(enemyId, x, y);
+    this._name = mobInitData.name;
+    this.level = mobInitData.level;
+    this.moveType = mobInitData.moveType;
+    this.fleeAtLowHp = mobInitData.fleeAtLowHp;
+    this._tp = 100;
+    this.awareDistance = 10;
+    this.status = CharUtils.initStatus();
+    this._skills = [];
+    for (let id in mobInitData.skills) {
+      let skillData = mobInitData.skills[id];
+      let newSkill = new window[skillData.skillClassName]();
+      newSkill.lv = skillData.lv;
+      this._skills.push(newSkill);
+    }
+    this._exp = CharUtils.calcMobExp(this);
+    this.moved = false;
+    this.attacked = false;
+    this.turnCount = 0;
+    this.mobClass = mobClass;
   };
 
   Game_Enemy.prototype.name = function() {
@@ -16911,6 +16931,59 @@
     return this._exp;
   };
 
+  // method for set/get mob data
+  Game_Enemy.prototype.createEventData = function() {
+    let result = {};
+    result.type = this.type;
+    result._params = this._params;
+    result._paramPlus = this._paramPlus;
+    result._xparams = this._xparams;
+    result._name = this._name;
+    result.level = this.level;
+    result.moveType = this.moveType;
+    result.fleeAtLowHp = this.fleeAtLowHp;
+    result._hp = this._hp;
+    result._mp = this._mp;
+    result._tp = this._tp;
+    result._screenX = this._screenX;
+    result._screenY = this._screenY;
+    result.awareDistance = this.awareDistance;
+    result.status = this.status;
+    result._skills = this._skills;
+    result._exp = this._exp;
+    result.moved = this.moved;
+    result.attacked = this.attacked;
+    result.turnCount = this.turnCount;
+    result.mobClass = this.mobClass;
+    result.lastTimeMoved = this.lastTimeMoved;
+    return result;
+  }
+
+  Game_Enemy.prototype.loadFromEventData = function(eventData) {
+    this.type = eventData.type;
+    this._params = eventData._params;
+    this._paramPlus = eventData._paramPlus;
+    this._xparams = eventData._xparams;
+    this._name = eventData._name;
+    this.level = eventData.level;
+    this.moveType = eventData.moveType;
+    this.fleeAtLowHp = eventData.fleeAtLowHp;
+    this._hp = eventData._hp;
+    this._mp = eventData._mp;
+    this._tp = eventData._tp;
+    this._screenX = eventData._screenX;
+    this._screenY = eventData._screenY;
+    this.awareDistance = eventData.awareDistance;
+    this.status = eventData.status;
+    this._skills = eventData._skills;
+    this._exp = eventData._exp;
+    this.moved = eventData.moved;
+    this.attacked = eventData.attacked;
+    this.turnCount = eventData.turnCount;
+    this.mobClass = eventData.mobClass;
+    this.lastTimeMoved = eventData.lastTimeMoved;
+  }
+
   //-----------------------------------------------------------------------------------
   // Game_Mob
   //
@@ -16929,44 +17002,24 @@
   }
 
   Game_Mob.prototype.updateDataMap = function () {
-    $dataMap.events[this._eventId] = this.mob;
     this.mob._screenX = this._x;
     this.mob._screenY = this._y;
+    $dataMap.events[this._eventId] = this.mob.createEventData();
   }
 
   Game_Mob.prototype.initialize = function (x, y, fromData) {
     var eventId = -1;
+    let mobInitData = window[this.constructor.name].mobInitData;
+    this.mob = new Game_Enemy(11, x, y, mobInitData, this.constructor.name);
     if (fromData) {
       for (var i = 1; i < $dataMap.events.length; i++) {
         if ($dataMap.events[i] && $dataMap.events[i] == fromData) {
           eventId = i;
-          this.mob = $dataMap.events[i];
+          this.mob.loadFromEventData($dataMap.events[i]);
           break;
         }
       }
     } else {
-      // new mob instance from mobId & attributes
-      let mobInitData = window[this.constructor.name].mobInitData;
-      this.mob = new Game_Enemy(11, x, y, mobInitData.params, mobInitData.xparams);
-      this.mob._name = mobInitData.name;
-      this.mob.level = mobInitData.level;
-      this.mob.moveType = mobInitData.moveType;
-      this.mob.fleeAtLowHp = mobInitData.fleeAtLowHp;
-      this.mob._tp = 100;
-      this.mob.awareDistance = 10;
-      this.mob.status = CharUtils.initStatus();
-      this.mob._skills = [];
-      for (let id in mobInitData.skills) {
-        let skillData = mobInitData.skills[id];
-        let newSkill = new window[skillData.skillClassName]();
-        newSkill.lv = skillData.lv;
-        this.mob._skills.push(newSkill);
-      }
-      this.mob._exp = CharUtils.calcMobExp(this.mob);
-      this.mob.moved = false;
-      this.mob.attacked = false;
-      this.mob.turnCount = 0;
-      this.mob.mobClass = this.constructor.name;
       // find empty space for new event
       var eventId = MapUtils.findEmptyFromList($dataMap.events);
       this.initAttribute();
@@ -16977,7 +17030,6 @@
     $dataMap.events[eventId] = newDataMapEvent($gameVariables[0].templateEvents.monster, eventId, x, y);
     Game_Event.prototype.initialize.call(this, $gameMap.mapId(), eventId);
     $gameMap._events[eventId] = this;
-    this.updateDataMap();
     // add mob recovery mechanism
     let turnPassed = Math.floor(($gameVariables[0].gameTime - this.mob.lastTimeMoved)
       / CharUtils.getActionTime(this.mob));
@@ -16990,6 +17042,7 @@
       CharUtils.regenerate(this);
       CharUtils.regenerateTp(this);
     }
+    this.updateDataMap();
     // add event to scheduler
     TimeUtils.eventScheduler.insertEvent(new ScheduleEvent(this, $gameVariables[0].gameTime));
   };
