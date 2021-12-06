@@ -1931,7 +1931,7 @@
     $gameActors.actor(1).carryStatus = 0; // 0: normal, 1: burdened, 2: stressed, 3: strained, 4: overloaded
     // initialize template events
     $gameVariables[0].templateEvents = {
-      monster: 3,
+      monster: $dataMap.events[3],
       door: $dataMap.events[4],
       projectile: 5,
       itemPile: $dataMap.events[6],
@@ -3068,8 +3068,11 @@
     var events = [];
     for (var i in dataMap.events) {
       var event = dataMap.events[i];
-      if (event && event.x == x && event.y == y) {
-        events.push(event);
+      if (event) {
+        if ((event.type == 'MOB' && event._screenX == x && event._screenY == y)
+          || (event.x == x && event.y == y)) {
+          events.push(event);
+        }
       }
     }
     return events;
@@ -3079,7 +3082,7 @@
     var occupied = false;
     var exists = MapUtils.findEventsXyFromDataMap($gameVariables[mapId].rmDataMap, x, y);
     for (var i in exists) {
-      if (exists[i].type == 'MOB' || (exists[i].type == 'DOOR' && exists[i].getStatus() != 2)
+      if (exists[i].type == 'MOB' || (exists[i].type == 'DOOR' && exists[i].status != 2)
         || exists[i].type == 'TRAP') {
         occupied = true;
       }
@@ -3105,7 +3108,7 @@
       var coordinate = MapUtils.getNearbyCoordinate(nowX, nowY, i);
       var events = MapUtils.findEventsXyFromDataMap($gameVariables[nowMapId].rmDataMap, coordinate.x, coordinate.y);
       for (var id in events) {
-        if (events[id].type == 'MOB' && events[id].mob.moveType != 1 && !events[id].mob.layerFixed) { // mobs in water can not change floor
+        if (events[id].type == 'MOB' && events[id].moveType != 1 && !events[id].layerFixed) { // mobs in water can not change floor
           var mobData = events[id];
           // check for empty space, attempt to stand on the same relative location as player
           var toCheck = MapUtils.getNearbyCoordinate(newX, newY, i);
@@ -3124,7 +3127,7 @@
           }
           if (placeFound) {
             // remove it from current $dataMap
-            $gameVariables[nowMapId].rmDataMap.events[mobData.id] = null;
+            $gameVariables[nowMapId].rmDataMap.events[$gameVariables[nowMapId].rmDataMap.events.indexOf(mobData)] = null;
             // need to transfer mob status too
             let effects = TimeUtils.eventScheduler.extractTargetEffects(mobData.x, mobData.y, nowMapId);
             for (let id in effects) {
@@ -3135,9 +3138,8 @@
             }
             // add it to new $dataMap
             var eventId = MapUtils.findEmptyFromList($gameVariables[toMapId].rmDataMap.events);
-            mobData.id = eventId;
-            mobData.x = toCheck.x;
-            mobData.y = toCheck.y;
+            mobData._screenX = toCheck.x;
+            mobData._screenY = toCheck.y;
             $gameVariables[toMapId].rmDataMap.events[eventId] = mobData;
           } else {
             console.log("no empty found, stay at same level.");
@@ -4648,8 +4650,8 @@
     for (var i = 0; i < $dataMap.events.length; i++) {
       if ($dataMap.events[i]) {
         if ($dataMap.events[i].type == 'MOB') {
-          this._events[i] = new window[$dataMap.events[i].mob.mobClass]($dataMap.events[i].x
-            , $dataMap.events[i].y, $dataMap.events[i]);
+          this._events[i] = new window[$dataMap.events[i].mobClass]($dataMap.events[i]._screenX
+            , $dataMap.events[i]._screenY, $dataMap.events[i]);
           MapUtils.drawMob($gameVariables[this._mapId].mapData, this._events[i]);
         } else if ($dataMap.events[i].type == 'DOOR') {
           this._events[i] = new Game_Door($dataMap.events[i].x, $dataMap.events[i].y, $dataMap.events[i]);
@@ -16881,6 +16883,7 @@
   // Modify this class for mob instance, isolate them from the template
 
   Game_Enemy.prototype.initialize = function(enemyId, x, y, params, xparams) {
+    this.type = 'MOB';
     Game_Battler.prototype.initialize.call(this);
     this._params = params;
     this._xparams = xparams;
@@ -16921,21 +16924,14 @@
   Game_Mob.prototype = Object.create(Game_Event.prototype);
   Game_Mob.prototype.constructor = Game_Mob;
 
-  Game_Mob.prototype.fromEvent = function (src, target) {
-    target.mob = src.mob;
-    target.type = src.type;
-    target.x = src.x;
-    target.y = src.y;
-  }
-
-  Game_Mob.prototype.initStatus = function (event) {
-    // NOTE: attribute name must be the same as Game_Actor
-    event.mob = this.mob;
-    event.type = 'MOB';
+  Game_Mob.prototype.initStatus = function () {
+    this.type = 'MOB';
   }
 
   Game_Mob.prototype.updateDataMap = function () {
-    Game_Mob.prototype.fromEvent(this, $dataMap.events[this._eventId]);
+    $dataMap.events[this._eventId] = this.mob;
+    this.mob._screenX = this._x;
+    this.mob._screenY = this._y;
   }
 
   Game_Mob.prototype.initialize = function (x, y, fromData) {
@@ -16944,7 +16940,7 @@
       for (var i = 1; i < $dataMap.events.length; i++) {
         if ($dataMap.events[i] && $dataMap.events[i] == fromData) {
           eventId = i;
-          Game_Mob.prototype.fromEvent($dataMap.events[i], this);
+          this.mob = $dataMap.events[i];
           break;
         }
       }
@@ -16973,15 +16969,15 @@
       this.mob.mobClass = this.constructor.name;
       // find empty space for new event
       var eventId = MapUtils.findEmptyFromList($dataMap.events);
-      $dataMap.events[eventId] = newDataMapEvent($gameVariables[0].templateEvents.monster, eventId, x, y);
-      this.initStatus($dataMap.events[eventId]);
-      this.initStatus(this);
       this.initAttribute();
     }
+    this.initStatus();
     // store new events back to map variable
     $gameVariables[$gameMap.mapId()].rmDataMap = $dataMap;
+    $dataMap.events[eventId] = newDataMapEvent($gameVariables[0].templateEvents.monster, eventId, x, y);
     Game_Event.prototype.initialize.call(this, $gameMap.mapId(), eventId);
     $gameMap._events[eventId] = this;
+    this.updateDataMap();
     // add mob recovery mechanism
     let turnPassed = Math.floor(($gameVariables[0].gameTime - this.mob.lastTimeMoved)
       / CharUtils.getActionTime(this.mob));
@@ -16996,6 +16992,11 @@
     }
     // add event to scheduler
     TimeUtils.eventScheduler.insertEvent(new ScheduleEvent(this, $gameVariables[0].gameTime));
+  };
+
+  // modify this to provide general page access
+  Game_Mob.prototype.page = function() {
+    return $gameVariables[0].templateEvents.monster.pages[this._pageIndex];
   };
 
   Game_Mob.prototype.action = function () {
