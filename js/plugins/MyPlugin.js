@@ -1899,6 +1899,7 @@
     $gameVariables[0].logList = []; // only 18 lines can be displayed
     $gameVariables[0].difficulty = 'EASY'; // EASY, NORMAL, HARD, EXTREME
     $gameVariables[0].exploredLayerCount = 0;
+    $gameVariables[0].spawnMobCount = 0;
     // define game time (counts * gameTimeAmp for possible future extends)
     $gameVariables[0].gameTime = 0;
     $gameVariables[0].gameTimeAmp = 20;
@@ -7472,9 +7473,10 @@
     if (realTarget == $gameActors.actor(1)) {
       return $gamePlayer;
     } else {
-      for (let id in $gameMap._events) {
-        let evt = $gameMap._events[id];
-        if (evt && evt.mob == realTarget) {
+      let evts = $gameMap.events();
+      for (let id in evts) {
+        let evt = evts[id];
+        if (evt.mob && evt.mob.id == realTarget.id) {
           return evt;
         }
       }
@@ -16935,6 +16937,7 @@
   Game_Enemy.prototype.createEventData = function() {
     let result = {};
     result.type = this.type;
+    result.id = this.id;
     result._params = this._params;
     result._paramPlus = this._paramPlus;
     result._xparams = this._xparams;
@@ -16961,6 +16964,7 @@
 
   Game_Enemy.prototype.loadFromEventData = function(eventData) {
     this.type = eventData.type;
+    this.id = eventData.id;
     this._params = eventData._params;
     this._paramPlus = eventData._paramPlus;
     this._xparams = eventData._xparams;
@@ -17022,6 +17026,9 @@
     } else {
       // find empty space for new event
       var eventId = MapUtils.findEmptyFromList($dataMap.events);
+      // give every mob an unique ID
+      this.mob.id = $gameVariables[0].spawnMobCount;
+      $gameVariables[0].spawnMobCount++;
       this.initAttribute();
     }
     this.initStatus();
