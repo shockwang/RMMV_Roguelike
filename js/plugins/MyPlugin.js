@@ -361,6 +361,7 @@
   var skillLevelMax = 10;
   var bossHpMpMultiplier = 1.5;
   var bossDebuffTurnsMultiplier = 0.3;
+  var tutorialRoomLevel = 100;
 
   // word attached
   var groundWord = '(地上)';
@@ -710,6 +711,7 @@
       firePathEnabled: '{0}的腳下出現了一團火焰!',
       firePathDisabled: '{0}腳下的火焰熄滅了.',
       charging: '{0}正在蓄力!',
+      tutorial: '教學',
       tutorialGuide: '艾比',
       tutorialMove1:
         '你好, 初次見面! 我是負責在遊戲進行中從旁進行提示教學的精'
@@ -967,7 +969,104 @@
         + '- 獲得經驗值降低20%\n'
         + '- 關卡頭目擁有更高的HP&MP\n'
         + '- 敵人隨遊戲回合逐步加強\n'
-        + '- 敵人數量更多, 素材掉落機率同步降低\n'
+        + '- 敵人數量更多, 素材掉落機率同步降低\n',
+      tMove1:
+        '如果你有數字小鍵盤...\\'
+        +'5代表原地，其他數字鍵與5的相對位置即為移動的方向。\\'
+        +'上(8)、下(2)、左(4)、右(6)。',
+      tMove2:
+        '斜線移動部分:\\'
+        +'左上(7)、右上(9)、左下(1)、右下(3)。\\',
+      tMove3:
+        '如果沒有數字鍵盤，替代按鍵如下...\\'
+        +'符號"."代表原地，方向鍵代表移動的方向: 上↑ 下↓ 左← 右↓。\\'
+        +'斜移: 左上(Home)、右上(PageUp)、左下(End)、右下(PageDown)',
+      tMoveGoal: '請沿著可見的路徑往前走到藍色傳送門處。',
+      tMoveEnd: '恭喜你現在已經學會如何移動了! 呼叫學習中心請按h。',
+      tGet1: '按g撿拾，呼叫學習中心請按h。',
+      tEat1: '按g撿拾，按e吃食物，呼叫學習中心請按h。',
+      tDrop1: '按d丟棄物品，按ESC退出選單。呼叫學習中心請按h。',
+      tSearch1: '按s搜索周圍，有機率發現門或陷阱，可能需要多搜索幾次才會出現。呼叫學習中心請按h。',
+      tQuit1: '按數字鍵盤0或ESC鍵開啟主選單可選擇退出遊戲，按ESC退出選單，呼叫學習中心請按h。',
+      tSave1: '遊戲中隨時可以按下"S"(大寫)存檔, 總共有5個欄位可供選擇。呼叫學習中心請按h。',
+      tEquip1: '按g撿拾，按w穿脫裝備，按ESC退出選單。呼叫學習中心請按h。',
+      tCraft1: '按g撿拾素材，按M合成防具，按ESC退出選單。呼叫學習中心請按h。',
+      tCraft2: '按g撿拾素材，按M合成藥水，按ESC退出選單。呼叫學習中心請按h。',
+      tMelee1: '按方向鍵進行普通攻擊，F原地攻擊，被怪物攻擊損傷HP(生命值)。呼叫學習中心請按h。',
+      tWarSkill1: '你吸收了噬咬戰技，按W施放戰技攻擊，施放戰技消耗EN值。呼叫學習中心請按h。',
+      tMagic1: '你吸收了火球魔法，按C施放魔法攻擊，施放魔法消耗MP值。呼叫學習中心請按h。',
+      tRecover1:
+        '你遭受重擊，現在HP(生命值)過低，並且施放魔法過度(MP值過低)'
+        +'，EN也消耗完畢無法施放戰技。(觀察螢幕上方HP/MP/EN欄)',
+      tRecover2:
+        '請多按幾次"原地方向鍵"(數字鍵盤5, 或是"."符號)原地度過數'
+        +'個回合，可看到HP/MP/EN欄數值上升。此動作即可回血。'
+        + '呼叫學習中心請按h。',
+      tPotion1: '按g撿拾，按q飲用。飲用完可鑑定出藥水種類。呼叫學習中心請按h。',
+      tScroll1: '按g撿拾，按r閱讀。閱讀完可鑑定出卷軸種類。呼叫學習中心請按h。',
+      tFire1: '你身上有一瓶毒藥水和兩枚飛鏢，按f投擲。呼叫學習中心請按h。',
+      tMenu1: '按數字鍵盤0或ESC檢視主選單，呼叫學習中心請按h。',
+      tInventory1: '按g撿拾，按i檢視物品欄，呼叫學習中心請按h。',
+      tHistory1:
+        '歷史訊息記錄遊戲回合中發生的重要行為或事件。歷史訊息會不斷'
+        +'更新覆蓋，只留下短期記錄。不知道自己剛剛發生了什麼事的話可'
+        +'以檢視歷史訊息確認。',
+      tHistoryGoal: '按g撿拾地上物品，按/檢視歷史訊息，呼叫學習中心請按h。',
+      tIdentify1:
+        '藥水/卷軸/裝備 未經過鑑定前無法知曉它的效用與名稱, 鑑定過的相同物品在下次遇見時便能顯示效用與名稱. 如果想鑑定, '
+        + '最簡單的辦法便是直接使用它. 例如,',
+      tIdentify2:
+        '撿到一瓶不知名的藥水, 最簡單的鑑定方法便是喝下它(q鍵). 撿到未知數值的裝備, 最簡單的鑑定方法便是穿上它(w鍵).',
+      tIdentify3:
+        '撿到一卷不知名的卷軸, 最簡單的鑑定方法便是閱讀它(r鍵). 但注意, 如果使用卷軸當下狀態不符合卷軸啟動條件, '
+        + '例如出現提示:什麼事也沒有發生, 表示鑑定不成功, 白白使用了一個卷軸, 但無法得知卷軸效用與名稱.',
+      tIdentify4:
+        '另外還有別的鑑定方式, 留待你遊戲中發掘囉~ 呼叫學習中心請按h.',
+      tDoor1: '按o或是方向鍵開門, 按c關門, 呼叫學習中心請按h.',
+      tKick1: '按k可嘗試踢開隱藏門. 呼叫學習中心請按h.',
+      tStair1: '站在階梯上按Enter可在樓層間移動. 呼叫學習中心請按h.',
+      tHotKey1:
+        '戰技/魔法/投擲道具 可以設定快捷鍵, 減少遊戲中打怪的步驟.',
+      tHotKey2:
+        '-預設投擲物: 按Q後選擇預設投擲物, 設定完成後按下f鍵即可直接投出預設物品. 更改或取消預設投擲物再按一次Q.',
+      tHotKey3:
+        '-快速施放戰技: 按W開啟戰技欄, 選擇某項戰技, 按下英數鍵盤的數字0~9之一, 即可將此數字設定為此戰技專用施放鍵. '
+        + '例如, 將噬咬設定為{2}, 完成後按2即可直接施放噬咬戰技.',
+      tHotKey4:
+        '-快速施放魔法: 按C開啟魔法欄, 選擇某項魔法, 按下英數鍵盤的數字0~9之一, 即可將此數字設定為此魔法專用施放鍵. '
+        + '例如, 將火球設定為{3}, 完成後按3即可直接施放火球魔法.',
+      tHotKeyGoal:
+        '你現在擁有嗜咬和火球這兩種技能, 試著將他們設定成快捷鍵, 打倒眼前的敵人吧! 完成後請按"h"開啟學習中心.',
+      tStory1: [
+        '美好的一天，啁啾鳥鳴，溫暖的晨曦灑落在我取得的嶄新裝備上，點點金光閃爍，宛若我內心歡騰跳動的雀躍，我迫不及待地將我的戰利品穿上。殊不知這個裝備已經中了世上最邪惡的詛咒，我穿上後厄運從此如影隨形...',
+        '空中乍響的驚雷撕開我的命運，詛咒的白光一道一道割裂夜空，我先前所有的都化為烏有了，命運之神為何如此地玩弄我? 所有的不幸突然都降臨在我身上了，我孱弱戰兢恐懼地在這地城中卑微求生...',
+        '如果我能把這受到詛咒裝備脫下來就好了，無奈這是做不到的，我的餘生只能與它一起度過了，我是如此地絕望...'
+      ],
+      tStory2:[
+        '在被怪物獵殺與逃亡的過程中，疲於戰鬥使我忘記進食，待我回神過來時我已經飢餓得手腳發抖，突然，我意識到過輕的背包，慌忙打開一看，先前我所儲備的食物竟然已經憑空消失，只剩下一塊腐爛的老鼠肉，散發出濃烈死屍的氣味。',
+        '我大受打擊，理智告訴我那是不能吃的，我只能繼續前行，尋找新的能量來源。但這邪惡的地城只會將我逼到盡頭，突然無盡的荒涼中除了破碎的骸骨什麼也沒有，我腳步發軟，我逐漸虛弱到失去了意志力，背包裏那一點點的重量誘惑著我，若我不吃，可能這最後的希望也要消失不見了呢，現在，這不斷逸散、縈繞鼻尖的氣味似乎也變得香甜了...',
+        '我做了什麼！！\\我竟然將那塊滿是蛆蟲的鼠屍津津有味地吞吃入腹了！！',
+        '在我清醒瞬間\\恐怖的事情發生了',
+        '無論如何我都不應該這麼做的\\寧可餓死我也不應該這麼做的\\噢神啊我不——'
+      ],
+      tStory3: [
+        '我拿到了神裝，我吸收了神技，我即將迎娶公主瑟蓮娜。\\人生勝利組的驕傲使我忘記了地城無所不在的殘酷與危險，我一腳踩中水裡的漩渦溺死了，而且我忘記存檔'
+      ],
+      tStory4: [
+        '搜索千百遍就是不肯現身的門! 我確信你就在這裡!! 我用力一踢，腿斷了',
+        '啊，我怎麼會鬼迷了心竅拿我的腳和一扇門賭？難道我不知道在這地城中猜錯是要付出代價的嗎？',
+        '我再也無法行走了\\只能在這殘酷無情的地城中等待死亡'
+      ],
+      tStory5: [
+        '雖然明白地城千變萬化的地形有許多謎樣的危機，我仍是必須渡過一大片水域去尋找回家的路。',
+        '但我只是靠近岸邊就莫名地快被殺死了，為什麼?? 誰在攻擊我! 我竟遍尋不見，這是幽靈的攻擊嗎? 我該怎麼辦!!',
+        '幸好面臨死亡前我想起來巫師製作的偵測隱形魔藥，我一口飲下，但為何竟不管用呢？',
+        '我決定跳下水裡與未知一戰，也許這必須是命運般的對決，只是當我一進入水中',
+        '我看見了，那千萬年前曾經可以依附在人類身上離開水域流浪的水母王，因著被背叛而被囚禁在水中的龐大怨靈——不，這是不可戰勝的',
+        '我怵然撲騰驚水而出，在地城中訓練出來的逃生本能使我一髮之差地活下來了，但那一眼，只一眼，就打從心底的毛骨悚然是我終身無法忘記的，究竟是什麼樣的恨意… 不，這不是我應該要思考的問題了',
+        '我遙望安詳地彷彿死亡的湖泊，也許我該稱為幸運，但我的家似乎是那麼地遙不可及了...'
+      ],
+      tFinish: '在遊戲中忘記指令時，隨時都可以按h查詢喔：) Bye Bye'
     },
     display: function(msgName) {
       switch (Message.language) {
@@ -1848,6 +1947,15 @@
     $gameVariables[dungeonDepth].preDefinedStairs.push(stairUp);
     $gameVariables[dungeonDepth].preDefinedMobs.push(new PreDefinedMobData('SealKing', new Coordinate(10, 10)));
 
+    // setup tutorial level
+    $gameVariables[tutorialRoomLevel] = new MapVariable(null, null, 'EARTH');
+    $gameVariables[tutorialRoomLevel].spawnMobs = false;
+    $gameVariables[tutorialRoomLevel].spawnItems = false;
+    $gameVariables[tutorialRoomLevel].spawnTraps = false;
+    $gameVariables[tutorialRoomLevel].stairDownNum = 0;
+    $gameVariables[tutorialRoomLevel].generateRandom = true;
+    $gameVariables[tutorialRoomLevel].bgm = 'Dungeon1';
+
     // initialize sub-dungeon levels
     // 0: earth, 1: ice, 2: fire
     $gameVariables[0] = {};
@@ -1956,7 +2064,7 @@
     }
     $gameVariables[0].skillObtainedHintFlag = false; // set to true for debug purpose
     // tutorial
-    $gameVariables[0].tutorialOn = true;
+    $gameVariables[0].tutorialOn = false;
     $gameVariables[0].tutorialEvents = {
       move: new TutorialData(13),
       getDrop: new TutorialData(15),
@@ -2125,6 +2233,12 @@
 
     $gameParty.gainItem(new Cheese(), 1);
     $gameParty.gainItem(new Cheese(), 1);
+  }
+
+  MapUtils.setupTutorial = function() {
+    $gameVariables[1].stairToList[0] = tutorialRoomLevel;
+    $gameVariables[tutorialRoomLevel].stairToList[0] = [1];
+    $gameVariables[0].skillObtainedHintFlag = true;
   }
 
   MapUtils.loadFile = function(filePath) {
@@ -3998,6 +4112,9 @@
     } else if (mapId == dungeonDepth) {
       // for test only
       rawMap = MapUtils.dataToMap('earthBossRoom');
+    } else if (mapId == tutorialRoomLevel) {
+      // tutorial room
+      rawMap = MapUtils.dataToMap('tutorialRoom');
     } else {
       rawMap = MapUtils.generateMapData(mapId, genMapRoomsFullMaze, 20, 10);
       rawMap = MapUtils.removeDeadEnds(rawMap);
@@ -4236,8 +4353,8 @@
                 break;
               }
             }
-            if (targetMapId == 2) {
-              // do not generate upstair on dungeon level 1
+            if (targetMapId == 2 || targetMapId == tutorialRoomLevel) {
+              // do not generate upstair on dungeon level 1 & tutorial level
               let stairList = targetMapVariable.stairList;
               for (let id in stairList) {
                 if (stairList[id].type == 0) {
@@ -4961,6 +5078,31 @@
     MapUtils.refreshMap();
     AudioManager.playSe({name: 'Water5', pan: 0, pitch: 100, volume: 100});
     LogUtils.addLog(String.format(Message.display('iceMeltInHole'), this.name));
+  }
+
+  //-----------------------------------------------------------------------------
+  // FixedBolder
+  //
+  // Bolder that can not move
+
+  FixedBolder = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  FixedBolder.prototype = Object.create(Bolder.prototype);
+  FixedBolder.prototype.constructor = FixedBolder;
+
+  FixedBolder.prototype.initialize = function (x, y, fromData) {
+    Bolder.prototype.initialize.call(this, x, y, fromData);
+    this.setImage('!Other1', 3);
+    this.name = '固定岩石';
+    this.mob._name = this.name;
+    this.className = this.constructor.name;
+    this.updateDataMap();
+  }
+
+  FixedBolder.prototype.onPush = function(src) {
+    // do nothing
   }
 
   //-----------------------------------------------------------------------------------
@@ -6220,6 +6362,35 @@
   }
 
   //-----------------------------------------------------------------------------------
+  // Trap_Event
+  //
+  // class for trap: play event when step on it
+
+  Trap_Event = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Trap_Event.prototype = Object.create(Game_Trap.prototype);
+  Trap_Event.prototype.constructor = Trap_Event;
+
+  Trap_Event.prototype.initStatus = function (x, y) {
+    Game_Trap.prototype.initStatus.call(this, x, y);
+    this.trap.trapClass = 'Trap_Event';
+    this.trap.imageData = new ImageData('!Door2', 0, 1, 8);
+    this.trap.name = '傳送門';
+    this.trap.isRevealed = true;
+    this.trap.evnetId = -1;
+  }
+
+  Trap_Event.prototype.setEventId = function(eventId) {
+    this.trap.eventId = eventId;
+  }
+
+  Trap_Event.prototype.triggered = function(target) {
+    MapUtils.playEventFromTemplate(this.trap.eventId);
+  }
+
+  //-----------------------------------------------------------------------------------
   // Trap_GoHome
   //
   // class for test event: Howard go home
@@ -6809,7 +6980,11 @@
             SceneManager.push(Scene_SetupProjectile);
             break;
           case 'h': case '?': // help page
-            SceneManager.push(Scene_Help);
+            if ($gameSwitches._data[1]) {
+              SceneManager.push(Scene_Tutorial);
+            } else {
+              SceneManager.push(Scene_Help);
+            }
             break;
           case '.': // wait action
             TimeUtils.afterPlayerMoved();
@@ -7075,6 +7250,7 @@
     queue: [],
     msg: '',
     indicator: 0,
+    tutorialModeEventId: -1,
     execute: function() {
       let vm = TimeUtils.tutorialHandler;
       // handle game message
@@ -21444,7 +21620,7 @@
       needSplit = false;
       for (let i = 0; i < text.length; i++) {
         let subString = text.substring(0, i + 1);
-        if (messageWindow.textWidth(subString) >= Graphics.boxWidth - 230) {
+        if (messageWindow.textWidth(subString) >= Graphics.boxWidth - 230 || text[i] == '\\') {
           needSplit = true;
           results.push(subString);
           text = text.substring(i + 1, text.length + 1);
@@ -21717,4 +21893,656 @@
       this._texts.push(msgs[id]);
     }
   };
+
+  //-----------------------------------------------------------------------------
+  // Window_TitleCommand
+  //
+  // The window for selecting New Game/Continue on the title screen.
+
+  // override this command so we can add a tutorial option on game title
+  Window_TitleCommand.prototype.makeCommandList = function() {
+    this.addCommand(TextManager.newGame,   'newGame');
+    this.addCommand(TextManager.continue_, 'continue', this.isContinueEnabled());
+    this.addCommand(Message.display('tutorial'), 'tutorial');
+    this.addCommand(TextManager.options,   'options');
+  };
+
+  //-----------------------------------------------------------------------------
+  // Scene_Title
+  //
+  // The scene class of the title screen.
+  // Modify this to add tutorial option on game title
+
+  Scene_Title.prototype.createCommandWindow = function() {
+    this._commandWindow = new Window_TitleCommand();
+    this._commandWindow.setHandler('newGame',  this.commandNewGame.bind(this));
+    this._commandWindow.setHandler('continue', this.commandContinue.bind(this));
+    this._commandWindow.setHandler('tutorial', this.commandTutorial.bind(this));
+    this._commandWindow.setHandler('options',  this.commandOptions.bind(this));
+    this.addWindow(this._commandWindow);
+  };
+
+  Scene_Title.prototype.commandTutorial = function() {
+    DataManager.setupNewGame();
+    this._commandWindow.close();
+    this.fadeOutAll();
+    $gameSwitches._data[1] = true;
+    SceneManager.goto(Scene_Map);
+  };
+
+  //-----------------------------------------------------------------------------
+  // Window_TutorialCommand
+  //
+  // The window for selecting a game tutorial
+
+  function Window_TutorialCommand() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_TutorialCommand.prototype = Object.create(Window_Command.prototype);
+  Window_TutorialCommand.prototype.constructor = Window_TutorialCommand;
+
+  Window_TutorialCommand.prototype.initialize = function(x, y) {
+    Window_Command.prototype.initialize.call(this, x, y);
+  };
+
+  Window_TutorialCommand.prototype.makeCommandList = function() {
+    this.addCommand('基本指令篇    <教我>', 'basic', true);
+    this.addCommand('打怪篇        <教我>', 'combat', true);
+    this.addCommand('道具篇        <教我>', 'item', true);
+    this.addCommand('裝備篇        <教我>', 'equipment', true);
+    this.addCommand('檢索欄位篇     <教我>', 'info', true);
+    this.addCommand('必備常識篇     <教我>', 'common_sense', true);
+    this.addCommand('可能需要篇     <教我>', 'may_need', true);
+    this.addCommand('先人恐怖故事集 <想讀>', 'story', true);
+    this.addCommand('我都會了 <退出教學>', 'finish', true);
+  }
+
+  Window_TutorialCommand.prototype.windowWidth = function() {
+    return 350;
+  };
+
+  //-----------------------------------------------------------------------------
+  // Window_BasicCommand
+  //
+  // The window for selecting basic command tutorial
+
+  function Window_BasicCommand() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_BasicCommand.prototype = Object.create(Window_Command.prototype);
+  Window_BasicCommand.prototype.constructor = Window_BasicCommand;
+
+  Window_BasicCommand.prototype.initialize = function(x, y) {
+    Window_Command.prototype.initialize.call(this, x, y);
+  };
+
+  Window_BasicCommand.prototype.makeCommandList = function() {
+    this.addCommand('移動:方向鍵/數字鍵盤 <試試>', 'move', true);
+    this.addCommand('撿拾: g鍵           <試試>', 'get', true);
+    this.addCommand('吃東西: e鍵         <試試>', 'eat', true);
+    this.addCommand('丟棄: d鍵           <試試>', 'drop', true);
+    this.addCommand('搜索: s鍵           <教我>', 'search', true);
+    this.addCommand('退出: 0或ESC鍵      <教我>', 'quit', true);
+    this.addCommand('存檔: S鍵(大寫)     <教我>', 'save', true);
+    this.addCommand('退回 <上一步>', 'cancel', true);
+  }
+
+  Window_BasicCommand.prototype.windowWidth = function() {
+    return 500;
+  };
+
+  //-----------------------------------------------------------------------------
+  // Window_EquipmentCommand
+  //
+  // The window for selecting equipment tutorial
+
+  function Window_EquipmentCommand() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_EquipmentCommand.prototype = Object.create(Window_Command.prototype);
+  Window_EquipmentCommand.prototype.constructor = Window_EquipmentCommand;
+
+  Window_EquipmentCommand.prototype.initialize = function(x, y) {
+    Window_Command.prototype.initialize.call(this, x, y);
+  };
+
+  Window_EquipmentCommand.prototype.makeCommandList = function() {
+    this.addCommand('穿脫裝備: w鍵       <試試>', 'equip', true);
+    this.addCommand('合成裝備: M鍵(大寫) <試試>', 'craft', true);
+    this.addCommand('退回 <上一步>', 'cancel', true);
+  }
+
+  Window_EquipmentCommand.prototype.windowWidth = function() {
+    return 500;
+  };
+
+  //-----------------------------------------------------------------------------
+  // Window_CombatCommand
+  //
+  // The window for selecting combat tutorial
+
+  function Window_CombatCommand() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_CombatCommand.prototype = Object.create(Window_Command.prototype);
+  Window_CombatCommand.prototype.constructor = Window_CombatCommand;
+
+  Window_CombatCommand.prototype.initialize = function(x, y) {
+    Window_Command.prototype.initialize.call(this, x, y);
+  };
+
+  Window_CombatCommand.prototype.makeCommandList = function() {
+    this.addCommand('普通攻擊: 方向鍵/F(大寫) <試試>', 'melee', true);
+    this.addCommand('施放戰技: W鍵(大寫)      <試試>', 'war', true);
+    this.addCommand('施放魔法: C鍵(大寫)      <試試>', 'magic', true);
+    this.addCommand('原地回血: 原地方向鍵     <試試>', 'recover', true);
+    this.addCommand('退回 <上一步>', 'cancel', true);
+  }
+
+  Window_CombatCommand.prototype.windowWidth = function() {
+    return 500;
+  };
+
+  //-----------------------------------------------------------------------------
+  // Window_ItemCommand
+  //
+  // The window for selecting item tutorial
+
+  function Window_ItemCommand() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_ItemCommand.prototype = Object.create(Window_Command.prototype);
+  Window_ItemCommand.prototype.constructor = Window_ItemCommand;
+
+  Window_ItemCommand.prototype.initialize = function(x, y) {
+    Window_Command.prototype.initialize.call(this, x, y);
+  };
+
+  Window_ItemCommand.prototype.makeCommandList = function() {
+    this.addCommand('飲用藥水: q鍵       <試試>', 'quaff', true);
+    this.addCommand('閱讀卷軸: r鍵       <試試>', 'read', true);
+    this.addCommand('投擲道具: f鍵       <試試>', 'fire', true);
+    this.addCommand('合成道具: M鍵(大寫) <試試>', 'craft', true);
+    this.addCommand('退回 <上一步>', 'cancel', true);
+  }
+
+  Window_ItemCommand.prototype.windowWidth = function() {
+    return 500;
+  };
+
+  //-----------------------------------------------------------------------------
+  // Window_InfoCommand
+  //
+  // The window for display information tutorial
+
+  function Window_InfoCommand() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_InfoCommand.prototype = Object.create(Window_Command.prototype);
+  Window_InfoCommand.prototype.constructor = Window_InfoCommand;
+
+  Window_InfoCommand.prototype.initialize = function(x, y) {
+    Window_Command.prototype.initialize.call(this, x, y);
+  };
+
+  Window_InfoCommand.prototype.makeCommandList = function() {
+    this.addCommand('主選單: 0或ESC鍵 <試試>', 'menu', true);
+    this.addCommand('物品欄: i鍵      <試試>', 'inventory', true);
+    this.addCommand('歷史訊息: /鍵    <試試>', 'log', true);
+    this.addCommand('退回 <上一步>', 'cancel', true);
+  }
+
+  Window_InfoCommand.prototype.windowWidth = function() {
+    return 500;
+  };
+
+  //-----------------------------------------------------------------------------
+  // Window_KnowledgeCommand
+  //
+  // The window for display knowledge tutorial
+
+  function Window_KnowledgeCommand() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_KnowledgeCommand.prototype = Object.create(Window_Command.prototype);
+  Window_KnowledgeCommand.prototype.constructor = Window_KnowledgeCommand;
+
+  Window_KnowledgeCommand.prototype.initialize = function(x, y) {
+    Window_Command.prototype.initialize.call(this, x, y);
+  };
+
+  Window_KnowledgeCommand.prototype.makeCommandList = function() {
+    this.addCommand('鑑定 <教我>', 'identify', true);
+    this.addCommand('退回 <上一步>', 'cancel', true);
+  }
+
+  Window_KnowledgeCommand.prototype.windowWidth = function() {
+    return 500;
+  };
+
+  //-----------------------------------------------------------------------------
+  // Window_MayNeedCommand
+  //
+  // The window for display may-need information tutorial
+
+  function Window_MayNeedCommand() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_MayNeedCommand.prototype = Object.create(Window_Command.prototype);
+  Window_MayNeedCommand.prototype.constructor = Window_MayNeedCommand;
+
+  Window_MayNeedCommand.prototype.initialize = function(x, y) {
+    Window_Command.prototype.initialize.call(this, x, y);
+  };
+
+  Window_MayNeedCommand.prototype.makeCommandList = function() {
+    this.addCommand('開/關門: o鍵/c鍵 <教我>', 'door', true);
+    this.addCommand('踢(門): k鍵      <教我>', 'kick', true);
+    this.addCommand('爬樓梯: Enter鍵  <教我>', 'stair', true);
+    this.addCommand('快捷鍵: Q/0~9    <教我>', 'hotkey', true);
+    this.addCommand('退回 <上一步>', 'cancel', true);
+  }
+
+  Window_MayNeedCommand.prototype.windowWidth = function() {
+    return 500;
+  };
+
+  //-----------------------------------------------------------------------------
+  // Window_StoryCommand
+  //
+  // The window for display story command
+
+  function Window_StoryCommand() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_StoryCommand.prototype = Object.create(Window_Command.prototype);
+  Window_StoryCommand.prototype.constructor = Window_StoryCommand;
+
+  Window_StoryCommand.prototype.initialize = function(x, y) {
+    Window_Command.prototype.initialize.call(this, x, y);
+  };
+
+  Window_StoryCommand.prototype.makeCommandList = function() {
+    this.addCommand('[卷一] 詛咒裝備', 'story1', true);
+    this.addCommand('[卷二] 腐爛屍體', 'story2', true);
+    this.addCommand('[卷三] 悔恨之死', 'story3', true);
+    this.addCommand('[卷四] 消失的門', 'story4', true);
+    this.addCommand('[卷五] 索命魑魅', 'story5', true);
+    this.addCommand('退回 <上一步>', 'cancel', true);
+  }
+
+  Window_StoryCommand.prototype.windowWidth = function() {
+    return 500;
+  };
+
+  //-----------------------------------------------------------------------------
+  // Window_Story
+  //
+  // The window for showing story
+
+  function Window_Story() {
+    this.initialize.apply(this, arguments);
+  }
+
+  Window_Story.prototype = Object.create(Window_Selectable.prototype);
+  Window_Story.prototype.constructor = Window_Story;
+
+  Window_Story.list = ['tStory1', 'tStory2', 'tStory3', 'tStory4', 'tStory5'];
+
+  Window_Story.prototype.initialize = function(leftIndent) {
+    var width = Graphics.boxWidth - leftIndent;
+    var height = Graphics.boxHeight;
+    Window_Selectable.prototype.initialize.call(this, leftIndent, 0, width, height);
+    this._text = '';
+  }
+
+  Window_Story.prototype.drawTextEx = function(text, x, y) {
+    if (text) {
+        var textState = { index: 0, x: x, y: y, left: x };
+        textState.text = this.convertEscapeCharacters(text);
+        textState.height = this.calcTextHeight(textState, false);
+        // this.resetFontSettings();
+        while (textState.index < textState.text.length) {
+            this.processCharacter(textState);
+        }
+        return textState.x - x;
+    } else {
+        return 0;
+    }
+  };
+
+  Window_Story.prototype.write = function(storyId) {
+    let result = '';
+    for (let data of Message.chinese[Window_Story.list[storyId]]) {
+      let msgs = Window_HelpCommand.splitMsg(data);
+      for (let id in msgs) {
+        result += msgs[id] + '\n';
+      }
+      result += '\n';
+    }
+    this._text = result;
+    this.contents.clear();
+    this.contents.fontSize = 24;
+    this.drawTextEx(this._text, this.textPadding(), 0);
+  }
+
+  //-----------------------------------------------------------------------------
+  // Scene_Tutorial
+  //
+  // The scene class of basic game tutorial
+
+  Scene_Tutorial = function () {
+    this.initialize.apply(this, arguments);
+  }
+
+  Scene_Tutorial.prototype = Object.create(Scene_Base.prototype);
+  Scene_Tutorial.prototype.constructor = Scene_Tutorial;
+
+  Scene_Tutorial.prototype.initialize = function() {
+    Scene_Base.prototype.initialize.call(this);
+  }
+
+  Scene_Tutorial.prototype.create = function() {
+    Scene_Base.prototype.create.call(this);
+    this.createBackground();
+    this.createWindowLayer();
+    this.createTitleWindow();
+    this.createCommandWindow();
+  }
+
+  Scene_Tutorial.prototype.createBackground = function() {
+    this._backgroundSprite = new Sprite();
+    this._backgroundSprite.bitmap = SceneManager.backgroundBitmap();
+    this.addChild(this._backgroundSprite);
+  }
+
+  Scene_Tutorial.prototype.createTitleWindow = function() {
+    this._titleWindow = new Window_Help();
+    this._titleWindow.setText('歡迎來到學習中心! 請選擇想要體驗的項目', 0, 0);
+    this.addWindow(this._titleWindow);
+  }
+
+  Scene_Tutorial.prototype.createCommandWindow = function() {
+    // create main command window
+    this._commandWindow = new Window_TutorialCommand(0, this._titleWindow.height);
+    this._commandWindow.setHandler('basic', this.toBasic.bind(this));
+    this._commandWindow.setHandler('equipment', this.toEquip.bind(this));
+    this._commandWindow.setHandler('combat', this.toCombat.bind(this));
+    this._commandWindow.setHandler('item', this.toItem.bind(this));
+    this._commandWindow.setHandler('info', this.toInfo.bind(this));
+    this._commandWindow.setHandler('common_sense', this.toKnowledge.bind(this));
+    this._commandWindow.setHandler('may_need', this.toMayNeed.bind(this));
+    this._commandWindow.setHandler('story', this.toStory.bind(this));
+    this._commandWindow.setHandler('finish', this.action.bind(this, 67));
+    this.addWindow(this._commandWindow);
+
+    // create basic command window
+    this._basicCommandWindow = new Window_BasicCommand(350, this._titleWindow.height);
+    this._basicCommandWindow.setHandler('move', this.action.bind(this, 41));
+    this._basicCommandWindow.setHandler('get', this.action.bind(this, 43));
+    this._basicCommandWindow.setHandler('drop', this.action.bind(this, 44));
+    this._basicCommandWindow.setHandler('eat', this.action.bind(this, 45));
+    this._basicCommandWindow.setHandler('search', this.action.bind(this, 46));
+    this._basicCommandWindow.setHandler('quit', this.action.bind(this, 47));
+    this._basicCommandWindow.setHandler('save', this.action.bind(this, 48));
+    this._basicCommandWindow.setHandler('cancel', this.toCommand.bind(this));
+    this._basicCommandWindow.deactivate();
+    this._basicCommandWindow.hide();
+    this.addWindow(this._basicCommandWindow);
+    // create equipment command window
+    this._equipCommandWindow = new Window_EquipmentCommand(350, this._titleWindow.height);
+    this._equipCommandWindow.setHandler('equip', this.action.bind(this, 49));
+    this._equipCommandWindow.setHandler('craft', this.action.bind(this, 50));
+    this._equipCommandWindow.setHandler('cancel', this.toCommand.bind(this));
+    this._equipCommandWindow.deactivate();
+    this._equipCommandWindow.hide();
+    this.addWindow(this._equipCommandWindow);
+    // create combat command window
+    this._combatCommandWindow = new Window_CombatCommand(350, this._titleWindow.height);
+    this._combatCommandWindow.setHandler('melee', this.action.bind(this, 51));
+    this._combatCommandWindow.setHandler('war', this.action.bind(this, 52));
+    this._combatCommandWindow.setHandler('magic', this.action.bind(this, 53));
+    this._combatCommandWindow.setHandler('recover', this.action.bind(this, 54));
+    this._combatCommandWindow.setHandler('cancel', this.toCommand.bind(this));
+    this._combatCommandWindow.deactivate();
+    this._combatCommandWindow.hide();
+    this.addWindow(this._combatCommandWindow);
+    // create item command window
+    this._itemCommandWindow = new Window_ItemCommand(350, this._titleWindow.height);
+    this._itemCommandWindow.setHandler('quaff', this.action.bind(this, 55));
+    this._itemCommandWindow.setHandler('read', this.action.bind(this, 56));
+    this._itemCommandWindow.setHandler('fire', this.action.bind(this, 57));
+    this._itemCommandWindow.setHandler('craft', this.action.bind(this, 58));
+    this._itemCommandWindow.setHandler('cancel', this.toCommand.bind(this));
+    this._itemCommandWindow.deactivate();
+    this._itemCommandWindow.hide();
+    this.addWindow(this._itemCommandWindow);
+    // create information command window
+    this._infoCommandWindow = new Window_InfoCommand(350, this._titleWindow.height);
+    this._infoCommandWindow.setHandler('menu', this.action.bind(this, 59));
+    this._infoCommandWindow.setHandler('inventory', this.action.bind(this, 60));
+    this._infoCommandWindow.setHandler('log', this.action.bind(this, 61));
+    this._infoCommandWindow.setHandler('cancel', this.toCommand.bind(this));
+    this._infoCommandWindow.deactivate();
+    this._infoCommandWindow.hide();
+    this.addWindow(this._infoCommandWindow);
+    // create knowledge command window
+    this._knowledgeCommandWindow = new Window_KnowledgeCommand(350, this._titleWindow.height);
+    this._knowledgeCommandWindow.setHandler('identify', this.action.bind(this, 62));
+    this._knowledgeCommandWindow.setHandler('cancel', this.toCommand.bind(this));
+    this._knowledgeCommandWindow.deactivate();
+    this._knowledgeCommandWindow.hide();
+    this.addWindow(this._knowledgeCommandWindow);
+    // create may-need information command window
+    this._mayNeedCommandWindow = new Window_MayNeedCommand(350, this._titleWindow.height);
+    this._mayNeedCommandWindow.setHandler('door', this.action.bind(this, 63));
+    this._mayNeedCommandWindow.setHandler('kick', this.action.bind(this, 64));
+    this._mayNeedCommandWindow.setHandler('stair', this.action.bind(this, 65));
+    this._mayNeedCommandWindow.setHandler('hotkey', this.action.bind(this, 66));
+    this._mayNeedCommandWindow.setHandler('cancel', this.toCommand.bind(this));
+    this._mayNeedCommandWindow.deactivate();
+    this._mayNeedCommandWindow.hide();
+    this.addWindow(this._mayNeedCommandWindow);
+    // create story command window
+    this._storyCommandWindow = new Window_StoryCommand(350, this._titleWindow.height);
+    this._storyCommandWindow.setHandler('story1', this.toStoryWindow.bind(this, 0));
+    this._storyCommandWindow.setHandler('story2', this.toStoryWindow.bind(this, 1));
+    this._storyCommandWindow.setHandler('story3', this.toStoryWindow.bind(this, 2));
+    this._storyCommandWindow.setHandler('story4', this.toStoryWindow.bind(this, 3));
+    this._storyCommandWindow.setHandler('story5', this.toStoryWindow.bind(this, 4));
+    this._storyCommandWindow.setHandler('cancel', this.toCommand.bind(this));
+    this._storyCommandWindow.deactivate();
+    this._storyCommandWindow.hide();
+    this.addWindow(this._storyCommandWindow);
+    // add story window
+    this._storyWindow = new Window_Story(250);
+    this._storyWindow.setHandler('cancel', this.storyToCommand.bind(this));
+    this._storyWindow.deactivate();
+    this._storyWindow.hide();
+    this.addWindow(this._storyWindow);
+  }
+
+  Scene_Tutorial.prototype.toCommand = function() {
+    this._basicCommandWindow.deactivate();
+    this._basicCommandWindow.hide();
+    this._equipCommandWindow.deactivate();
+    this._equipCommandWindow.hide();
+    this._combatCommandWindow.deactivate();
+    this._combatCommandWindow.hide();
+    this._itemCommandWindow.deactivate();
+    this._itemCommandWindow.hide();
+    this._infoCommandWindow.deactivate();
+    this._infoCommandWindow.hide();
+    this._knowledgeCommandWindow.deactivate();
+    this._knowledgeCommandWindow.hide();
+    this._mayNeedCommandWindow.deactivate();
+    this._mayNeedCommandWindow.hide();
+    this._storyCommandWindow.deactivate();
+    this._storyCommandWindow.hide();
+    this._commandWindow.activate();
+  }
+
+  Scene_Tutorial.prototype.toBasic = function() {
+    this._commandWindow.deactivate();
+    this._basicCommandWindow.activate();
+    this._basicCommandWindow.show();
+  }
+
+  Scene_Tutorial.prototype.toEquip = function() {
+    this._commandWindow.deactivate();
+    this._equipCommandWindow.activate();
+    this._equipCommandWindow.show();
+  }
+
+  Scene_Tutorial.prototype.toCombat = function() {
+    this._commandWindow.deactivate();
+    this._combatCommandWindow.activate();
+    this._combatCommandWindow.show();
+  }
+
+  Scene_Tutorial.prototype.toItem = function() {
+    this._commandWindow.deactivate();
+    this._itemCommandWindow.activate();
+    this._itemCommandWindow.show();
+  }
+
+  Scene_Tutorial.prototype.toInfo = function() {
+    this._commandWindow.deactivate();
+    this._infoCommandWindow.activate();
+    this._infoCommandWindow.show();
+  }
+
+  Scene_Tutorial.prototype.toKnowledge = function() {
+    this._commandWindow.deactivate();
+    this._knowledgeCommandWindow.activate();
+    this._knowledgeCommandWindow.show();
+  }
+
+  Scene_Tutorial.prototype.toMayNeed = function() {
+    this._commandWindow.deactivate();
+    this._mayNeedCommandWindow.activate();
+    this._mayNeedCommandWindow.show();
+  }
+
+  Scene_Tutorial.prototype.toStory = function() {
+    this._commandWindow.deactivate();
+    this._storyCommandWindow.activate();
+    this._storyCommandWindow.show();
+  }
+
+  Scene_Tutorial.prototype.toStoryWindow = function(storyId) {
+    this._commandWindow.deactivate();
+    this._commandWindow.hide();
+    this._storyCommandWindow.deactivate();
+    this._storyCommandWindow.hide();
+    // write story
+    this._storyWindow.write(storyId);
+    this._storyWindow.activate();
+    this._storyWindow.show();
+  }
+
+  Scene_Tutorial.prototype.storyToCommand = function() {
+    this._storyWindow.deactivate();
+    this._storyWindow.hide();
+    this._commandWindow.show();
+    this._storyCommandWindow.show();
+    this._storyCommandWindow.activate();
+  }
+
+  Scene_Tutorial.prototype.setupStair = function() {
+    if ($gameMap.mapId() == 1) {
+      // first time to tutorial map
+      let stairUp = new StairData();
+      stairUp.x = 20;
+      stairUp.y = 12;
+      $gameVariables[tutorialRoomLevel].preDefinedStairs.push(stairUp);
+    }
+  }
+
+  Scene_Tutorial.prototype.setupStairTutorial = function() {
+    let stairUp = new StairData();
+    stairUp.x = 11;
+    stairUp.y = 14;
+    new UpStair(11, 14);
+    stairUp.toMapId = tutorialRoomLevel;
+    let stairDown = new StairData();
+    stairDown.type = 1;
+    stairDown.x = 18;
+    stairDown.y = 9;
+    new DownStair(18, 9);
+    stairDown.toMapId = tutorialRoomLevel;
+    stairUp.toX = stairDown.x;
+    stairUp.toY = stairDown.y;
+    stairDown.toX = stairUp.x;
+    stairDown.toY = stairUp.y;
+    $gameVariables[tutorialRoomLevel].stairList = [stairUp, stairDown];
+    $gameVariables[tutorialRoomLevel].stairToList = [tutorialRoomLevel, tutorialRoomLevel];
+  }
+
+  Scene_Tutorial.prototype.action = function(eventId) {
+    this.setupStair();
+    TimeUtils.tutorialHandler.tutorialModeEventId = eventId;
+    this.popSceneAndTransfer();
+  }
+
+  Scene_Tutorial.prototype.popSceneAndTransfer = function() {
+    var checkTutorialMapReady = function() {
+      if ($gameMap.mapId() == tutorialRoomLevel) {
+        // reset player status
+        $gameActors.actor(1)._hp = $gameActors.actor(1).mhp;
+        $gameActors.actor(1)._mp = $gameActors.actor(1).mmp;
+        $gameActors.actor(1)._tp = 100;
+        $gameActors.actor(1).nutrition = 900;
+        // clear player items & equipments
+        $gameParty._items.length = 0;
+        $gameParty._weapons.length = 0;
+        $gameParty._armors.length = 0;
+        for (let slot of $gameActors.actor(1)._equips) {
+          slot._itemId = 0;
+          slot._item = null;
+        }
+        // clear player skills
+        $gameActors.actor(1)._skills.length = 5;
+        // clear all events except door
+        let evts = $gameMap._events;
+        for (let i = 0; i < evts.length; i++) {
+          if (evts[i] && evts[i].type && evts[i].type == 'DOOR') {
+            if (evts[i]._x == 14 && evts[i]._y == 8) {
+              evts[i] = null;
+              $dataMap.events[i] = null;
+            }
+          } else {
+            evts[i] = null;
+            $dataMap.events[i] = null;
+          }
+        }
+        // setup secret door: (14, 8)
+        $gameVariables[tutorialRoomLevel].secretBlocks[MapUtils.getTileIndex(14, 8)] = {
+          isRevealed: false
+        }
+        $gameVariables[tutorialRoomLevel].mapData[14][8]
+          = MapDataUtils.setBase($gameVariables[tutorialRoomLevel].mapData[14][8], 6752);
+          // remove door icon
+        $dataMap.data[1158] = 0;
+        // reset stairs
+        $gameVariables[tutorialRoomLevel].stairList = [];
+        $gameVariables[tutorialRoomLevel].stairToList = [];
+        // play tutorial event
+        MapUtils.playEventFromTemplate(TimeUtils.tutorialHandler.tutorialModeEventId);
+      } else {
+        setTimeout(checkTutorialMapReady, 100);
+      }
+    }
+    checkTutorialMapReady();
+    this.popScene();
+  }
 })();
