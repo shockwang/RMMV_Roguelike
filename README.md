@@ -16,6 +16,10 @@
 * 說明頁面
 ![image](https://user-images.githubusercontent.com/8130848/222473306-3c9e04d0-3a82-4ac6-87b7-02f811148100.png)
 
+* 戰鬥畫面
+![image](https://user-images.githubusercontent.com/8130848/224677070-c1a8dc06-e12c-4622-8250-f9b1f51dd222.png)
+![image](https://user-images.githubusercontent.com/8130848/224677171-b6b112c0-c9eb-41ca-bbfa-1de091469b48.png)
+
 * 技能獲得與成長
 ![image](https://user-images.githubusercontent.com/8130848/222480351-a7edb680-52c3-439a-b124-c0bda0b85279.png)
 ![image](https://user-images.githubusercontent.com/8130848/222474688-2c20bd38-9805-4610-aa5f-22fb91da9870.png)
